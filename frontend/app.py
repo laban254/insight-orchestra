@@ -25,30 +25,58 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- Sidebar Modernization ---
-sidebar_css = """
+# --- Sidebar Modernization (Refined) ---
+st.markdown("""
     <style>
     .sidebar-container {
-        background: linear-gradient(120deg, #f8fafc 60%, #e0eafc 100%);
-        border-radius: 18px;
-        padding: 1.5em 1.2em 1.2em 1.2em;
-        margin-bottom: 1.5em;
-        box-shadow: 0 2px 12px #e0eafc44;
+        background: #fff;
+        border-radius: 14px;
+        padding: 1.1em 1em 1em 1em;
+        margin-bottom: 1.2em;
+        box-shadow: 0 1px 8px #e0eafc33;
+        border: 1px solid #e6eaf1;
     }
     .sidebar-header {
-        display: flex; align-items: center; gap: 0.7em; margin-bottom: 1.2em;
+        display: flex; align-items: center; gap: 0.6em; margin-bottom: 0.7em;
     }
-    .sidebar-header img { border-radius: 12px; box-shadow: 0 2px 8px #cfdef3; }
-    .sidebar-title { font-size: 1.3em; font-weight: 700; color: #2c3e50; letter-spacing: 0.5px; }
-    .sidebar-radio label { font-size: 1.08em; font-weight: 500; }
-    .sidebar-session {
-        background: #fff; border-radius: 12px; box-shadow: 0 2px 8px #e0eafc; padding: 1em 1em 0.7em 1em; margin-bottom: 1.2em;
+    .sidebar-header img { border-radius: 8px; box-shadow: none; width: 36px; height: 36px; }
+    .sidebar-title { font-size: 1.08em; font-weight: 700; color: #2c3e50; letter-spacing: 0.2px; }
+    .sidebar-session-card {
+        background: #f7fafd;
+        border-radius: 8px;
+        padding: 0.7em 0.8em;
+        margin-bottom: 1em;
+        font-size: 0.98em;
+        border: 1px solid #e6eaf1;
     }
-    .sidebar-footer { text-align: center; color: #aaa; font-size: 0.95em; margin-top: 2em; }
-    .sidebar-help ul { margin-left: 1.1em; }
+    .sidebar-radio label {
+        font-size: 1.05em;
+        font-weight: 500;
+        color: #2c3e50;
+        padding: 0.3em 0.7em;
+        border-radius: 6px;
+        margin-bottom: 0.2em;
+        background: #f4f6fa;
+        transition: background 0.2s;
+    }
+    .sidebar-radio label[data-selected="true"] {
+        background: #e0eafc;
+        color: #1a2233;
+        font-weight: 700;
+    }
+    .sidebar-divider {
+        border-bottom: 1px solid #e6eaf1;
+        margin: 1em 0 1em 0;
+    }
+    .sidebar-footer {
+        text-align: center;
+        color: #bbb;
+        font-size: 0.93em;
+        margin-top: 1.5em;
+    }
+    .sidebar-footer a { color: #4ca1af; text-decoration: none; font-weight: 600; }
     </style>
-"""
-st.markdown(sidebar_css, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
 # --- Sidebar Navigation ---
 st.sidebar.markdown("""
@@ -59,65 +87,52 @@ st.sidebar.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-st.sidebar.markdown("""
-    <style>
-    .sidebar-section {margin-bottom:1.2em;}
-    .sidebar-nav-radio label {font-size:1.1em; font-weight:600; color:#2c3e50;}
-    .sidebar-session-card {background:#e0eafc; border-radius:10px; padding:0.9em 1em; margin-bottom:1.2em; box-shadow:0 1px 4px #e0eafc;}
-    .sidebar-footer {margin-top:2em; text-align:center; color:#888; font-size:0.95em;}
-    .sidebar-footer a {color:#4ca1af; text-decoration:none; font-weight:600;}
-    .sidebar-dark-toggle {margin-top:1em; text-align:center;}
-    </style>
-""", unsafe_allow_html=True)
-
 with st.sidebar:
     st.markdown("""
     <div class='sidebar-container'>
         <div class='sidebar-header'>
-            <img src='https://img.icons8.com/ios-filled/100/2c3e50/orchestra.png' width='48'>
+            <img src='https://img.icons8.com/ios-filled/100/2c3e50/orchestra.png'>
             <span class='sidebar-title'>Insight Orchestra</span>
         </div>
+        <div class='sidebar-divider'></div>
     """, unsafe_allow_html=True)
     # --- Session Info Card ---
     if st.session_state.get('file_path'):
         file_name = st.session_state.get('file_path').split('/')[-1]
         status = "Analyzed" if st.session_state.get('results') else "Uploaded"
-        st.sidebar.markdown(f"""
+        st.markdown(f"""
             <div class='sidebar-session-card'>
-                <b>Session File:</b><br> <span style='color:#2c3e50;'>{file_name}</span><br>
+                <b>File:</b> <span style='color:#2c3e50;'>{file_name}</span><br>
                 <b>Status:</b> <span style='color:#4ca1af;'>{status}</span>
             </div>
         """, unsafe_allow_html=True)
     # --- Navigation ---
-    section = st.sidebar.radio(
-        "Go to section:",
+    section = st.radio(
+        "Navigation",
         ["Upload & Status", "Agent Feed", "Summary & Q&A", "Visualizations", "Download Report"],
         index=0,
         key="nav_radio",
         help="Navigate between workflow steps.",
+        label_visibility="collapsed",
     )
+    st.markdown("<div class='sidebar-divider'></div>", unsafe_allow_html=True)
     # --- Getting Started / Help Section ---
-    with st.sidebar.expander("❓ Getting Started / Help", expanded=False):
+    with st.expander("❓ Help & Guide", expanded=False):
         st.markdown("""
-        <div style='font-size:1.05em; line-height:1.6;'>
-        <b>Welcome to Insight Orchestra!</b><br><br>
-        1. <b>Upload</b> your CSV file in the 'Upload & Status' section.<br>
-        2. Click <b>Run Analysis</b> to let the agents work.<br>
-        3. Explore the <b>Agent Feed</b> for data cleaning, hypotheses, and debate.<br>
-        4. See <b>Summary & Q&A</b> for automated insights and ask questions in plain English.<br>
-        5. Dive into <b>Visualizations</b> for auto-generated charts and explanations.<br>
-        6. <b>Download</b> a full report of your session.<br><br>
-        <i>Tip: Use the 'Explain This' button for plain-language chart explanations!</i>
+        <div style='font-size:1em; line-height:1.5;'>
+        <b>How to use:</b><br>
+        1. Upload a CSV or connect to BigQuery.<br>
+        2. Run analysis.<br>
+        3. Explore agent insights, Q&A, and visualizations.<br>
+        4. Download your report.<br>
         </div>
         """, unsafe_allow_html=True)
+    st.markdown("<div class='sidebar-divider'></div>", unsafe_allow_html=True)
     # --- Sidebar Footer ---
-    st.sidebar.markdown("""
+    st.markdown("""
         <div class='sidebar-footer'>
-            <span>Made with <span style='color:#e25555;'>♥</span> for Hackathons<br>
-            <a href='https://github.com/your-repo' target='_blank'>GitHub</a> | <a href='mailto:hello@insightorchestra.com'>Contact</a></span>
-        </div>
-        <div class='sidebar-dark-toggle'>
-            <span style='color:#bbb;'>🌗 Dark mode coming soon</span>
+            <span>Made with <span style='color:#e25555;'>♥</span> by the Insight Orchestra team<br>
+            <a href='https://github.com/laban254' target='_blank'>GitHub</a></span>
         </div>
     """, unsafe_allow_html=True)
 
@@ -131,23 +146,49 @@ st.markdown("""
 
 # --- Upload & Status Section ---
 if section == "Upload & Status":
-    st.header("1. Upload your CSV 🗂️")
-    uploaded_file = st.file_uploader(
-        "Drag and drop file here",
-        type=["csv"],
-        help="Limit 200MB per file • CSV"
+    st.header("1. Choose Data Source 🗂️")
+    data_source = st.radio(
+        "Select data source:",
+        ["CSV Upload", "Google BigQuery"],
+        horizontal=True,
+        key="data_source_radio"
     )
-    if uploaded_file is not None:
-        with st.spinner("Uploading file to backend..."):
-            files = {"file": (uploaded_file.name, uploaded_file, "text/csv")}
-            resp = requests.post(f"{BACKEND_URL}/upload", files=files)
-            if resp.status_code == 200:
-                st.session_state['file_path'] = resp.json()['file_path']
-                st.success("File uploaded! Ready to analyze.")
-            else:
-                st.error(f"Upload failed: {resp.text}")
+    if data_source == "CSV Upload":
+        uploaded_file = st.file_uploader(
+            "Drag and drop file here",
+            type=["csv"],
+            help="Limit 200MB per file • CSV"
+        )
+        if uploaded_file is not None:
+            with st.spinner("Uploading file to backend..."):
+                files = {"file": (uploaded_file.name, uploaded_file, "text/csv")}
+                resp = requests.post(f"{BACKEND_URL}/upload", files=files)
+                if resp.status_code == 200:
+                    st.session_state['file_path'] = resp.json()['file_path']
+                    st.success("File uploaded! Ready to analyze.")
+                else:
+                    st.error(f"Upload failed: {resp.text}")
+        else:
+            st.info("Awaiting file upload.")
     else:
-        st.info("Awaiting file upload.")
+        st.markdown("""
+        <b>Connect to Google BigQuery</b><br>
+        Paste your <a href='https://console.cloud.google.com/apis/credentials/serviceaccountkey' target='_blank'>service account JSON</a> and enter your SQL query below.
+        """, unsafe_allow_html=True)
+        credentials_json = st.text_area("Service Account JSON", height=150, key="bq_creds")
+        bq_query = st.text_area("BigQuery SQL Query", key="bq_query")
+        if st.button("Fetch from BigQuery", use_container_width=True):
+            if not credentials_json.strip() or not bq_query.strip():
+                st.error("Please provide both credentials and a query.")
+            else:
+                with st.spinner("Querying BigQuery and loading data..."):
+                    resp = requests.post(f"{BACKEND_URL}/bigquery", json={"credentials_json": credentials_json, "query": bq_query})
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        st.session_state['file_path'] = data['file_path']
+                        st.success(f"BigQuery data loaded! {data['row_count']} rows, {len(data['columns'])} columns. Ready to analyze.")
+                    else:
+                        st.error(f"BigQuery fetch failed: {resp.text}")
     if st.session_state.get('file_path'):
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("Run Analysis 🎬", use_container_width=True):

@@ -50,8 +50,21 @@ streamlit run app.py
 
 ## Usage
 
+You can analyze data from two sources:
+
+### Option 1: Upload a CSV file
 1. **Upload** your CSV file in the 'Upload & Status' section.
 2. Click **Run Analysis** to let the agents work.
+
+### Option 2: Connect to Google BigQuery
+1. In the 'Upload & Status' section, select **Google BigQuery** as your data source.
+2. Paste your Google service account credentials (JSON) and enter your SQL query.
+3. Click **Fetch Data**. The app will securely connect, run your query, and load the results for analysis.
+
+---
+
+After loading your data (from CSV or BigQuery):
+
 3. Explore the **Agent Feed** for data cleaning, hypotheses, and debate.
 4. See **Summary & Q&A** for automated insights and ask questions in plain English.
 5. Dive into **Visualizations** for auto-generated charts and explanations.

@@ -64,3 +64,19 @@ async def generate_report(payload: dict = Body(...)):
     workflow_results = payload["workflow_results"]
     agent = ReportGeneratorAgent()
     return agent.run(workflow_results)
+
+class BigQueryRequest(BaseModel):
+    credentials_json: str  # JSON string of service account credentials
+    query: str
+
+@router.post("/bigquery")
+async def bigquery_fetch(request: BigQueryRequest):
+    from app.utils.bigquery_utils import run_bigquery_query
+    try:
+        df = run_bigquery_query(request.credentials_json, request.query)
+        # Save to a temp CSV for compatibility with rest of workflow
+        temp_path = f"/tmp/bq_{os.urandom(8).hex()}.csv"
+        df.to_csv(temp_path, index=False)
+        return {"file_path": temp_path, "columns": df.columns.tolist(), "row_count": len(df)}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
