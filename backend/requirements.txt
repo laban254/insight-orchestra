@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+pandas
+python-multipart
+python-pptx
+pydantic
+openai
+plotly
+# Agent frameworks (install if available)
+langchain
+autogen
+google-adk 
