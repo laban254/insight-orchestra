@@ -3,6 +3,7 @@ import requests
 import plotly.io as pio
 import plotly.graph_objs as go
 from collections import defaultdict
+import json
 
 BACKEND_URL = "http://localhost:8000"
 
@@ -24,6 +25,102 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# --- Sidebar Modernization ---
+sidebar_css = """
+    <style>
+    .sidebar-container {
+        background: linear-gradient(120deg, #f8fafc 60%, #e0eafc 100%);
+        border-radius: 18px;
+        padding: 1.5em 1.2em 1.2em 1.2em;
+        margin-bottom: 1.5em;
+        box-shadow: 0 2px 12px #e0eafc44;
+    }
+    .sidebar-header {
+        display: flex; align-items: center; gap: 0.7em; margin-bottom: 1.2em;
+    }
+    .sidebar-header img { border-radius: 12px; box-shadow: 0 2px 8px #cfdef3; }
+    .sidebar-title { font-size: 1.3em; font-weight: 700; color: #2c3e50; letter-spacing: 0.5px; }
+    .sidebar-radio label { font-size: 1.08em; font-weight: 500; }
+    .sidebar-session {
+        background: #fff; border-radius: 12px; box-shadow: 0 2px 8px #e0eafc; padding: 1em 1em 0.7em 1em; margin-bottom: 1.2em;
+    }
+    .sidebar-footer { text-align: center; color: #aaa; font-size: 0.95em; margin-top: 2em; }
+    .sidebar-help ul { margin-left: 1.1em; }
+    </style>
+"""
+st.markdown(sidebar_css, unsafe_allow_html=True)
+
+# --- Sidebar Navigation ---
+st.sidebar.markdown("""
+    <div style='text-align:center; margin-bottom:1.5em;'>
+        <img src="https://img.icons8.com/ios-filled/100/2c3e50/orchestra.png" width="70" style="margin-bottom:0.5em;"/>
+        <div style='font-size:1.5em; font-weight:700; color:#1a2233; letter-spacing:0.5px;'>Insight Orchestra</div>
+        <div style='font-size:0.95em; color:#4ca1af; font-weight:500;'>Multi-Agent Data Analysis</div>
+    </div>
+""", unsafe_allow_html=True)
+
+st.sidebar.markdown("""
+    <style>
+    .sidebar-section {margin-bottom:1.2em;}
+    .sidebar-nav-radio label {font-size:1.1em; font-weight:600; color:#2c3e50;}
+    .sidebar-session-card {background:#e0eafc; border-radius:10px; padding:0.9em 1em; margin-bottom:1.2em; box-shadow:0 1px 4px #e0eafc;}
+    .sidebar-footer {margin-top:2em; text-align:center; color:#888; font-size:0.95em;}
+    .sidebar-footer a {color:#4ca1af; text-decoration:none; font-weight:600;}
+    .sidebar-dark-toggle {margin-top:1em; text-align:center;}
+    </style>
+""", unsafe_allow_html=True)
+
+with st.sidebar:
+    st.markdown("""
+    <div class='sidebar-container'>
+        <div class='sidebar-header'>
+            <img src='https://img.icons8.com/ios-filled/100/2c3e50/orchestra.png' width='48'>
+            <span class='sidebar-title'>Insight Orchestra</span>
+        </div>
+    """, unsafe_allow_html=True)
+    # --- Session Info Card ---
+    if st.session_state.get('file_path'):
+        file_name = st.session_state.get('file_path').split('/')[-1]
+        status = "Analyzed" if st.session_state.get('results') else "Uploaded"
+        st.sidebar.markdown(f"""
+            <div class='sidebar-session-card'>
+                <b>Session File:</b><br> <span style='color:#2c3e50;'>{file_name}</span><br>
+                <b>Status:</b> <span style='color:#4ca1af;'>{status}</span>
+            </div>
+        """, unsafe_allow_html=True)
+    # --- Navigation ---
+    section = st.sidebar.radio(
+        "Go to section:",
+        ["Upload & Status", "Agent Feed", "Summary & Q&A", "Visualizations", "Download Report"],
+        index=0,
+        key="nav_radio",
+        help="Navigate between workflow steps.",
+    )
+    # --- Getting Started / Help Section ---
+    with st.sidebar.expander("❓ Getting Started / Help", expanded=False):
+        st.markdown("""
+        <div style='font-size:1.05em; line-height:1.6;'>
+        <b>Welcome to Insight Orchestra!</b><br><br>
+        1. <b>Upload</b> your CSV file in the 'Upload & Status' section.<br>
+        2. Click <b>Run Analysis</b> to let the agents work.<br>
+        3. Explore the <b>Agent Feed</b> for data cleaning, hypotheses, and debate.<br>
+        4. See <b>Summary & Q&A</b> for automated insights and ask questions in plain English.<br>
+        5. Dive into <b>Visualizations</b> for auto-generated charts and explanations.<br>
+        6. <b>Download</b> a full report of your session.<br><br>
+        <i>Tip: Use the 'Explain This' button for plain-language chart explanations!</i>
+        </div>
+        """, unsafe_allow_html=True)
+    # --- Sidebar Footer ---
+    st.sidebar.markdown("""
+        <div class='sidebar-footer'>
+            <span>Made with <span style='color:#e25555;'>♥</span> for Hackathons<br>
+            <a href='https://github.com/your-repo' target='_blank'>GitHub</a> | <a href='mailto:hello@insightorchestra.com'>Contact</a></span>
+        </div>
+        <div class='sidebar-dark-toggle'>
+            <span style='color:#bbb;'>🌗 Dark mode coming soon</span>
+        </div>
+    """, unsafe_allow_html=True)
+
 # --- Hero Section ---
 st.markdown("""
 <div style='padding:2.5rem 0 1.5rem 0; text-align:center; background: linear-gradient(90deg, #e0eafc 0%, #cfdef3 100%); border-radius: 18px; margin-bottom: 2rem;'>
@@ -31,16 +128,6 @@ st.markdown("""
     <span style='font-size:1.3rem; color:#2c3e50;'>AI-powered, multi-agent data analysis for everyone.<br>Upload, explore, ask, and understand your data—instantly.</span>
 </div>
 """, unsafe_allow_html=True)
-
-# --- Sidebar Navigation ---
-st.sidebar.image("https://img.icons8.com/ios-filled/100/2c3e50/orchestra.png", width=80)
-st.sidebar.title("Navigation")
-section = st.sidebar.radio(
-    "Go to section:",
-    ["Upload & Status", "Agent Feed", "Summary & Q&A", "Visualizations", "Download Report"],
-    index=0,
-    key="nav_radio"
-)
 
 # --- Upload & Status Section ---
 if section == "Upload & Status":
@@ -72,6 +159,23 @@ if section == "Upload & Status":
                 else:
                     st.error(f"Analysis failed: {resp.text}")
 
+# --- Session Progress Bar ---
+progress_steps = ["Upload", "Analyze", "Agent Feed", "Summary & Q&A", "Visualizations", "Download"]
+progress_idx = progress_steps.index(section.split(" & ")[0]) if section.split(" & ")[0] in progress_steps else 0
+st.markdown("""
+    <style>
+    .progress-container {display: flex; justify-content: space-between; margin-bottom: 1.5em;}
+    .progress-step {flex: 1; text-align: center; font-weight: 600; color: #4ca1af;}
+    .progress-step.active {color: #fff; background: #4ca1af; border-radius: 8px; padding: 0.3em 0;}
+    </style>
+""", unsafe_allow_html=True)
+progress_html = "<div class='progress-container'>"
+for i, step in enumerate(progress_steps):
+    cls = "progress-step active" if i == progress_idx else "progress-step"
+    progress_html += f"<div class='{cls}'>{step}</div>"
+progress_html += "</div>"
+st.markdown(progress_html, unsafe_allow_html=True)
+
 # --- Agent Feed Section ---
 if section == "Agent Feed" and st.session_state.get('results'):
     results = st.session_state['results']
@@ -95,6 +199,23 @@ if section == "Agent Feed" and st.session_state.get('results'):
         st.markdown("---")
         st.json(debate)
 
+# --- Insight Card for Consensus Hypothesis ---
+if section == "Agent Feed" and st.session_state.get('results'):
+    results = st.session_state['results']
+    debate = results['debate']['summary']
+    consensus = debate.get('consensus', {})
+    consensus_hyp = consensus.get('hypothesis','')
+    consensus_hyp_escaped = json.dumps(consensus_hyp)
+    st.markdown(f"""
+        <div style='background:linear-gradient(90deg, #e0eafc 0%, #cfdef3 100%); border-radius:14px; padding:1.2em 1em; margin-bottom:1em; box-shadow:0 2px 8px #e0eafc;'>
+            <h4 style='margin-bottom:0.5em;'>Consensus Hypothesis 🏆</h4>
+            <span style='font-size:1.1em; color:#2c3e50;'><b>{consensus_hyp}</b></span><br>
+            <span style='color:#888;'>Business Value:</span> <b>{consensus.get('business_value',0):.2f}</b><br>
+            <span style='color:#888;'>Confidence:</span> <b>{consensus.get('confidence',0)*100:.1f}%</b>
+            <button onclick="navigator.clipboard.writeText({consensus_hyp_escaped})" style='float:right; background:#4ca1af; color:#fff; border:none; border-radius:6px; padding:0.2em 0.8em; margin-left:1em;'>Copy</button>
+        </div>
+    """, unsafe_allow_html=True)
+
 # --- Summary & Q&A Section ---
 if section == "Summary & Q&A" and st.session_state.get('results'):
     results = st.session_state['results']
@@ -106,7 +227,14 @@ if section == "Summary & Q&A" and st.session_state.get('results'):
                 st.session_state["insight_summary"] = resp.json().get("summary", "No summary available.")
             else:
                 st.session_state["insight_summary"] = "Summary generation failed."
-    st.info(st.session_state.get("insight_summary", "Click 'Generate Summary' to see insights."))
+    summary_text = st.session_state.get("insight_summary", "Click 'Generate Summary' to see insights.")
+    summary_text_escaped = json.dumps(summary_text)
+    st.markdown(f"""
+        <div style='background:#fff; border-radius:12px; box-shadow:0 2px 8px #e0eafc; padding:1.2em 1em; margin-bottom:1em;'>
+            <b>Summary:</b> {summary_text}
+            <button onclick="navigator.clipboard.writeText({summary_text_escaped})" style='float:right; background:#4ca1af; color:#fff; border:none; border-radius:6px; padding:0.2em 0.8em; margin-left:1em;'>Copy</button>
+        </div>
+    """, unsafe_allow_html=True)
     st.divider()
     st.header("💬 Ask a Question About Your Data")
     if "nlq_history" not in st.session_state:
@@ -121,7 +249,8 @@ if section == "Summary & Q&A" and st.session_state.get('results'):
                 answer = "Sorry, I couldn't answer that."
             st.session_state["nlq_history"].append((nlq_input, answer))
     for q, a in reversed(st.session_state["nlq_history"]):
-        st.markdown(f"<div style='margin-bottom:0.5em;'><b style='color:#2c3e50;'>You:</b> {q}<br><b style='color:#4ca1af;'>Orchestra:</b> {a}</div>", unsafe_allow_html=True)
+        a_escaped = json.dumps(a)
+        st.markdown(f"<div style='background:#fff; border-radius:10px; box-shadow:0 2px 8px #e0eafc; padding:0.8em 1em; margin-bottom:0.5em;'><b style='color:#2c3e50;'>You:</b> {q}<br><b style='color:#4ca1af;'>Orchestra:</b> {a} <button onclick=\"navigator.clipboard.writeText({a_escaped})\" style='float:right; background:#4ca1af; color:#fff; border:none; border-radius:6px; padding:0.1em 0.7em; margin-left:1em;'>Copy</button></div>", unsafe_allow_html=True)
     st.divider()
 
 # --- Visualizations Section ---
@@ -176,6 +305,19 @@ if section == "Visualizations" and st.session_state.get('results'):
             """, unsafe_allow_html=True)
             fig = pio.from_json(plot['plotly_json'])
             st.plotly_chart(fig, use_container_width=True)
+            # --- Smart Chart Recommendation ---
+            recs = {
+                'scatter': "Best for showing relationships between two numeric variables.",
+                'density_heatmap': "Great for visualizing the concentration of data points in two dimensions.",
+                'box': "Ideal for comparing distributions and spotting outliers.",
+                'violin': "Shows distribution shape and spread across categories.",
+                'histogram': "Best for understanding the distribution of a single variable.",
+                'bar': "Great for comparing quantities across categories.",
+                'line': "Best for trends over time or ordered data.",
+                'pie': "Good for showing proportions (use sparingly).",
+                'area': "Useful for showing cumulative totals over time."
+            }
+            st.info(recs.get(selected_type, "This chart type helps you explore your data in a unique way."))
             if st.button("Explain This", key=f"explain_{selected_type}_{selected_plot_idx}"):
                 with st.spinner("Explaining..."):
                     resp = requests.post(f"{BACKEND_URL}/explain", json={"plot": plot})
@@ -185,6 +327,9 @@ if section == "Visualizations" and st.session_state.get('results'):
                         st.session_state["explanation"] = "Explanation failed."
             if "explanation" in st.session_state:
                 st.info(st.session_state["explanation"])
+            # --- Next Steps Recommendation ---
+            st.markdown("<hr style='margin:1em 0;'>", unsafe_allow_html=True)
+            st.markdown(f"**Next step:** Try asking a question about this chart in the 'Summary & Q&A' section, or download a report!")
         with meta_col:
             st.markdown("#### ℹ️ Plot Details")
             st.write(f"**Type:** {plot.get('type', 'Chart').capitalize()}")
