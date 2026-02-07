@@ -1,13 +1,42 @@
+# Backend-specific ignores (project root .gitignore also applies)
+
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.env
+*.pyw
+
+# Virtual environments
 venv/
+env/
+.venv/
+
+# Environment
+.env
+.env.local
+
+# Build
 build/
 dist/
 *.egg-info/
-.DS_Store
-.envrc
+
+# IDEs
+.vscode/
 .idea/
-.vscode/ 
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Keep uploads directory structure (but ignore files)
+uploads/*
+!uploads/.gitkeep
+
+# Temp files
+*.tmp
+*.temp
+temp/
+tmp/
