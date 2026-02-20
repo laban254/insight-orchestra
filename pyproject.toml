@@ -37,9 +37,15 @@ dependencies = [
     # Visualization
     "plotly>=5.19.0",
     
+    # Connectors
+    "psycopg2-binary>=2.9.9",
+    "pymysql>=1.1.0",
+    "duckdb>=0.10.0",
+    
     # Utilities
     "python-pptx>=0.5.11",
     "requests>=2.31.0",
+    "jinja2>=3.1.0",
 ]
 
 [project.optional-dependencies]
