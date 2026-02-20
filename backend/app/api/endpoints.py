@@ -151,3 +151,13 @@ async def clear_session(session_id: str):
     if session_id in _sessions:
         del _sessions[session_id]
     return {"status": "cleared"}
+
+
+@router.get("/demo/load")
+async def load_demo_data():
+    """Load the built-in sales demo dataset."""
+    from app.utils.demo_data import get_demo_dataset
+    df = get_demo_dataset()
+    temp_path = f"/tmp/demo_sales_{os.urandom(8).hex()}.csv"
+    df.to_csv(temp_path, index=False)
+    return {"file_path": temp_path, "columns": df.columns.tolist(), "row_count": len(df)}
