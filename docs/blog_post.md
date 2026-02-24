@@ -1,4 +1,4 @@
-# Building The Open-Source Julius AI Alternative: Insight Orchestra
+# Building The Open-Source Julius AI Alternative: Insight Orchestra.
 
 When it comes to advanced data intelligence, analysts usually face a difficult choice: write hundreds of lines of Pandas/SQL themselves, or hand their sensitive data over to expensive, closed-box cloud platforms like Julius AI. We believe there should be a third option.
 

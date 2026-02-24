@@ -10,7 +10,7 @@ BACKEND_URL = "http://localhost:8000"
 # --- Modern Page Config ---
 st.set_page_config(page_title="Insight Orchestra 2.0", layout="wide", page_icon="🎻")
 
-# --- Session State Initialization ---
+# --- Session State Initialization. ---
 if 'nlq_history' not in st.session_state:
     st.session_state['nlq_history'] = []
 if 'session_id' not in st.session_state:
