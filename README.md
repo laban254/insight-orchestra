@@ -8,7 +8,7 @@
 ![GitHub Stars](https://img.shields.io/github/stars/laban254/insight-orchestra)
 ![CI](https://github.com/laban254/insight-orchestra/actions/workflows/ci.yml/badge.svg)
 
-**The True Open-Source Julius AI Alternative**
+
 
 *Self-hostable, transparent code execution, unlimited local usage, private LLMs via Ollama*
 
