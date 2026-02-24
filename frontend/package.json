@@ -11,7 +11,12 @@
   "dependencies": {
     "next": "16.1.6",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "axios": "^1.6.7",
+    "lucide-react": "^0.344.0",
+    "@monaco-editor/react": "^4.6.0",
+    "react-plotly.js": "^2.6.0",
+    "plotly.js": "^2.29.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

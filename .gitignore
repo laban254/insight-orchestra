@@ -156,3 +156,5 @@ tmp/
 # Logs
 *.log
 logs/
+
+.insight.md
