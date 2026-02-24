@@ -6,7 +6,18 @@ python-pptx
 pydantic
 openai
 plotly
-# Agent frameworks (install if available)
 langchain
 autogen
-google-adk 
+google-adk
+RestrictedPython
+matplotlib
+scipy
+duckdb
+requests
+python-dotenv
+psycopg2-binary
+pymysql
+sqlalchemy
+jinja2
+scikit-learn
+numpy
