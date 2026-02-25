@@ -1,5 +1,8 @@
 from google.adk import Agent
 import pandas as pd
+import json
+from typing import Optional, List, Dict, Any
+from app.services.llm_service import LLMService, DataFrameSchema
 
 # Data Janitor Agent
 class DataJanitorAgent(Agent):
@@ -43,62 +46,85 @@ class DataJanitorAgent(Agent):
 
 # Hypothesis Bot Agent
 class HypothesisBotAgent(Agent):
+    def __init__(self, name: str, llm_service: Optional[LLMService] = None):
+        super().__init__(name=name)
+        self.llm = llm_service or LLMService()
+
     def run(self, cleaned_data, **kwargs):
         df = pd.DataFrame(cleaned_data)
-        hypotheses = []
-        summary = {}
-        numeric_cols = df.select_dtypes(include='number').columns.tolist()
-        categorical_cols = df.select_dtypes(include='object').columns.tolist()
-        summary['numeric_columns'] = numeric_cols
-        summary['categorical_columns'] = categorical_cols
-        # Improved: Avoid trivial/index columns and generate more meaningful hypotheses
-        skip_cols = {'PassengerId', 'Index', 'ID', 'id'}
-        filtered_numeric = [col for col in numeric_cols if col not in skip_cols]
-        filtered_categorical = [col for col in categorical_cols if col not in skip_cols]
-        # Non-obvious: Look for interactions, groupings, and trends
-        for i, col1 in enumerate(filtered_numeric):
-            for col2 in filtered_numeric[i+1:]:
-                if filtered_categorical:
-                    hypotheses.append(f"Does the relationship between {col1} and {col2} differ by {filtered_categorical[0]}?")
-            for cat in filtered_categorical:
-                hypotheses.append(f"Is the distribution of {col1} different across {cat} groups?")
-        for i, cat1 in enumerate(filtered_categorical):
-            for cat2 in filtered_categorical[i+1:]:
-                hypotheses.append(f"Is there a non-random association between {cat1} and {cat2}?")
-        # Add a trend hypothesis if possible
-        date_cols = [col for col in df.columns if 'date' in col.lower() or 'time' in col.lower()]
-        for dcol in date_cols:
-            for num_col in filtered_numeric:
-                hypotheses.append(f"Does {num_col} show a trend or seasonality over {dcol}?")
-        # Remove duplicates and trivial
-        hypotheses = [h for h in hypotheses if not any(skip in h for skip in skip_cols)]
-        hypotheses = hypotheses[:10]
-        summary['num_hypotheses'] = len(hypotheses)
-        summary['revised'] = False
-        return {"hypotheses": hypotheses, "summary": summary}
+        schema_prompt = DataFrameSchema.to_prompt(DataFrameSchema.from_dataframe(df))
+        
+        system_prompt = """You are a Data Science Hypothesis Generator. 
+Based on the provided DataFrame schema, generate 5-10 deep, non-obvious, and testable hypotheses.
+Focus on interactions, trends, and business value. Avoid trivial observations.
+
+OUTPUT FORMAT (JSON only):
+{
+  "hypotheses": ["hypothesis 1", "hypothesis 2", ...],
+  "reasoning": "Briefly explain your strategy"
+}
+"""
+        user_prompt = f"DataFrame Schema:\n{schema_prompt}"
+        
+        try:
+            response = self.llm.complete_json(system_prompt, user_prompt)
+            hypotheses = response.get("hypotheses", [])
+            summary = {
+                "num_hypotheses": len(hypotheses), 
+                "reasoning": response.get("reasoning", "LLM-generated hypotheses"),
+                "revised": False
+            }
+            return {"hypotheses": hypotheses, "summary": summary}
+        except Exception as e:
+            # Basic fallback if LLM fails
+            return {"hypotheses": ["Is there a relationship between the first two columns?"], "summary": {"error": str(e)}}
 
 # Debate Manager Agent
 class DebateManagerAgent(Agent):
+    def __init__(self, name: str, llm_service: Optional[LLMService] = None):
+        super().__init__(name=name)
+        self.llm = llm_service or LLMService()
+
     def run(self, hypotheses, **kwargs):
-        import random
-        scored = []
-        arguments = []
-        for h in hypotheses:
-            confidence = round(random.uniform(0.6, 0.99), 2)
-            business_value = round(random.uniform(0.5, 1.0), 2)
-            # Improved: Add explicit argument text
-            stat_arg = f"Statistical: Based on available data, the effect size for '{h}' is moderate."
-            biz_arg = f"Business: If '{h}' holds, it could impact key metrics."
-            arguments.append({"hypothesis": h, "statistical": stat_arg, "business": biz_arg})
-            scored.append({
-                "hypothesis": h,
-                "confidence": confidence,
-                "business_value": business_value
-            })
-        scored = sorted(scored, key=lambda x: x['confidence'] * x['business_value'], reverse=True)
-        consensus = scored[0] if scored else None
-        summary = {"num_hypotheses": len(hypotheses), "consensus": consensus, "arguments": arguments}
-        return {"scored_hypotheses": scored, "summary": summary}
+        system_prompt = """You are a Data Science Auditor. 
+Assign a 'confidence' (statistical feasibility) and 'business_value' (impact) score (0.0 to 1.0) to each hypothesis.
+Provide a brief 'statistical' and 'business' argument for each.
+
+OUTPUT FORMAT (JSON only):
+{
+  "scored_hypotheses": [
+    {
+      "hypothesis": "...",
+      "confidence": 0.85,
+      "business_value": 0.9,
+      "statistical_argument": "...",
+      "business_argument": "..."
+    }
+  ]
+}
+"""
+        user_prompt = f"Hypotheses to audit:\n{json.dumps(hypotheses)}"
+        
+        try:
+            response = self.llm.complete_json(system_prompt, user_prompt)
+            scored = response.get("scored_hypotheses", [])
+            
+            # Sort by combined score
+            scored = sorted(scored, key=lambda x: x.get('confidence', 0) * x.get('business_value', 0), reverse=True)
+            
+            arguments = []
+            for item in scored:
+                arguments.append({
+                    "hypothesis": item["hypothesis"],
+                    "statistical": item.get("statistical_argument", ""),
+                    "business": item.get("business_argument", "")
+                })
+            
+            consensus = scored[0] if scored else None
+            summary = {"num_hypotheses": len(hypotheses), "consensus": consensus, "arguments": arguments}
+            return {"scored_hypotheses": scored, "summary": summary}
+        except Exception as e:
+            return {"scored_hypotheses": [], "summary": {"error": str(e)}}
 
 # Viz Whiz Agent
 class VizWhizAgent(Agent):
@@ -198,10 +224,11 @@ class VizWhizAgent(Agent):
 
 # Define the ADK workflow
 class InsightOrchestraWorkflow:
-    def __init__(self):
+    def __init__(self, llm_service: Optional[LLMService] = None):
+        self.llm = llm_service or LLMService()
         self.cleaner = DataJanitorAgent(name="DataJanitorAgent")
-        self.hypothesis = HypothesisBotAgent(name="HypothesisBotAgent")
-        self.debate = DebateManagerAgent(name="DebateManagerAgent")
+        self.hypothesis = HypothesisBotAgent(name="HypothesisBotAgent", llm_service=self.llm)
+        self.debate = DebateManagerAgent(name="DebateManagerAgent", llm_service=self.llm)
         self.viz = VizWhizAgent(name="VizWhizAgent")
 
     def run(self, data):
