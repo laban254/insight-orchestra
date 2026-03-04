@@ -157,4 +157,5 @@ tmp/
 *.log
 logs/
 
-.insight.md
+# Internal planning (keep locally, don't push)
+insight.md
