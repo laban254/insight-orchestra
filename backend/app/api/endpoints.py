@@ -1,7 +1,9 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
 import pandas as pd
+import asyncio
+from sse_starlette.sse import EventSourceResponse
 from app.utils.file_utils import save_upload_file
 from app.services.adk_agents import InsightOrchestraWorkflow
 from app.services.nlq_agent import NaturalLanguageQueryAgent
@@ -162,3 +164,22 @@ async def load_demo_data():
     temp_path = f"/tmp/demo_sales_{os.urandom(8).hex()}.csv"
     df.to_csv(temp_path, index=False)
     return {"file_path": temp_path, "columns": df.columns.tolist(), "row_count": len(df)}
+
+
+@router.get("/agents/stream/{session_id}")
+async def stream_agent_logs(session_id: str):
+    """Stream dummy agent progress logs for the UI."""
+    async def log_generator():
+        logs = [
+            {"agent": "DataJanitorAgent", "message": "Cleaning dataset..."},
+            {"agent": "HypothesisBotAgent", "message": "Generating hypotheses..."},
+            {"agent": "DebateManagerAgent", "message": "Auditing hypotheses..."},
+            {"agent": "VizWhizAgent", "message": "Generating visualizations..."},
+            {"agent": "System", "message": "Workflow complete."}
+        ]
+        for log in logs:
+            await asyncio.sleep(1.5)
+            yield {"data": json.dumps(log)}
+
+    import json
+    return EventSourceResponse(log_generator())

@@ -6,12 +6,9 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
+    env_file:
+      - ./backend/.env
     environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - BACKEND_HOST=0.0.0.0
-      - BACKEND_PORT=8000
-      - ENVIRONMENT=development
-      - LOG_LEVEL=INFO
       - OLLAMA_BASE_URL=http://ollama:11434
     volumes:
       - ./backend/uploads:/app/uploads

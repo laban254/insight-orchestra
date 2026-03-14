@@ -50,16 +50,16 @@ class LLMService:
             
             api_key = os.getenv(f"{provider.name}_API_KEY", os.getenv("OPENAI_API_KEY", ""))
             model = os.getenv(f"{provider.name}_MODEL", "gpt-4o-mini" if provider == LLMProvider.OPENAI else "llama3.1:8b")
-            base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434") if provider == LLMProvider.OLLAMA else ""
+            base_url = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434") if provider == LLMProvider.OLLAMA else ""
             
             config = LLMConfig(
                 provider=provider,
                 api_key=api_key,
-                model=model,
+                model=os.getenv("OLLAMA_MODEL", "qwen2.5:0.5b") if provider == LLMProvider.OLLAMA else model,
                 fallback_model=os.getenv("OPENAI_MODEL_FALLBACK", "gpt-4o"),
                 base_url=base_url,
-                max_retries=int(os.getenv("MAX_RETRIES", 3)),
-                request_timeout=int(os.getenv("REQUEST_TIMEOUT", 60)),
+                max_retries=int(os.getenv("MAX_RETRIES", 1)),
+                request_timeout=int(os.getenv("REQUEST_TIMEOUT", 300)),
             )
         
         self.config = config
@@ -81,6 +81,7 @@ class LLMService:
         return min(2 ** attempt + (attempt * 0.1), 60)
         
     def _call_ollama(self, messages: List[Dict[str, str]], model: str) -> LLMResponse:
+        needs_json = any(msg.get("role") == "system" and "valid json" in msg.get("content", "").lower() for msg in messages)
         url = f"{self.config.base_url}/api/chat"
         payload = {
             "model": model,
@@ -90,7 +91,15 @@ class LLMService:
                 "temperature": self.config.temperature
             }
         }
-        response = requests.post(url, json=payload, timeout=self.config.request_timeout)
+        if needs_json:
+            payload["format"] = "json"
+            
+        # Increased timeout for local Ollama on CPU
+        llm_timeout = max(self.config.request_timeout, 300)
+        
+        logger.info(f"Calling Ollama with model: {model}, timeout: {llm_timeout}s")
+        
+        response = requests.post(url, json=payload, timeout=llm_timeout)
         response.raise_for_status()
         data = response.json()
         
@@ -175,8 +184,8 @@ class LLMService:
             content = content.strip()
             return json.loads(content)
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse JSON response: {e}")
-            raise ValueError(f"Invalid JSON response from LLM: {e}")
+            logger.error(f"Failed to parse JSON response: {e}. Raw content: {repr(content)}")
+            raise ValueError(f"Invalid JSON response from LLM: {e}. Raw content length: {len(content)}")
 
     def get_cost_summary(self) -> Dict[str, Any]:
         return {

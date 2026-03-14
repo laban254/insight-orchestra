@@ -53,7 +53,8 @@ export function ChatPanel({ filePath }: { filePath: string }) {
         } catch (error: any) {
             setMessages(prev => [...prev, {
                 role: "assistant",
-                content: `Error generating insight: ${error.response?.data?.detail || error.message}`
+                content: error.response?.data?.detail || error.message || "An unexpected error occurred",
+                isError: true
             }]);
         } finally {
             setIsLoading(false);
@@ -98,7 +99,7 @@ export function ChatPanel({ filePath }: { filePath: string }) {
                             }
                         }}
                         placeholder="Ask a question about your data..."
-                        className="flex-1 max-h-32 min-h-[44px] bg-transparent resize-none outline-none py-3 px-4 text-sm"
+                        className="flex-1 max-h-32 min-h-[44px] bg-transparent resize-none outline-none py-3 px-4 text-sm text-gray-900 placeholder:text-gray-400"
                         rows={1}
                         disabled={isLoading}
                     />

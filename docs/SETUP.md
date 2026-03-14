@@ -1,6 +1,6 @@
-# Local Development Setup
+# Local Development Setup (Docker)
 
-Complete guide to set up Insight Orchestra for development.
+Complete guide to set up Insight Orchestra for development using Docker.
 
 ---
 
@@ -15,27 +15,15 @@ Complete guide to set up Insight Orchestra for development.
 
 ### Required Software
 
-1. **Python 3.11+**
-   ```bash
-   python --version
-   # Should output: Python 3.11.x or higher
-   ```
-
-2. **Node.js 18+**
-   ```bash
-   node --version
-   # Should output: v18.x or higher
-   ```
-
-3. **Git**
-   ```bash
-   git --version
-   ```
-
-4. **Docker & Docker Compose** (optional, for containerized setup)
+1. **Docker & Docker Compose**
    ```bash
    docker --version
    docker-compose --version
+   ```
+
+2. **Git**
+   ```bash
+   git --version
    ```
 
 ---
@@ -49,198 +37,42 @@ git clone https://github.com/laban254/insight-orchestra.git
 cd insight-orchestra
 ```
 
-### 2. Backend Setup
-
-#### 2.1 Create Virtual Environment
+### 2. Configure Environment Variables
 
 ```bash
-cd backend
-python -m venv venv
+# Create .env from example
+cp backend/.env.example backend/.env
 
-# Activate virtual environment
-# On Linux/macOS:
-source venv/bin/activate
-
-# On Windows:
-venv\Scripts\activate
+# Create .env.local for frontend
+echo "NEXT_PUBLIC_API_URL=http://localhost:8000" > frontend/.env.local
 ```
 
-#### 2.2 Install Python Dependencies
+### 3. Start the Application
 
 ```bash
-pip install --upgrade pip
-pip install -r requirements.txt
+docker-compose up -d --build
 ```
 
-#### 2.3 Configure Environment Variables
+**What this starts:**
+- **Backend**: FastAPI on `http://localhost:8000`
+- **Frontend**: Next.js on `http://localhost:3000`
+- **Ollama**: Local LLM service on `http://localhost:11434` (Internal)
+
+### 4. Monitoring & Logs
+
+To see what's happening inside the containers:
 
 ```bash
-# Copy example environment file
-cp .env.example .env
+# View aggregated logs for all services
+docker-compose logs -f
 
-# Edit .env with your settings
-nano .env  # or use your favorite editor
-```
-
-**Minimum Configuration** (`.env`):
-
-```bash
-# LLM Provider
-LLM_PROVIDER=ollama              # or: openai, anthropic
-LLM_MODEL=llama2                 # Model name
-OLLAMA_BASE_URL=http://localhost:11434
-
-# Optional: For OpenAI
-# OPENAI_API_KEY=sk-xxxxx
-# OPENAI_MODEL=gpt-4
-
-# File uploads
-UPLOAD_DIR=./uploads
-MAX_UPLOAD_SIZE_MB=100
-
-# CORS (for frontend during development)
-CORS_ORIGINS=["http://localhost:3000"]
-
-# Session storage (MVP uses in-memory, production uses Redis)
-# REDIS_URL=redis://localhost:6379
-```
-
-#### 2.4 Create Uploads Directory
-
-```bash
-mkdir -p uploads
-```
-
-#### 2.5 Run Backend Development Server
-
-```bash
-cd app
-python -m uvicorn main:app --reload --port 8000
-```
-
-**Expected Output**:
-```
-INFO:     Uvicorn running on http://127.0.0.1:8000
-INFO:     Application startup complete
-```
-
-**Access**:
-- API: `http://localhost:8000`
-- Swagger Docs: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
-
----
-
-### 3. Frontend Setup
-
-#### 3.1 Install Node Dependencies
-
-```bash
-cd frontend
-npm install
-```
-
-#### 3.2 Configure Environment Variables
-
-```bash
-# Create .env.local for development
-cat > .env.local << EOF
-NEXT_PUBLIC_API_URL=http://localhost:8000
-EOF
-```
-
-#### 3.3 Run Development Server
-
-```bash
-npm run dev
-```
-
-**Expected Output**:
-```
-> ready - started server on 0.0.0.0:3000, url: http://localhost:3000
-```
-
-**Access**: `http://localhost:3000`
-
----
-
-### 4. Setup Ollama (Optional but Recommended)
-
-For **100% local operation** with no cloud dependencies:
-
-#### 4.1 Install Ollama
-
-```bash
-# macOS
-brew install ollama
-
-# Linux
-curl https://ollama.ai/install.sh | sh
-
-# Windows
-# Download from https://ollama.ai
-```
-
-#### 4.2 Pull a Model
-
-```bash
-# Llama 2 (7B) - ~4GB, good quality
-ollama pull llama2
-
-# Or: Mistral (7B) - ~3.8GB, faster
-ollama pull mistral
-
-# Or: Neural Chat - ~4GB, instruction-tuned
-ollama pull neural-chat
-```
-
-#### 4.3 Start Ollama Service
-
-```bash
-# Keep this running in a separate terminal
-ollama serve
-```
-
-**Expected Output**:
-```
-time=2024-03-04T10:30:00.000Z level=info msg="Listening on 127.0.0.1:11434"
-```
-
-#### 4.4 Test Ollama Connection
-
-```bash
-# From another terminal
-curl http://localhost:11434/api/tags
-
-# Should return something like:
-# {"models":[{"name":"llama2:latest",...}]}
+# View logs for a specific service (backend, frontend, or ollama)
+docker-compose logs -f backend
 ```
 
 ---
 
-### 5. Verify Full Stack is Running
-
-#### 5.1 Terminal 1: Backend
-
-```bash
-cd backend/app
-python -m uvicorn main:app --reload --port 8000
-```
-
-#### 5.2 Terminal 2: Frontend
-
-```bash
-cd frontend
-npm run dev
-```
-
-#### 5.3 Terminal 3: Ollama (Optional)
-
-```bash
-ollama serve
-```
-
-#### 5.4 Health Checks
+## Health Checks
 
 ```bash
 # Backend health
@@ -253,88 +85,6 @@ open http://localhost:3000
 
 ---
 
-## Development Workflow
-
-### Adding a New Feature
-
-1. **Create a feature branch**
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
-
-2. **Make changes** in your editor
-
-3. **Test changes**
-   - Backend: Tests auto-reload with `--reload`
-   - Frontend: HMR (Hot Module Reload) enabled by default
-
-4. **Commit changes**
-   ```bash
-   git add .
-   git commit -m "feat: description of your change"
-   ```
-
-5. **Push and create PR**
-   ```bash
-   git push origin feature/your-feature-name
-   ```
-
-### Running Tests
-
-#### Backend Tests
-
-```bash
-cd backend
-pytest tests/ -v
-
-# Or with coverage
-pytest tests/ --cov=app
-```
-
-#### Frontend Tests
-
-```bash
-cd frontend
-npm test
-
-# Or with coverage
-npm test -- --coverage
-```
-
-### Code Quality
-
-#### Backend
-
-```bash
-cd backend
-
-# Format code
-black app/
-
-# Lint
-flake8 app/
-
-# Type checking
-mypy app/
-```
-
-#### Frontend
-
-```bash
-cd frontend
-
-# Format code
-npm run format
-
-# Lint
-npm run lint
-
-# Type checking
-npm run type-check
-```
-
----
-
 ## Troubleshooting
 
 ### Issue: "Port 8000 already in use"
@@ -342,74 +92,33 @@ npm run type-check
 ```bash
 # Kill process on port 8000
 lsof -ti:8000 | xargs kill -9
-
-# Or use a different port
-python -m uvicorn main:app --reload --port 8001
 ```
 
-### Issue: "Port 3000 already in use"
+### Issue: "Ollama not responding"
 
-```bash
-# Kill process on port 3000
-lsof -ti:3000 | xargs kill -9
-
-# Or use a different port
-npm run dev -- -p 3001
-```
-
-### Issue: "Ollama not found"
-
-Ensure Ollama is installed and running:
-```bash
-which ollama
-ollama serve  # In a separate terminal
-```
-
-### Issue: "Connection to backend failed"
-
-1. Verify backend is running: `curl http://localhost:8000/health`
-2. Check `.env` and `CORS_ORIGINS` setting
-3. Check frontend `.env.local` has correct `NEXT_PUBLIC_API_URL`
-
-### Issue: "LLM not responding"
-
-1. Check LLM provider in `.env`
-2. For Ollama: Verify it's running and model is pulled
+1. Check if the model is pulled in the container:
    ```bash
-   ollama pull llama2
+   docker-compose exec ollama ollama pull llama2
    ```
-3. For OpenAI: Verify `OPENAI_API_KEY` is set correctly
+2. Verify `OLLAMA_BASE_URL` in `backend/.env` is set to `http://ollama:11434` for Docker internal networking.
 
-### Issue: "FileNotFoundError: uploads directory"
+### Issue: "Error calling LLM: Read timed out"
 
-```bash
-# Create uploads directory
-mkdir -p backend/uploads
-```
+If you see logs like `Error calling LLM... Read timed out. (read timeout=300)` and `500` errors from Ollama, it means your machine is struggling to run the LLM within the allowed time (often due to running on CPU only).
 
----
-
-## Using Docker (Alternative)
-
-For a one-command setup:
-
-```bash
-docker-compose up -d --build
-```
-
-This starts:
-- Backend (FastAPI) on port 8000
-- Frontend (Next.js) on port 8501
-- Ollama on port 11434
-
-Access:
-- Frontend: `http://localhost:8501`
-- Backend API: `http://localhost:8000`
-- Swagger: `http://localhost:8000/docs`
+**Solutions:**
+1. **Use a smaller, faster model**:
+   Switch from `llama2` to a lightweight model like `qwen2.5:0.5b` or `qwen2.5:1.5b`. Update your `backend/.env` file (`LLM_MODEL=qwen2.5:0.5b`) and ensure you pull it inside the container:
+   ```bash
+   docker-compose exec ollama ollama pull qwen2.5:0.5b
+   ```
+2. **Increase the timeout**:
+   If you must use a larger model and are willing to wait, look for LLM client configurations in the backend code and increase the request timeout beyond 300 seconds.
 
 ---
 
 ## Environment Variables Reference
+
 
 ### Backend (`backend/.env`)
 
@@ -417,19 +126,8 @@ Access:
 |----------|---------|-------------|
 | `LLM_PROVIDER` | `ollama` | LLM provider: openai, anthropic, or ollama |
 | `LLM_MODEL` | `llama2` | Model name/identifier |
-| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama service URL |
-| `OPENAI_API_KEY` | - | OpenAI API key (if using OpenAI) |
-| `OPENAI_MODEL` | `gpt-4` | OpenAI model (if using OpenAI) |
+| `OLLAMA_BASE_URL` | `http://ollama:11434` | Ollama service URL (Docker) |
 | `UPLOAD_DIR` | `./uploads` | Directory for uploaded files |
-| `MAX_UPLOAD_SIZE_MB` | `100` | Max file size in MB |
-| `CORS_ORIGINS` | `["*"]` | Allowed CORS origins |
-| `REDIS_URL` | - | Redis connection (for production) |
-
-### Frontend (`frontend/.env.local`)
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | Backend API URL |
 
 ---
 
