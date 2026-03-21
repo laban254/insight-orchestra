@@ -41,10 +41,14 @@ cd insight-orchestra
 
 ```bash
 # Create .env from example
+cp .env.example .env
+
+# The backend reads from .env automatically in Docker
+# For local development, create backend/.env:
 cp backend/.env.example backend/.env
 
-# Create .env.local for frontend
-echo "NEXT_PUBLIC_API_URL=http://localhost:8000" > frontend/.env.local
+# Frontend environment is configured in docker-compose.yml
+# API_BASE_URL=http://backend:8000 (for Docker internal networking)
 ```
 
 ### 3. Start the Application
