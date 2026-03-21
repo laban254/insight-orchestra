@@ -201,9 +201,23 @@ Generate Python code to answer this question. Assign the result to a variable ca
             exec_result = self._execute_code(code, df)
             
             if not exec_result.success:
-                # Try to fix code on error (basic retry)
-                error_code = f"# Error: {exec_result.error}\n{code}"
-                exec_result = self._execute_code(error_code, df)
+                # On error, try once more with a simplified approach
+                # Generate new code focused on basic operations
+                simplified_prompt = f"""Previous code failed with error: {exec_result.error}
+                
+                Generate simpler, more robust Python code that assigns the result to a variable called `result`.
+                Use basic pandas operations only."""
+                
+                try:
+                    retry_response = self.llm.complete_json(
+                        system_prompt=self.SYSTEM_PROMPT,
+                        user_prompt=simplified_prompt,
+                    )
+                    retry_code = retry_response.get("code", "")
+                    if retry_code:
+                        exec_result = self._execute_code(retry_code, df)
+                except Exception:
+                    pass  # Keep original error if retry fails
             
             # Step 3: Build answer
             answer = self._build_answer(exec_result.result, question)

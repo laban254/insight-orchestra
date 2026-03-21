@@ -16,10 +16,13 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        os.getenv("CORS_ORIGIN", "http://localhost:3000"),
+        os.getenv("CORS_ORIGIN_ALT", "http://localhost:8501"),
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 UPLOAD_DIR = "uploads"

@@ -48,17 +48,35 @@ class LLMService:
             except ValueError:
                 provider = LLMProvider.OPENAI
             
-            api_key = os.getenv(f"{provider.name}_API_KEY", os.getenv("OPENAI_API_KEY", ""))
-            model = os.getenv(f"{provider.name}_MODEL", "gpt-4o-mini" if provider == LLMProvider.OPENAI else "llama3.1:8b")
-            base_url = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434") if provider == LLMProvider.OLLAMA else ""
+            # Build consistent environment variable names
+            provider_prefix = provider.name.upper()
+            api_key_env = f"{provider_prefix}_API_KEY"
+            model_env = f"{provider_prefix}_MODEL"
+            
+            # Get API key - fallback to OPENAI_API_KEY for backward compatibility
+            api_key = os.getenv(api_key_env, os.getenv("OPENAI_API_KEY", ""))
+            
+            # Get model based on provider
+            if provider == LLMProvider.OPENAI:
+                model = os.getenv(model_env, "gpt-4o-mini")
+                fallback_model = os.getenv("OPENAI_MODEL_FALLBACK", "gpt-4o")
+                base_url = ""
+            elif provider == LLMProvider.ANTHROPIC:
+                model = os.getenv(model_env, "claude-3-5-haiku-20241022")
+                fallback_model = model
+                base_url = ""
+            else:  # OLLAMA
+                model = os.getenv("OLLAMA_MODEL", "qwen2.5:0.5b")
+                fallback_model = model
+                base_url = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
             
             config = LLMConfig(
                 provider=provider,
                 api_key=api_key,
-                model=os.getenv("OLLAMA_MODEL", "qwen2.5:0.5b") if provider == LLMProvider.OLLAMA else model,
-                fallback_model=os.getenv("OPENAI_MODEL_FALLBACK", "gpt-4o"),
+                model=model,
+                fallback_model=fallback_model,
                 base_url=base_url,
-                max_retries=int(os.getenv("MAX_RETRIES", 1)),
+                max_retries=int(os.getenv("MAX_RETRIES", 3)),
                 request_timeout=int(os.getenv("REQUEST_TIMEOUT", 300)),
             )
         

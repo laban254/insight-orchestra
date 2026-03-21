@@ -21,3 +21,5 @@ sqlalchemy
 jinja2
 scikit-learn
 numpy
+redis
+pydantic-settings

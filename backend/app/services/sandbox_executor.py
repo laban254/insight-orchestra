@@ -116,7 +116,7 @@ class SandboxExecutor:
         'os', 'sys', 'subprocess', 'eval', 'exec', 'compile',
         'open', 'file', 'input', 'raw_input', '__import__',
         'breakpoint', 'help', 'dir', 'vars', 'locals', 'globals',
-        'memoryview', 'bytearray', 'buffer',
+        'memoryview', 'bytearray', 'buffer', 'setattr', 'delattr',
     }
     
     def __init__(self, timeout_seconds: int = 30, max_memory_mb: float = 256.0):
@@ -145,8 +145,6 @@ class SandboxExecutor:
         globals_dict = {
             '_print_': print,
             '_getattr_': getattr,
-            '_setattr_': setattr,
-            '_delattr_': delattr,
             '_iter_': iter,
             '_next_': next,
             '_globals_': {},
@@ -184,11 +182,17 @@ class SandboxExecutor:
         """
         code_lower = code.lower()
         
-        # Check for blocked patterns
+        # Normalize whitespace for better detection
+        code_normalized = ' '.join(code.split())
+        
+        # Check for blocked patterns (more comprehensive)
         blocked_patterns = [
             ('import os', 'os module'),
             ('import sys', 'sys module'),
             ('import subprocess', 'subprocess module'),
+            ('import socket', 'socket module'),
+            ('import requests', 'requests module'),
+            ('import urllib', 'urllib module'),
             ('__import__', 'dynamic imports'),
             ('eval(', 'eval function'),
             ('exec(', 'exec function'),
@@ -197,11 +201,26 @@ class SandboxExecutor:
             ('compile(', 'compile function'),
             ('delattr', 'delattr function'),
             ('setattr', 'setattr with dynamic args'),
+            ('getattr', 'getattr with dynamic args'),
+            ('__builtins__', 'builtins access'),
+            ('__globals__', 'globals access'),
+            ('__code__', 'code object access'),
         ]
         
         for pattern, description in blocked_patterns:
-            if pattern in code_lower:
+            # Check both original and normalized code
+            if pattern in code_lower or pattern in code_normalized:
                 return False, f"Blocked pattern detected: {description}"
+        
+        # Check for suspicious string patterns that might be obfuscated
+        suspicious_strings = [
+            'os.system', 'os.popen', 'subprocess.call',
+            'socket.socket', 'pickle.loads', 'yaml.load',
+        ]
+        
+        for sus in suspicious_strings:
+            if sus in code_lower:
+                return False, f"Blocked suspicious pattern: {sus}"
         
         return True, ""
     

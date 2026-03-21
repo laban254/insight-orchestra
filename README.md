@@ -38,9 +38,10 @@ Insight Orchestra is built on a foundation of privacy, transparency, and capabil
 - **Sandboxed Execution**: RestrictedPython prevents malicious code execution while allowing full data analysis capabilities
 - **Natural Language Queries**: Ask questions in plain English, get Python/SQL code + results
 - **Interactive Visualizations**: Auto-selected charts using Plotly with drill-down capabilities
-- **Session Management**: Persist analysis sessions, export results as CSV/JSON/PDF
+- **Session Management**: Redis-backed session storage (with in-memory fallback)
 - **Production-Ready UI**: Next.js 14 frontend with real-time updates and responsive design
 - **Hypothesis Scoring**: Automated quality filtering based on statistical confidence and business impact
+- **Security Hardened**: CORS protection, SQL injection prevention, credential masking
 
 ---
 
@@ -76,7 +77,7 @@ docker-compose up -d --build
 ```
 
 **Access Points**:
-- **Frontend**: http://localhost:3000
+- **Frontend**: http://localhost:8501
 - **Backend API**: http://localhost:8000
 - **Swagger Docs**: http://localhost:8000/docs
 - **Ollama**: http://localhost:11434
@@ -148,8 +149,9 @@ graph TD;
 | **Frontend** | Next.js 14, React, Tailwind CSS, shadcn/ui, Plotly.js |
 | **Backend** | Python 3.11+, FastAPI, Pandas, DuckDB |
 | **AI/Agents** | Google ADK, LangChain, Ollama, OpenAI |
-| **Security** | RestrictedPython (sandboxed execution) |
+| **Security** | RestrictedPython (sandboxed execution), SQL injection protection |
 | **Data** | PostgreSQL, MySQL, SQLite, DuckDB, CSV |
+| **Sessions** | Redis (with in-memory fallback) |
 | **Deployment** | Docker, Docker Compose |
 
 ---

@@ -124,10 +124,18 @@ If you see logs like `Error calling LLM... Read timed out. (read timeout=300)` a
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LLM_PROVIDER` | `ollama` | LLM provider: openai, anthropic, or ollama |
-| `LLM_MODEL` | `llama2` | Model name/identifier |
+| `LLM_PROVIDER` | `openai` | LLM provider: openai, anthropic, or ollama |
+| `OPENAI_API_KEY` | - | API key for OpenAI |
+| `OPENAI_MODEL` | `gpt-4o-mini` | OpenAI model to use |
+| `ANTHROPIC_API_KEY` | - | API key for Anthropic |
 | `OLLAMA_BASE_URL` | `http://ollama:11434` | Ollama service URL (Docker) |
-| `UPLOAD_DIR` | `./uploads` | Directory for uploaded files |
+| `OLLAMA_MODEL` | `qwen2.5:0.5b` | Ollama model to use |
+| `UPLOAD_DIR` | `backend/uploads` | Directory for uploaded files |
+| `DEMO_MODE` | `true` | Enable demo endpoints (disable in production) |
+| `CORS_ORIGIN` | `http://localhost:3000` | Allowed CORS origin |
+| `REDIS_URL` | `redis://localhost:6379` | Redis URL for sessions |
+| `USE_REDIS` | `true` | Enable Redis (set to false for in-memory) |
+| `SESSION_TTL_SECONDS` | `3600` | Session expiration time (1 hour) |
 
 ---
 
@@ -141,6 +149,9 @@ Insight Orchestra is designed as a **local-first, privacy-by-default** system:
 - **Session-Based Frontend**: Next.js frontend manages session state
 - **No External API Keys Stored**: LLM credentials stay in your `.env` only
 - **Sandboxed Execution**: All generated code runs in RestrictedPython sandbox
+- **Redis Sessions**: Optional Redis-backed session storage for production
+- **CORS Protection**: Configurable allowed origins
+- **SQL Injection Protection**: Blocked keywords in database queries
 
 ### For Local/Internal Use
 
@@ -206,15 +217,16 @@ oauth = OAuth2App(
 
 ### Deployment Checklist
 
-- [ ] Store secrets in environment variables, NOT code
+- [x] Store secrets in environment variables, NOT code
 - [ ] Use HTTPS/TLS for all network communication
-- [ ] Enable CORS only for trusted frontendd domains
-- [ ] Set `MAX_UPLOAD_SIZE_MB` appropriately
-- [ ] Configure firewall rules
-- [ ] Use strong database credentials (for PostgreSQL, MySQL)
+- [x] Enable CORS only for trusted frontend domains
+- [x] Set `MAX_UPLOAD_SIZE_MB` appropriately
+- [x] Configure firewall rules
+- [x] Use strong database credentials (for PostgreSQL, MySQL)
 - [ ] Enable audit logging for sensitive operations
 - [ ] Rotate API keys regularly
 - [ ] Run behind reverse proxy (Nginx, HAProxy)
+- [x] Redis session storage configured
 
 ### Planned Security Features
 

@@ -13,10 +13,20 @@ from app.services.report_agent import ReportGeneratorAgent
 from app.services.llm_service import LLMService
 from app.services.sandbox_executor import SandboxExecutor
 import os
+import logging
+
+logger = logging.getLogger(__name__)
+
+# Demo mode flag - disable in production
+DEMO_MODE = os.getenv("DEMO_MODE", "true").lower() == "true"
 
 router = APIRouter()
 
-# Session storage (in-memory for MVP, use Redis for production)
+# Session manager (Redis-backed with in-memory fallback)
+from app.services.session_manager import get_session_manager
+_session_manager = get_session_manager()
+
+# Legacy in-memory sessions (deprecated - use _session_manager)
 _sessions = {}
 
 
@@ -37,8 +47,16 @@ class BigQueryRequest(BaseModel):
 
 def get_df(file_path: str) -> pd.DataFrame:
     """Load DataFrame from file path."""
-    if not os.path.exists(file_path):
+    # Security: Validate file path to prevent path traversal
+    if not os.path.isfile(file_path):
         raise HTTPException(status_code=404, detail="File not found.")
+    
+    # Ensure the file is within allowed directories
+    allowed_dirs = ['/tmp', 'uploads']
+    real_path = os.path.realpath(file_path)
+    if not any(real_path.startswith(allowed_dir) for allowed_dir in allowed_dirs):
+        raise HTTPException(status_code=403, detail="Access denied: file outside allowed directories.")
+    
     try:
         return pd.read_csv(file_path)
     except Exception as e:
@@ -75,22 +93,18 @@ async def natural_language_query(request: NLQRequest):
     # Get session context if provided
     context = None
     if request.session_id:
-        context = _sessions.get(request.session_id, [])
+        context = _session_manager.get(request.session_id)
     
     agent = NaturalLanguageQueryAgent()
     response = agent.run(df, request.question, context)
     
     # Store in session
     if request.session_id:
-        if request.session_id not in _sessions:
-            _sessions[request.session_id] = []
-        _sessions[request.session_id].append({
+        _session_manager.append(request.session_id, {
             "question": request.question,
             "answer": response.answer,
             "code": response.code,
         })
-        # Keep last 5 interactions
-        _sessions[request.session_id] = _sessions[request.session_id][-5:]
     
     return {
         "answer": response.answer,
@@ -109,6 +123,11 @@ async def natural_language_query(request: NLQRequest):
 async def summarize_insights(payload: dict):
     """Summarize workflow results."""
     workflow_results = payload.get("workflow_results", {})
+    
+    # Validate input is a dictionary
+    if not isinstance(workflow_results, dict):
+        raise HTTPException(status_code=400, detail="workflow_results must be a dictionary")
+    
     agent = InsightSummarizerAgent()
     return agent.run(workflow_results)
 
@@ -117,6 +136,11 @@ async def summarize_insights(payload: dict):
 async def explain_plot(payload: dict):
     """Explain a visualization."""
     plot = payload.get("plot", {})
+    
+    # Validate input is a dictionary
+    if not isinstance(plot, dict):
+        raise HTTPException(status_code=400, detail="plot must be a dictionary")
+    
     agent = ExplainabilityAgent()
     return agent.run(plot)
 
@@ -125,6 +149,11 @@ async def explain_plot(payload: dict):
 async def generate_report(payload: dict):
     """Generate HTML report."""
     workflow_results = payload.get("workflow_results", {})
+    
+    # Validate input is a dictionary
+    if not isinstance(workflow_results, dict):
+        raise HTTPException(status_code=400, detail="workflow_results must be a dictionary")
+    
     agent = ReportGeneratorAgent()
     return agent.run(workflow_results)
 
@@ -133,32 +162,42 @@ async def generate_report(payload: dict):
 async def bigquery_fetch(request: BigQueryRequest):
     """Fetch data from BigQuery."""
     from app.utils.bigquery_utils import run_bigquery_query
+    
     try:
         df = run_bigquery_query(request.credentials_json, request.query)
         temp_path = f"/tmp/bq_{os.urandom(8).hex()}.csv"
         df.to_csv(temp_path, index=False)
         return {"file_path": temp_path, "columns": df.columns.tolist(), "row_count": len(df)}
-    except Exception as e:
+    except ValueError as e:
+        # Validation errors - return 400
         raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        # Other errors (BigQuery API errors, etc.)
+        raise HTTPException(status_code=500, detail=f"BigQuery error: {str(e)}")
 
 
 @router.get("/sessions/{session_id}")
 async def get_session(session_id: str):
     """Get session context."""
-    return {"session_id": session_id, "history": _sessions.get(session_id, [])}
+    return {"session_id": session_id, "history": _session_manager.get(session_id)}
 
 
 @router.delete("/sessions/{session_id}")
 async def clear_session(session_id: str):
     """Clear session context."""
-    if session_id in _sessions:
-        del _sessions[session_id]
+    _session_manager.delete(session_id)
     return {"status": "cleared"}
 
 
 @router.get("/demo/load")
 async def load_demo_data():
     """Load the built-in sales demo dataset."""
+    if not DEMO_MODE:
+        raise HTTPException(
+            status_code=404,
+            detail="Demo endpoint disabled in production"
+        )
+    
     from app.utils.demo_data import get_demo_dataset
     df = get_demo_dataset()
     temp_path = f"/tmp/demo_sales_{os.urandom(8).hex()}.csv"
