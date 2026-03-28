@@ -2,7 +2,8 @@
 
 ## System Architecture
 
-Insight Orchestra is built on a **multi-agent collaborative pipeline** with emphasis on privacy, transparency, and local execution.
+
+Insight Orchestra is built on a **multi-agent collaborative pipeline** with emphasis on flexibility, privacy, transparency, and pluggable LLM backends (API or local execution).
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -41,9 +42,10 @@ Insight Orchestra is built on a **multi-agent collaborative pipeline** with emph
 └─────────────────────────────────────────────────────────────┘
          ▼                                    ▼
     ┌─────────────┐                   ┌──────────────────┐
-    │ Local Files │                   │ LLM Services     │
-    │ (Uploads)   │                   │ • Ollama (local) │
-    │ • CSVs      │                   │ • OpenAI (cloud) │
+    │ Local Files │                   │ LLM Providers    │
+    │ (Uploads)   │                   │ • OpenAI (API)   │
+    │ • CSVs      │                   │ • Anthropic (API)|
+    │             │                   │ • Ollama (local) │
     └─────────────┘                   └──────────────────┘
 ```
 

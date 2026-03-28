@@ -51,7 +51,38 @@ cp backend/.env.example backend/.env
 # API_BASE_URL=http://backend:8000 (for Docker internal networking)
 ```
 
-### 3. Start the Application
+
+### 3. Choose Your LLM Mode
+
+#### ⚡ API Mode (Recommended for most users)
+
+Edit your `.env` file:
+
+```
+LLM_PROVIDER=openai  # or anthropic
+OPENAI_API_KEY=your-key
+```
+
+Start backend and frontend (no Ollama required):
+
+```bash
+docker-compose up backend frontend db
+```
+
+**What this starts:**
+- **Backend**: FastAPI on `http://localhost:8000`
+- **Frontend**: Next.js on `http://localhost:3000`
+
+#### 🔒 Local Mode (Ollama, for privacy/offline)
+
+Edit your `.env` file:
+
+```
+LLM_PROVIDER=ollama
+OLLAMA_MODEL=qwen2.5:0.5b  # or your preferred model
+```
+
+Start all services (including Ollama):
 
 ```bash
 docker-compose up -d --build
@@ -61,6 +92,9 @@ docker-compose up -d --build
 - **Backend**: FastAPI on `http://localhost:8000`
 - **Frontend**: Next.js on `http://localhost:3000`
 - **Ollama**: Local LLM service on `http://localhost:11434` (Internal)
+
+
+---
 
 ### 4. Monitoring & Logs
 
@@ -124,16 +158,23 @@ If you see logs like `Error calling LLM... Read timed out. (read timeout=300)` a
 ## Environment Variables Reference
 
 
+
 ### Backend (`backend/.env`)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LLM_PROVIDER` | `openai` | LLM provider: openai, anthropic, or ollama |
-| `OPENAI_API_KEY` | - | API key for OpenAI |
+| `LLM_PROVIDER` | `openai` | LLM provider: openai, anthropic, or ollama (**required**) |
+| `OPENAI_API_KEY` | - | API key for OpenAI (required if using openai) |
 | `OPENAI_MODEL` | `gpt-4o-mini` | OpenAI model to use |
-| `ANTHROPIC_API_KEY` | - | API key for Anthropic |
+| `ANTHROPIC_API_KEY` | - | API key for Anthropic (required if using anthropic) |
 | `OLLAMA_BASE_URL` | `http://ollama:11434` | Ollama service URL (Docker) |
 | `OLLAMA_MODEL` | `qwen2.5:0.5b` | Ollama model to use |
+| `LLM_FALLBACK_ENABLED` | `true` | Fallback to another provider if primary fails |
+| `LLM_TIMEOUT` | `30` | LLM request timeout (seconds) |
+| `LLM_MAX_RETRIES` | `3` | Max retries for LLM requests |
+| `ENABLE_OLLAMA` | `false` | Enable Ollama provider |
+| `ENABLE_OPENAI` | `true` | Enable OpenAI provider |
+| `ENABLE_ANTHROPIC` | `false` | Enable Anthropic provider |
 | `UPLOAD_DIR` | `backend/uploads` | Directory for uploaded files |
 | `DEMO_MODE` | `true` | Enable demo endpoints (disable in production) |
 | `CORS_ORIGIN` | `http://localhost:3000` | Allowed CORS origin |
