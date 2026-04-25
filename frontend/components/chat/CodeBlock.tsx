@@ -2,7 +2,7 @@
 
 import Editor from "@monaco-editor/react";
 import { useState } from "react";
-import { Copy, Play, Check } from "lucide-react";
+import { Copy, Check, ChevronDown, ChevronUp } from "lucide-react";
 
 interface CodeBlockProps {
     code: string;
@@ -10,8 +10,19 @@ interface CodeBlockProps {
     onRunAgain?: () => void;
 }
 
+const LINE_HEIGHT = 21;   // px per line in Monaco at fontSize 13
+const MIN_HEIGHT  = 52;   // at least 2 visible lines
+const MAX_HEIGHT  = 260;  // cap before we show "Expand"
+const COLLAPSE_THRESHOLD = 10; // lines before the expand toggle appears
+
 export function CodeBlock({ code, language = "python", onRunAgain }: CodeBlockProps) {
-    const [copied, setCopied] = useState(false);
+    const [copied,   setCopied]   = useState(false);
+    const [expanded, setExpanded] = useState(false);
+
+    const lines      = (code || "").split("\n").length;
+    const isLong     = lines > COLLAPSE_THRESHOLD;
+    const editorH    = Math.max(MIN_HEIGHT, Math.min(lines * LINE_HEIGHT, MAX_HEIGHT));
+    const displayH   = isLong && !expanded ? Math.min(editorH, COLLAPSE_THRESHOLD * LINE_HEIGHT) : editorH;
 
     const handleCopy = async () => {
         await navigator.clipboard.writeText(code);
@@ -20,36 +31,30 @@ export function CodeBlock({ code, language = "python", onRunAgain }: CodeBlockPr
     };
 
     return (
-        <div className="rounded-lg border border-gray-200 overflow-hidden my-4 shadow-sm">
+        <div className="rounded-xl border border-gray-200 overflow-hidden my-3 shadow-sm w-full">
             {/* Toolbar */}
             <div className="flex items-center justify-between px-4 py-2 bg-gray-900">
-                <span className="text-xs text-gray-400 font-mono">
-                    Generated API Sandbox
-                </span>
+                <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-yellow-400" />
+                    <span className="text-xs text-gray-400 font-mono tracking-wide">
+                        Python · Generated
+                    </span>
+                </div>
                 <div className="flex gap-3">
                     <button
                         onClick={handleCopy}
                         className="flex items-center gap-1 text-xs text-gray-400 hover:text-white transition-colors focus:outline-none"
                     >
-                        {copied ? <Check size={14} className="text-green-400" /> : <Copy size={14} />}
-                        {copied ? <span className="text-green-400">Copied</span> : "Copy"}
+                        {copied ? <Check size={13} className="text-green-400" /> : <Copy size={13} />}
+                        <span className={copied ? "text-green-400" : ""}>{copied ? "Copied" : "Copy"}</span>
                     </button>
-                    {onRunAgain && (
-                        <button
-                            onClick={onRunAgain}
-                            className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors focus:outline-none"
-                        >
-                            <Play size={14} />
-                            Run again
-                        </button>
-                    )}
                 </div>
             </div>
 
-            {/* Monaco Editor (read-only display) */}
-            <div className="bg-[#1e1e1e] p-2">
+            {/* Monaco Editor — auto-sized */}
+            <div className="bg-[#1e1e1e]" style={{ height: `${displayH}px`, overflow: "hidden" }}>
                 <Editor
-                    height="300px" // Dynamic or fixed
+                    height={`${displayH}px`}
                     language={language}
                     value={code}
                     theme="vs-dark"
@@ -62,10 +67,25 @@ export function CodeBlock({ code, language = "python", onRunAgain }: CodeBlockPr
                         wordWrap: "on",
                         automaticLayout: true,
                         renderLineHighlight: "none",
-                        hideCursorInOverviewRuler: true
+                        hideCursorInOverviewRuler: true,
+                        scrollbar: { vertical: "hidden", horizontal: "hidden" },
+                        overviewRulerLanes: 0,
                     }}
                 />
             </div>
+
+            {/* Expand / Collapse toggle for long blocks */}
+            {isLong && (
+                <button
+                    onClick={() => setExpanded(v => !v)}
+                    className="w-full flex items-center justify-center gap-1 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-gray-200 text-xs transition-colors"
+                >
+                    {expanded
+                        ? <><ChevronUp size={12} /> Collapse</>
+                        : <><ChevronDown size={12} /> Show all {lines} lines</>
+                    }
+                </button>
+            )}
         </div>
     );
 }

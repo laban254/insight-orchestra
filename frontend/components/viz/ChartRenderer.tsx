@@ -34,6 +34,10 @@ export function ChartRenderer({ plotJsonStr }: ChartRendererProps) {
         return <div className="p-4 text-red-500 bg-red-50 rounded-lg text-sm border border-red-100">Chart data invalid or empty</div>;
     }
 
+    if (!Array.isArray(data) || data.length === 0) {
+        return null;
+    }
+
     return (
         <div className="w-full my-6 bg-white border border-gray-100 p-2 rounded-xl shadow-sm">
             <Plot
