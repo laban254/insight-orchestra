@@ -1,4 +1,4 @@
-# Local Development Setup (Docker)
+# Local Development Setup
 
 Complete guide to set up Insight Orchestra for development using Docker.
 
@@ -10,15 +10,15 @@ Complete guide to set up Insight Orchestra for development using Docker.
 
 - **OS**: macOS, Linux, or Windows (WSL2)
 - **CPU**: 2+ cores
-- **RAM**: 4GB minimum (8GB recommended)
-- **Disk**: 2GB free space
+- **RAM**: 4 GB minimum (8 GB recommended for local LLMs)
+- **Disk**: 2 GB free space
 
 ### Required Software
 
 1. **Docker & Docker Compose**
    ```bash
    docker --version
-   docker-compose --version
+   docker compose version
    ```
 
 2. **Git**
@@ -42,75 +42,71 @@ cd insight-orchestra
 ```bash
 # Create .env from example
 cp .env.example .env
-
-# The backend reads from .env automatically in Docker
-# For local development, create backend/.env:
-cp backend/.env.example backend/.env
-
-# Frontend environment is configured in docker-compose.yml
-# API_BASE_URL=http://backend:8000 (for Docker internal networking)
 ```
 
+The backend reads environment variables from `.env` in the project root (mounted into the Docker container). Edit the file to set your LLM provider.
 
 ### 3. Choose Your LLM Mode
 
-#### ⚡ API Mode (Recommended for most users)
+#### API Mode (OpenAI)
 
 Edit your `.env` file:
 
-```
-LLM_PROVIDER=openai  # or anthropic
-OPENAI_API_KEY=your-key
+```bash
+LLM_PROVIDER=openai
+OPENAI_API_KEY=sk-your-key-here
 ```
 
 Start backend and frontend (no Ollama required):
 
 ```bash
-docker-compose up backend frontend
+docker compose up backend frontend
 ```
 
 **What this starts:**
-- **Backend**: FastAPI on `http://localhost:8000`
-- **Frontend**: Next.js on `http://localhost:8501`
+| Service | URL |
+|---------|-----|
+| Backend (FastAPI) | `http://localhost:8000` |
+| Frontend (Next.js) | `http://localhost:3000` |
+| API Docs (Swagger) | `http://localhost:8000/docs` |
 
-#### 🔒 Local Mode (Ollama, for privacy/offline)
+#### Local Mode (Ollama)
 
 Edit your `.env` file:
 
-```
+```bash
 LLM_PROVIDER=ollama
-OLLAMA_MODEL=qwen2.5:0.5b  # or your preferred model
+OLLAMA_MODEL=qwen2.5:0.5b  # lightweight model for testing
 ```
 
 Start all services (including Ollama):
 
 ```bash
-docker-compose up backend frontend ollama
+docker compose up backend frontend ollama
 ```
 
-**What this starts:**
-- **Backend**: FastAPI on `http://localhost:8000`
-- **Frontend**: Next.js on `http://localhost:8501`
-- **Ollama**: Local LLM service on `http://localhost:11434` (Internal)
+After starting, pull the model:
 
+```bash
+docker compose exec ollama ollama pull qwen2.5:0.5b
+```
 
 ---
 
 ### 4. Monitoring & Logs
 
-To see what's happening inside the containers:
-
 ```bash
 # View aggregated logs for all services
-docker-compose logs -f
+docker compose logs -f
 
-# View logs for a specific service (backend, frontend, or ollama)
-docker-compose logs -f backend
+# View logs for a specific service
+docker compose logs -f backend
+docker compose logs -f ollama
 ```
 
 ---
 
-## Health Checks
+### 5. Health Checks
 
 ```bash
 # Backend health
@@ -118,191 +114,147 @@ curl http://localhost:8000/health
 # Response: {"status":"ok"}
 
 # Frontend
-open http://localhost:8501
+open http://localhost:3000
 ```
+
+---
+
+## Environment Variables Reference
+
+### LLM Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LLM_PROVIDER` | `openai` | LLM provider: `openai` or `ollama` |
+| `OPENAI_API_KEY` | — | API key for OpenAI (required if using `openai`) |
+| `OPENAI_MODEL` | `gpt-4o-mini` | OpenAI model to use |
+| `OPENAI_MODEL_FALLBACK` | `gpt-4o` | Fallback model for OpenAI |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama service URL |
+| `OLLAMA_MODEL` | `llama3.1:8b` | Ollama model to use |
+| `MAX_RETRIES` | `3` | Max retries for LLM requests |
+| `REQUEST_TIMEOUT` | `300` | LLM request timeout (seconds) |
+
+### Application Settings
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BACKEND_HOST` | `0.0.0.0` | Backend bind address |
+| `BACKEND_PORT` | `8000` | Backend port |
+| `ENVIRONMENT` | `development` | `development` or `production` |
+| `DEMO_MODE` | `true` | Enable demo endpoints (disable in production) |
+| `LOG_LEVEL` | `INFO` | Logging level: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+
+### Redis Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REDIS_URL` | `redis://localhost:6379` | Redis connection URL |
+| `USE_REDIS` | `true` | Enable Redis; set `false` for in-memory fallback |
+| `SESSION_TTL_SECONDS` | `3600` | Session expiration time (1 hour) |
+
+### CORS
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CORS_ORIGIN` | `http://localhost:3000` | Primary allowed CORS origin |
+| `CORS_ORIGIN_ALT` | `http://localhost:3000` | Secondary CORS origin |
+
+### File Upload
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MAX_FILE_SIZE` | `52428800` | Maximum file size in bytes (50 MB) |
+| `UPLOAD_DIR` | `backend/uploads` | Upload directory |
+
+### Sandbox
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SANDBOX_ENABLED` | `true` | Enable sandboxed code execution |
+| `SANDBOX_TIMEOUT` | `30` | Maximum execution time in seconds |
+| `SANDBOX_MEMORY_LIMIT` | `256` | Maximum memory in MB (tracked, not enforced) |
+
+---
+
+## Security
+
+### Current Architecture
+
+Insight Orchestra is designed as a **local-first, privacy-by-default** system:
+
+| Measure | Implementation |
+|---------|---------------|
+| **Network isolation** | Runs on local machine or private network |
+| **No external data leakage** | LLM credentials stay in `.env` (never committed) |
+| **Sandboxed execution** | All generated code runs in RestrictedPython |
+| **Read-only database queries** | All connectors enforce SELECT-only |
+| **SQL injection prevention** | Blocked keywords on query strings |
+| **Path traversal protection** | Validates file paths against allowed directories |
+| **CORS** | Configurable allowed origins |
+| **Session isolation** | Per-user session storage via Redis or in-memory |
+
+### Recommended Deployment Practices
+
+1. **Firewall**: Restrict ports 8000 and 3000 to trusted IPs
+   ```bash
+   sudo ufw allow from 127.0.0.1 to any port 8000
+   sudo ufw allow from 192.168.1.0/24 to any port 8000
+   ```
+
+2. **Environment variables**: Store all secrets in `.env`; never commit to version control
+
+3. **CORS**: Set explicit origins in production (not wildcard `*`)
+
+4. **Demo mode**: Set `DEMO_MODE=false` in production to disable demo endpoints
 
 ---
 
 ## Troubleshooting
 
-### Issue: "Port 8000 already in use"
+### Port 8000 already in use
 
 ```bash
 # Kill process on port 8000
 lsof -ti:8000 | xargs kill -9
 ```
 
-### Issue: "Ollama not responding"
+### Ollama not responding
 
-1. Check if the model is pulled in the container:
+1. Check if the model is pulled:
    ```bash
-   docker-compose exec ollama ollama pull llama2
+   docker compose exec ollama ollama list
    ```
-2. Verify `OLLAMA_BASE_URL` in `backend/.env` is set to `http://ollama:11434` for Docker internal networking.
 
-### Issue: "Error calling LLM: Read timed out"
+2. Verify `OLLAMA_BASE_URL` in `.env` is set to `http://ollama:11434` (Docker internal networking).
 
-If you see logs like `Error calling LLM... Read timed out. (read timeout=300)` and `500` errors from Ollama, it means your machine is struggling to run the LLM within the allowed time (often due to running on CPU only).
+### LLM read timeout
+
+If you see `Read timed out` errors from Ollama, the model is too large for your machine.
 
 **Solutions:**
-1. **Use a smaller, faster model**:
-   Switch from `llama2` to a lightweight model like `qwen2.5:0.5b` or `qwen2.5:1.5b`. Update your `backend/.env` file (`LLM_MODEL=qwen2.5:0.5b`) and ensure you pull it inside the container:
-   ```bash
-   docker-compose exec ollama ollama pull qwen2.5:0.5b
-   ```
-2. **Increase the timeout**:
-   If you must use a larger model and are willing to wait, look for LLM client configurations in the backend code and increase the request timeout beyond 300 seconds.
+1. Use a smaller model: `OLLAMA_MODEL=qwen2.5:0.5b` (1.5 GB instead of 4+ GB)
+2. Increase timeout: set `REQUEST_TIMEOUT=600` in `.env`
 
----
+### Frontend connection refused
 
-## Environment Variables Reference
-
-
-
-### Backend (`backend/.env`)
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `LLM_PROVIDER` | `openai` | LLM provider: openai, anthropic, or ollama (**required**) |
-| `OPENAI_API_KEY` | - | API key for OpenAI (required if using openai) |
-| `OPENAI_MODEL` | `gpt-4o-mini` | OpenAI model to use |
-| `ANTHROPIC_API_KEY` | - | API key for Anthropic (required if using anthropic) |
-| `OLLAMA_BASE_URL` | `http://ollama:11434` | Ollama service URL (Docker) |
-| `OLLAMA_MODEL` | `qwen2.5:0.5b` | Ollama model to use |
-| `LLM_FALLBACK_ENABLED` | `true` | Fallback to another provider if primary fails |
-| `LLM_TIMEOUT` | `30` | LLM request timeout (seconds) |
-| `LLM_MAX_RETRIES` | `3` | Max retries for LLM requests |
-| `ENABLE_OLLAMA` | `false` | Enable Ollama provider |
-| `ENABLE_OPENAI` | `true` | Enable OpenAI provider |
-| `ENABLE_ANTHROPIC` | `false` | Enable Anthropic provider |
-| `UPLOAD_DIR` | `backend/uploads` | Directory for uploaded files |
-| `DEMO_MODE` | `true` | Enable demo endpoints (disable in production) |
-| `CORS_ORIGIN` | `http://localhost:8501` | Allowed CORS origin |
-| `REDIS_URL` | `redis://localhost:6379` | Redis URL for sessions |
-| `USE_REDIS` | `true` | Enable Redis (set to false for in-memory) |
-| `SESSION_TTL_SECONDS` | `3600` | Session expiration time (1 hour) |
-
----
-
-## 🔐 Security & Authentication
-
-### Current Architecture
-
-Insight Orchestra is designed as a **local-first, privacy-by-default** system:
-
-- **Local Deployment**: Runs entirely on your machine (or internal network)
-- **Session-Based Frontend**: Next.js frontend manages session state
-- **No External API Keys Stored**: LLM credentials stay in your `.env` only
-- **Sandboxed Execution**: All generated code runs in RestrictedPython sandbox
-- **Redis Sessions**: Optional Redis-backed session storage for production
-- **CORS Protection**: Configurable allowed origins
-- **SQL Injection Protection**: Blocked keywords in database queries
-
-### For Local/Internal Use
-
-No additional authentication required. Secure your deployment by:
-
-1. **Network Isolation**: Run on private network only
-2. **Firewall Rules**: Restrict port 8000 access to trusted IPs
-3. **Environment Variables**: Store all secrets in `.env` (never commit)
-
-**Example firewall rule** (Linux):
-```bash
-# Allow only localhost and internal network
-sudo ufw allow from 127.0.0.1 to any port 8000
-sudo ufw allow from 192.168.1.0/24 to any port 8000
-```
-
-### For Production/Multi-User Deployment
-
-When deploying to multiple users or cloud environments, tasks to be done:
-
-- [ ] **API Key Authentication**
-```python
-# backend/app/api/security.py (future)
-from fastapi.security import APIKeyHeader
-
-API_KEY_HEADER = APIKeyHeader(name="X-API-Key")
-
-async def verify_api_key(api_key: str = Depends(API_KEY_HEADER)):
-    if api_key not in authorized_keys:
-        raise HTTPException(status_code=403, detail="Invalid API key")
-    return api_key
-```
-
-- [ ] **JWT Token Authentication**
-
-```python
-# For stateless authentication across multiple instances
-from jose import JWTError, jwt
-
-SECRET_KEY = "your-secret-key-here"
-
-async def verify_token(token: str = Depends(oauth2_scheme)):
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-        user_id: str = payload.get("sub")
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    return user_id
-```
-
-- [ ] **OAuth 2.0 Integration**
-```python
-# For enterprise deployments (Okta, Azure AD, Google, etc.)
-from authlib.integrations.fastapi_client import OAuth2App
-
-oauth = OAuth2App(
-    client_id="...",
-    client_secret="...",
-    authorize_url="...",
-    token_url="...",
-)
-```
-
-### Deployment Checklist
-
-- [x] Store secrets in environment variables, NOT code
-- [ ] Use HTTPS/TLS for all network communication
-- [x] Enable CORS only for trusted frontend domains
-- [x] Set `MAX_UPLOAD_SIZE_MB` appropriately
-- [x] Configure firewall rules
-- [x] Use strong database credentials (for PostgreSQL, MySQL)
-- [ ] Enable audit logging for sensitive operations
-- [ ] Rotate API keys regularly
-- [ ] Run behind reverse proxy (Nginx, HAProxy)
-- [x] Redis session storage configured
-
-### Planned Security Features
-
-| Feature | Status | Timeline |
-|---------|--------|----------|
-| API Key authentication | Planned | Coming soon |
-| JWT tokens | Planned | Coming soon |
-| OAuth 2.0 integration | Planned | Coming soon |
-| Audit logging | Planned | Coming soon |
-| Rate limiting | Planned | Coming soon |
-| Database encryption | Planned | Coming soon |
-
----
-
-1. **Read the Architecture**: [ARCHITECTURE.md](ARCHITECTURE.md)
-2. **Learn the Agents**: [AGENTS.md](AGENTS.md)
-3. **Review API Docs**: [API_REFERENCE.md](API_REFERENCE.md)
-4. **Start Contributing**: See [../CONTRIBUTING.md](../CONTRIBUTING.md)
+- Ensure the backend is running: `docker compose ps`
+- Check CORS origin matches your frontend URL: `CORS_ORIGIN=http://localhost:3000`
+- Verify network: `curl -v http://localhost:8000/health`
 
 ---
 
 ## Performance Tips
 
-### Speed up LLM responses
-- Use faster model: `ollama pull mistral` instead of llama2
-- Increase Ollama memory: `OLLAMA_NUM_GPU=1` (if GPU available)
+- **Faster LLM**: Use `qwen2.5:0.5b` or `mistral` instead of `llama2` for quicker responses
+- **Faster frontend builds**: Use `npm ci` instead of `npm install`
+- **Incremental testing**: `pytest tests/test_file.py -v` to avoid running full suite during development
+- **GPU acceleration**: Set `OLLAMA_NUM_GPU=1` in environment if NVIDIA GPU is available
 
-### Speed up frontend builds
-- Use `npm ci` instead of `npm install` (faster, more reliable)
-- Next.js caching: Already enabled with `--reload`
+---
 
-### Speed up backend development
-- Use incremental testing: `pytest tests/test_file.py -v`
-- Skip full suite during development
+## Next Steps
+
+- [Architecture Overview](ARCHITECTURE.md)
+- [Agent Pipeline Guide](AGENTS.md)
+- [API Reference](API_REFERENCE.md)
+- [Contributing Guide](../CONTRIBUTING.md)
