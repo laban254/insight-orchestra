@@ -66,12 +66,12 @@ OPENAI_API_KEY=your-key
 Start backend and frontend (no Ollama required):
 
 ```bash
-docker-compose up backend frontend db
+docker-compose up backend frontend
 ```
 
 **What this starts:**
 - **Backend**: FastAPI on `http://localhost:8000`
-- **Frontend**: Next.js on `http://localhost:3000`
+- **Frontend**: Next.js on `http://localhost:8501`
 
 #### 🔒 Local Mode (Ollama, for privacy/offline)
 
@@ -85,12 +85,12 @@ OLLAMA_MODEL=qwen2.5:0.5b  # or your preferred model
 Start all services (including Ollama):
 
 ```bash
-docker-compose up -d --build
+docker-compose up backend frontend ollama
 ```
 
 **What this starts:**
 - **Backend**: FastAPI on `http://localhost:8000`
-- **Frontend**: Next.js on `http://localhost:3000`
+- **Frontend**: Next.js on `http://localhost:8501`
 - **Ollama**: Local LLM service on `http://localhost:11434` (Internal)
 
 
@@ -118,7 +118,7 @@ curl http://localhost:8000/health
 # Response: {"status":"ok"}
 
 # Frontend
-open http://localhost:3000
+open http://localhost:8501
 ```
 
 ---
@@ -177,7 +177,7 @@ If you see logs like `Error calling LLM... Read timed out. (read timeout=300)` a
 | `ENABLE_ANTHROPIC` | `false` | Enable Anthropic provider |
 | `UPLOAD_DIR` | `backend/uploads` | Directory for uploaded files |
 | `DEMO_MODE` | `true` | Enable demo endpoints (disable in production) |
-| `CORS_ORIGIN` | `http://localhost:3000` | Allowed CORS origin |
+| `CORS_ORIGIN` | `http://localhost:8501` | Allowed CORS origin |
 | `REDIS_URL` | `redis://localhost:6379` | Redis URL for sessions |
 | `USE_REDIS` | `true` | Enable Redis (set to false for in-memory) |
 | `SESSION_TTL_SECONDS` | `3600` | Session expiration time (1 hour) |

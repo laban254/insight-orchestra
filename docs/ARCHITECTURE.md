@@ -1,37 +1,38 @@
-# Insight Orchestra - Architecture Overview
+# Insight Orchestra — Architecture Overview
 
 ## System Architecture
 
-
-Insight Orchestra is built on a **multi-agent collaborative pipeline** with emphasis on flexibility, privacy, transparency, and pluggable LLM backends (API or local execution).
+Insight Orchestra is a **multi-agent AI data analysis platform** with a three-layer architecture: a Next.js frontend, a FastAPI backend, and a services layer for agent orchestration and sandboxed code execution. LLM providers are pluggable (OpenAI API or local Ollama).
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                   Frontend (Next.js 14)                      │
 │  - FileUpload / DatabaseConnect                             │
 │  - ChatPanel (Q&A interface)                                │
-│  - Plotly Visualizations                                    │
+│  - AgentPipeline (SSE progress visualization)               │
+│  - Plotly Charts (ChartRenderer)                            │
 └──────────────────────┬──────────────────────────────────────┘
-                       │ REST API (JSON)
+                       │ REST API + SSE
                        ▼
 ┌─────────────────────────────────────────────────────────────┐
-│              FastAPI Backend (Python)                        │
+│              FastAPI Backend (Python 3.11+)                   │
 │                                                               │
 │  ┌──────────────────────────────────────────────────────┐   │
 │  │  API Layer                                           │   │
 │  │  - Upload Handler  - Database Connectors            │   │
 │  │  - Query Router    - Session Management             │   │
+│  │  - SSE Streaming   - Export                          │   │
 │  └──────────────────────────────────────────────────────┘   │
 │                       ▼                                       │
 │  ┌──────────────────────────────────────────────────────┐   │
 │  │  Services Layer (Agent Orchestration)                │   │
 │  │  • Data Janitor Agent      → Cleaning & validation  │   │
-│  │  • Hypothesis Bot Agent    → Insight generation    │   │
-│  │  • Debate Manager Agent    → Quality filtering      │   │
-│  │  • Viz Whiz Agent          → Visualization         │   │
-│  │  • NLQ Agent               → Natural language Q&A   │   │
-│  │  • LLM Service             → Model interface        │   │
-│  │  • Sandbox Executor        → Safe code execution    │   │
+│  │  • Hypothesis Bot Agent    → LLM insight generation│   │
+│  │  • Debate Manager Agent    → LLM scoring & ranking  │   │
+│  │  • Viz Whiz Agent          → Plotly chart generation│   │
+│  │  • NLQ Agent               → NL → code → execution  │   │
+│  │  • LLM Service             → Provider abstraction    │   │
+│  │  • Sandbox Executor        → RestrictedPython sandbox│   │
 │  └──────────────────────────────────────────────────────┘   │
 │                       ▼                                       │
 │  ┌──────────────────────────────────────────────────────┐   │
@@ -44,8 +45,7 @@ Insight Orchestra is built on a **multi-agent collaborative pipeline** with emph
     ┌─────────────┐                   ┌──────────────────┐
     │ Local Files │                   │ LLM Providers    │
     │ (Uploads)   │                   │ • OpenAI (API)   │
-    │ • CSVs      │                   │ • Anthropic (API)|
-    │             │                   │ • Ollama (local) │
+    │ • CSVs      │                   │ • Ollama (local) │
     └─────────────┘                   └──────────────────┘
 ```
 
@@ -60,48 +60,62 @@ Insight Orchestra is built on a **multi-agent collaborative pipeline** with emph
 **Responsibilities**:
 - User interface for data ingestion (file upload / DB connection)
 - Interactive chat panel for Q&A
-- Real-time visualization rendering
+- Real-time agent progress visualization via SSE
+- Plotly chart rendering
 - Session state management
-- Code review before execution
 
 **Key Components**:
-- `FileUpload.tsx` - CSV file selection and upload
-- `DatabaseConnect.tsx` - DB connection form
-- `ChatPanel.tsx` - Main analysis interface
-- `Plotly Charts` - Interactive visualizations
+- [`FileUpload.tsx`](frontend/components/upload/FileUpload.tsx) — CSV file upload with drag-and-drop, demo dataset selector
+- [`DatabaseConnect.tsx`](frontend/components/upload/DatabaseConnect.tsx) — Database connection form
+- [`ChatPanel.tsx`](frontend/components/chat/ChatPanel.tsx) — Main Q&A interface with message history
+- [`AgentPipeline.tsx`](frontend/components/agents/AgentPipeline.tsx) — SSE-based real-time agent progress display
+- [`MessageBubble.tsx`](frontend/components/chat/MessageBubble.tsx) — Renders messages with code blocks, Plotly charts, reasoning
+- [`ChartRenderer.tsx`](frontend/components/viz/ChartRenderer.tsx) — Plotly.js chart rendering
+- [`ExportPanel.tsx`](frontend/components/export/ExportPanel.tsx) — Session export controls
+- [`ShareButton.tsx`](frontend/components/export/ShareButton.tsx) — Token-based session sharing
 
-**Technologies**:
-- React 18+ with hooks
-- Next.js 14 (App Router)
-- Tailwind CSS + shadcn/ui
-- Monaco Editor (code display)
-- Plotly.js (charts)
+**Technologies**: React 18, Next.js 14 (App Router), Tailwind CSS, Plotly.js
 
 ---
 
 ### 2. Backend API Layer (FastAPI)
 
-**Location**: `backend/app/api/`
+**Location**: [`backend/app/api/`](backend/app/api/)
 
 **Responsibilities**:
 - HTTP request routing
 - File upload management
 - Database connector orchestration
 - Session lifecycle management
+- SSE event streaming for agent progress
 - Response formatting
 
 **Key Files**:
-- `endpoints.py` - Main API routes
-- `connectors.py` - Database connection handlers
-- `export.py` - Result export endpoints
-- `sessions.py` - Session storage
+- [`endpoints.py`](backend/app/api/endpoints.py) — Main API routes (upload, process, nlq, summarize, explain, report, bigquery, demo, SSE streaming)
+- [`connectors.py`](backend/app/api/connectors.py) — Database connection handlers
+- [`export.py`](backend/app/api/export.py) — Result export endpoints (HTML, Markdown, CSV)
+- [`sessions.py`](backend/app/api/sessions.py) — Session sharing with expiring tokens
+- [`main.py`](backend/app/api/main.py) — Legacy v1 endpoints (duplicate, maintained for backward compatibility)
 
 **API Routes**:
 ```
 POST   /upload                 → Save CSV, return file_path
+POST   /process                → Run full agent pipeline (emits SSE events)
+POST   /nlq                    → Natural language → code → execution (emits SSE events)
+POST   /summarize              → Summarize workflow results
+POST   /explain                → Explain a visualization
+POST   /report                 → Generate HTML report
+POST   /bigquery               → Query Google BigQuery
 POST   /connectors/connect     → Establish DB connection
-POST   /process                → Run agent pipeline
-POST   /nlq                    → Process natural language query
+GET    /connectors/schema       → List connected DB schema
+GET    /sessions/{id}          → Get session history
+DELETE /sessions/{id}          → Clear session
+POST   /sessions/share         → Create share link
+GET    /sessions/shared/{token}→ Access shared session
+GET    /export/{id}/html|md|csv → Export results
+GET    /demo/list              → List demo datasets
+GET    /demo/load              → Load demo dataset
+GET    /agents/stream/{id}     → SSE stream for agent progress
 GET    /health                 → Service status
 ```
 
@@ -109,14 +123,14 @@ GET    /health                 → Service status
 
 ### 3. Services Layer (Agent Orchestration)
 
-**Location**: `backend/app/services/`
+**Location**: [`backend/app/services/`](backend/app/services/)
 
 This is the **intelligent core** of Insight Orchestra.
 
 #### 3.1 Data Janitor Agent
-**File**: `adk_agents.py` → `DataJanitorAgent`
+**File**: [`adk_agents.py`](backend/app/services/adk_agents.py) → `DataJanitorAgent`
 
-**Purpose**: Data preprocessing and validation
+**Purpose**: Data preprocessing and validation.
 
 **Workflow**:
 ```
@@ -124,16 +138,18 @@ Input DataFrame
     ↓
 Check duplicates → Remove if found
     ↓
-Identify missing values → Impute (mean/mode)
+Identify missing values per column
     ↓
-Flag data quality issues
+Flag bias: columns with >30% missing values
     ↓
-Detect constant columns
+Impute: numeric → mean, categorical → mode
+    ↓
+Detect constant columns (single unique value)
     ↓
 Output: Cleaned DataFrame + metadata report
 ```
 
-**Output Structure**:
+**Output**:
 ```json
 {
   "cleaned_data": [...],
@@ -141,213 +157,216 @@ Output: Cleaned DataFrame + metadata report
     "initial_shape": [1000, 15],
     "duplicates_removed": 5,
     "missing_values": {"age": 12, "salary": 3},
-    "bias_flags": ["Column 'age' missing 15% of values"],
+    "total_missing": 15,
+    "bias_flags": ["Column 'age' missing for 15.0% of rows."],
+    "missing_values_imputed": true,
+    "constant_columns": [],
     "final_shape": [995, 15]
   }
 }
 ```
 
 #### 3.2 Hypothesis Bot Agent
-**File**: `adk_agents.py` → `HypothesisBotAgent`
+**File**: [`adk_agents.py`](backend/app/services/adk_agents.py) → `HypothesisBotAgent`
 
-**Purpose**: Generate testable hypotheses using LLM
+**Purpose**: Generate testable hypotheses using an LLM.
 
 **Workflow**:
 ```
-DataFrame schema
+DataFrame schema (via DataFrameSchema helper)
     ↓
-Construct schema prompt (columns, types, stats)
+Construct schema prompt (columns, types, stats, sample values)
     ↓
-Send to LLM with system prompt
+Send to LLM via LLMService.complete_json()
     ↓
-Parse LLM response (JSON format enforced)
+Parse LLM response → hypothesis list + reasoning
     ↓
-Output: List of hypotheses + reasoning
+Output: List of hypotheses with summary
 ```
 
-**Example Output**:
+Uses `LLMService` for provider-agnostic LLM calls. Falls back gracefully if the LLM is unavailable.
+
+#### 3.3 Debate Manager Agent
+**File**: [`adk_agents.py`](backend/app/services/adk_agents.py) → `DebateManagerAgent`
+
+**Purpose**: Score and rank hypotheses using an LLM auditor.
+
+**Scoring**: The LLM assigns each hypothesis a `confidence` and `business_value` score (0–1 scale). Hypotheses are sorted by `confidence × business_value` (descending). The top-scoring hypothesis becomes the "consensus."
+
+**Output**:
 ```json
 {
-  "hypotheses": [
-    "Age and salary show positive correlation",
-    "Department type affects sales performance",
-    "Geographic region impacts customer retention"
+  "scored_hypotheses": [
+    {"hypothesis": "...", "confidence": 0.85, "business_value": 0.9, "statistical_argument": "...", "business_argument": "..."}
   ],
-  "reasoning": "Analyzed numeric distributions and categorical patterns"
+  "summary": {
+    "num_hypotheses": 5,
+    "consensus": {"hypothesis": "...", "confidence": 0.85, "business_value": 0.9},
+    "arguments": [{"hypothesis": "...", "statistical": "...", "business": "..."}]
+  }
 }
 ```
 
-#### 3.3 Debate Manager Agent
-**File**: `adk_agents.py` → `DebateManagerAgent`
-
-**Purpose**: Score and rank hypotheses by quality
-
-**Scoring Criteria**:
-- Statistical confidence (0-1 scale)
-- Business impact (0-1 scale)
-- Testability (0-1 scale)
-- Novelty (0-1 scale)
-
-**Output**: Top 3-5 hypotheses ranked
-
 #### 3.4 Viz Whiz Agent
-**File**: `adk_agents.py` → `VizWhizAgent`
+**File**: [`adk_agents.py`](backend/app/services/adk_agents.py) → `VizWhizAgent`
 
-**Purpose**: Auto-select visualization and generate Plotly code
+**Purpose**: Auto-select visualization types and generate Plotly charts.
 
-**Logic**:
-```
-Hypothesis + Data Schema
-    ↓
-Determine variable types (numeric vs categorical)
-    ↓
-Select chart type:
-  - Numeric vs Numeric    → Scatter plot
-  - Categorical vs Numeric → Box plot / Bar chart
-  - Time series           → Line chart
-  - Distribution          → Histogram / KDE
-    ↓
-Generate Plotly code
-    ↓
-Output: HTML + interactive chart
-```
+**Logic**: Parses the consensus hypothesis for variable names via regex. Determines data types (numeric vs. categorical vs. object) and selects appropriate chart types:
+
+| Variable Combination | Chart Types |
+|---------------------|-------------|
+| Numeric × Numeric | Scatter plot, density heatmap |
+| Categorical × Numeric | Box plot, violin plot |
+| Numeric × Categorical | Box plot (swapped), violin plot |
+| Single Numeric | Histogram |
+| Single Categorical | Bar chart |
+
+Falls back through all hypotheses, then all column pairs, if the consensus hypothesis yields no valid charts.
 
 #### 3.5 NLQ Agent (Natural Language Query)
-**File**: `nlq_agent.py` → `NaturalLanguageQueryAgent`
+**File**: [`nlq_agent.py`](backend/app/services/nlq_agent.py) → `NaturalLanguageQueryAgent`
 
-**Purpose**: Convert natural language to executable code
+**Purpose**: Convert natural language to executable Python code and return results.
 
 **Process**:
 ```
 User question + DataFrame schema
     ↓
-Prompt LLM to generate pandas/SQL
+Construct prompt with schema description and examples
     ↓
-Extract code from response
+LLM generates pandas code
     ↓
-Pass to Sandbox Executor
+Ensure result variable assignment
     ↓
-Return results + visualization
+Execute via SandboxExecutor with retry logic
+    ↓
+Return: answer + code + reasoning + optional plot_json
 ```
 
-**Example**:
-```
-Input: "Show me average salary by department"
-Output Code: df.groupby('department')['salary'].mean()
-```
+Includes retry logic: if execution fails, the error is fed back to the LLM for code regeneration (up to 2 retries). Supports clarification requests when the question is ambiguous.
 
 #### 3.6 LLM Service
-**File**: `llm_service.py` → `LLMService`
+**File**: [`llm_service.py`](backend/app/services/llm_service.py) → `LLMService`
 
-**Purpose**: Unified interface to multiple LLM providers
+**Purpose**: Unified interface to multiple LLM providers.
 
 **Supported Providers**:
-- **OpenAI** (GPT-3.5, GPT-4) - Cloud-based
-- **Ollama** (Llama 2, Mistral, etc.) - Local execution
-- **Anthropic** (Claude) - Cloud-based
+| Provider | Type | Configuration |
+|----------|------|---------------|
+| **OpenAI** | Cloud API | `LLM_PROVIDER=openai`, `OPENAI_API_KEY`, `OPENAI_MODEL` |
+| **Ollama** | Local | `LLM_PROVIDER=ollama`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL` |
+| **Anthropic** | Declared but not implemented | Throws `NotImplementedError` |
 
-**Methods**:
+**Public Methods**:
 ```python
-complete_text(system_prompt, user_prompt) → str
-complete_json(system_prompt, user_prompt) → dict
+complete(system_prompt, user_prompt, use_fallback=False) → LLMResponse
+complete_json(system_prompt, user_prompt, use_fallback=False) → dict
+get_cost_summary() → dict
 ```
 
-**Configuration**:
-- Provider selected via `LLM_PROVIDER` env var
-- Model name via `LLM_MODEL`
-- Ollama endpoint via `OLLAMA_BASE_URL`
+**Features**:
+- Exponential backoff retry (configurable via `MAX_RETRIES` and `REQUEST_TIMEOUT` env vars)
+- Token cost tracking (OpenAI only; Ollama is free)
+- JSON-format enforcement for structured outputs
+- Fallback model support for OpenAI (`OPENAI_MODEL_FALLBACK`)
 
 #### 3.7 Sandbox Executor
-**File**: `sandbox_executor.py` → `SandboxExecutor`
+**File**: [`sandbox_executor.py`](backend/app/services/sandbox_executor.py) → `SandboxExecutor`
 
-**Purpose**: Safely execute generated code without security risks
+**Purpose**: Safely execute generated code without security risks.
 
-**Safety Features**:
-- Uses **RestrictedPython** (removes dangerous builtins)
-- Blocks file I/O (`open()`, `os.system()`)
-- Blocks network calls (`requests`, `urllib`)
-- Blocks code injection (`exec()`, `compile()`)
-- Prevents infinite loops (execution timeout)
-- Limits memory usage
+**Safety Mechanisms**:
+- **RestrictedPython**: Compiles code with restricted bytecode — removes dangerous builtins
+- **Safety check**: Pre-execution scan for blocked patterns (`import os`, `eval(`, `open(`, etc.)
+- **Timeout**: Configurable (default 30 s) via `SIGALRM` on Linux
+- **Output isolation**: stdout/stderr captured via `io.StringIO`
 
-**Allowed Operations**:
+**Allowed in sandbox**:
 ```python
-# ✅ ALLOWED
+# pandas, plotly.express, numpy pre-imported
 df.groupby(...).agg(...)
 pd.merge(...)
-np.mean(...)
-df[df['col'] > 5]
-
-# ❌ BLOCKED
-os.remove('file.txt')
-requests.get('http://...')
-open('file.txt', 'w')
-exec('malicious_code')
-__import__('subprocess')
+df['col'].mean()
+px.scatter(df, x='a', y='b')
 ```
 
-**Execution Flow**:
+**Blocked**:
+```python
+os.remove('file.txt')         # File I/O
+requests.get('http://...')   # Network
+exec('malicious_code')       # Code injection
+__import__('subprocess')     # Dynamic imports
 ```
-Generated code string
-    ↓
-Compile with RestrictedPython
-    ↓
-Execute in restricted environment (timeout: 30s)
-    ↓
-Capture output + errors
-    ↓
-Return results
-```
+
+**Note**: Memory limiting is declared (`max_memory_mb`) but not actively enforced at runtime.
+
+#### 3.8 Supporting Agents
+
+- **ExplainabilityAgent** ([`explain_agent.py`](backend/app/services/explain_agent.py)) — Hardcoded rule-based explanation generator for Plotly charts (not LLM-powered).
+- **InsightSummarizerAgent** ([`summarizer_agent.py`](backend/app/services/summarizer_agent.py)) — Simple string concatenation to summarize workflow results.
+- **ReportGeneratorAgent** ([`report_agent.py`](backend/app/services/report_agent.py)) — Generates basic HTML reports from workflow results.
 
 ---
 
 ### 4. Data Connectors
 
-**Location**: `backend/app/connectors/`
+**Location**: [`backend/app/connectors/`](backend/app/connectors/)
 
-**Supported Data Sources**:
-- **CSV** - File-based, auto-detection
-- **PostgreSQL** - Enterprise SQL databases
-- **MySQL/MariaDB** - Open-source SQL
-- **SQLite** - Embedded, zero-config
-- **DuckDB** - Analytical queries, fast
+All connectors implement the [`BaseConnector`](backend/app/connectors/base.py) abstract interface:
 
-**Base Interface** (`base.py`):
 ```python
 class BaseConnector(ABC):
     @abstractmethod
-    def connect(self, connection_string: str) → None
-    
+    def connect(self, connection_string: str) -> None
     @abstractmethod
-    def get_schema(self) → dict
-    
+    def get_schema(self) -> dict
     @abstractmethod
-    def execute_query(self, sql: str) → pd.DataFrame
-    
+    def execute_query(self, sql: str) -> pd.DataFrame
     @abstractmethod
-    def test_connection(self) → bool
+    def test_connection(self) -> bool
 ```
 
-**Safety**: All connectors enforce read-only queries (SELECT only).
+| Connector | File | Dependencies |
+|-----------|------|--------------|
+| PostgreSQL | [`postgresql.py`](backend/app/connectors/postgresql.py) | `psycopg2` |
+| MySQL | [`mysql.py`](backend/app/connectors/mysql.py) | `pymysql` |
+| SQLite | [`sqlite.py`](backend/app/connectors/sqlite.py) | `sqlite3` (stdlib) |
+| DuckDB | [`duckdb.py`](backend/app/connectors/duckdb.py) | `duckdb` |
+| BigQuery | [`bigquery_utils.py`](backend/app/utils/bigquery_utils.py) | `google.cloud.bigquery` (via API) |
+
+**Safety**: All connectors enforce read-only queries (SELECT only). SQL injection is mitigated via blocked keyword patterns.
 
 ---
 
 ### 5. Session Management
 
-**Location**: `backend/app/api/sessions.py`
+**Location**: [`session_manager.py`](backend/app/services/session_manager.py), [`sessions.py`](backend/app/api/sessions.py)
 
-**Purpose**: Maintain user state across requests
+**Storage Backends**:
+| Backend | When Used | Characteristics |
+|---------|-----------|-----------------|
+| In-memory dict | No Redis available | Single-process, ephemeral |
+| Redis | `REDIS_URL` configured | Distributed, persistent, TTL-based expiry |
 
-**Data Stored Per Session**:
-- File path / DB connection ID
-- Cleaned DataFrame (in-memory)
-- Agent output history
-- User chat messages
-- Generated visualizations
+**Session Data**: Each session stores a list of interaction dictionaries (`{question, answer, code}`) appended during NLQ requests.
 
-**Storage Options**:
-- **MVP**: In-memory dict (single-process)
-- **Production**: Redis (distributed, persistent)
+**Session Sharing**: Token-based share links created via `POST /sessions/share` with 72-hour TTL.
+
+---
+
+### 6. Real-Time Agent Progress (SSE)
+
+**File**: [`agent_progress.py`](backend/app/agent_progress.py)
+
+Agent progress is streamed to the frontend via Server-Sent Events (SSE). The mechanism:
+
+1. [`get_queue(session_id)`](backend/app/agent_progress.py:27) — Creates/retrieves an `asyncio.Queue` per session
+2. [`push_event()`](backend/app/agent_progress.py:39) — Producers (endpoints) push `{agent_id, status, output, duration}` dicts
+3. [`push_sentinel()`](backend/app/agent_progress.py:81) — Signals end-of-stream with `None`
+4. [`GET /agents/stream/{session_id}`](backend/app/api/endpoints.py:334) — SSE endpoint drains the queue; 60-second inactivity timeout
+
+The frontend [`AgentPipeline`](frontend/components/agents/AgentPipeline.tsx) component consumes these events and updates agent status cards in real time.
 
 ---
 
@@ -358,40 +377,39 @@ class BaseConnector(ABC):
 ```
 [1] User uploads file
     ↓
-    POST /upload
+    POST /upload  (multipart/form-data)
     ↓
     File saved to backend/uploads/{uuid}_{filename}.csv
     ↓
-    Return file_path to frontend
+    Return {"file_path": "/tmp/...csv"}
 
-[2] Frontend triggers processing
+[2] Frontend displays upload confirmation
     ↓
-    POST /process with file_path
+    User types question in chat
+    ↓
+    Frontend opens SSE connection to /agents/stream/{session_id}
+    ↓
+    POST /nlq with {file_path, question, session_id}
     ↓
     API loads DataFrame from file
     ↓
-    InsightOrchestraWorkflow.run()
-    ├─ Data Janitor Agent: Clean data
-    ├─ Hypothesis Bot Agent: Generate hypotheses
-    ├─ Debate Manager Agent: Score & rank
-    └─ Viz Whiz Agent: Create visualization
+    Data Janitor Agent runs (SSE: janitor → done)
     ↓
-    Return: cleaned_summary + top_insights + viz_html
+    NLQ Agent generates pandas code
     ↓
-    Frontend displays results
+    SandboxExecutor executes code
+    ↓
+    Viz Whiz generates chart (SSE: viz → done, if plot produced)
+    ↓
+    SSE stream ends (sentinel)
+    ↓
+    Return: {answer, code, reasoning, plot_json, ...}
 
-[3] User asks question in chat
-    ↓
-    POST /nlq with {file_path, question}
-    ↓
-    NLQAgent.run()
-    ├─ Generate pandas/SQL code
-    ├─ SandboxExecutor.execute(code)
-    └─ Create visualization
-    ↓
-    Return: code + results + chart
-    ↓
-    Frontend shows both code and results
+[3] Frontend displays:
+    - Answer text
+    - Code block (syntax-highlighted)
+    - Plotly chart (if generated)
+    - Reasoning (if provided)
 ```
 
 ---
@@ -399,86 +417,44 @@ class BaseConnector(ABC):
 ## Key Design Patterns
 
 ### 1. Agent Pattern
-Each agent is an independent, focused worker:
-- **Single Responsibility**: One job per agent
-- **Composition**: Chain agents for complex workflows
-- **Async-Ready**: Can be parallelized with proper context
+Each agent is an independent worker with a single responsibility. Agents are chained sequentially in `InsightOrchestraWorkflow.run()`.
 
-### 2. Sandbox Pattern
-Untrusted code execution with safety guarantees:
-- **Restricted Environment**: Limited builtins
-- **Timeout Protection**: Prevent infinite loops
-- **Failure Isolation**: Bad code doesn't crash system
+### 2. Provider Abstraction
+`LLMService` provides a unified interface (`complete()`, `complete_json()`) that abstracts over OpenAI and Ollama. Providers are selected via the `LLM_PROVIDER` environment variable.
 
-### 3. Provider Abstraction
-LLM agnostic design:
-- **Interface Segregation**: Services use `LLMService` interface
-- **Factory Pattern**: Provider instantiation centralized
-- **Configuration-Driven**: Providers chosen via env vars
+### 3. Sandbox Pattern
+Generated code is isolated via RestrictedPython with pre-execution safety checks, execution timeout, and output capture. This prevents malicious or buggy code from affecting the host system.
 
 ### 4. Session Isolation
-User data never mixed:
-- **Per-User Sessions**: Unique session IDs
-- **Ephemeral by Default**: Sessions expire after inactivity
-- **Explicit Export**: Users must export to persist
-
----
-
-## Performance Considerations
-
-### Bottlenecks & Optimizations
-
-| Component | Bottleneck | Solution |
-|-----------|-----------|----------|
-| LLM Inference | Network latency (cloud) | Use Ollama locally |
-| Data Loading | Large CSV parsing | Use DuckDB/ Parquet |
-| Agent Pipeline | Sequential execution | Parallelize independent agents |
-| Session Storage | In-memory limit | Migrate to Redis |
-
-### Scaling Strategy
-
-**MVP → Production**:
-1. In-memory sessions → Redis
-2. Single FastAPI process → Gunicorn + load balancer
-3. Local Ollama → Ollama cluster or LLM API
-4. File uploads to disk → Object storage (S3/GCS)
+User sessions are keyed by ID and stored in Redis (or in-memory). The `/sessions/share` endpoint provides expiring, token-based access for collaboration.
 
 ---
 
 ## Security Model
 
-### Threat Model & Mitigations
-
 | Threat | Mitigation |
 |--------|-----------|
-| Malicious SQL injection | Parameterized queries, read-only mode |
-| Code execution exploits | RestrictedPython sandbox |
-| Data exfiltration | No network access from sandbox |
-| Resource exhaustion | Execution timeout + memory limits |
-| Session hijacking | Secure session tokens, HTTPS |
+| Malicious SQL injection | Blocked keywords (`DROP`, `DELETE`, `INSERT`, etc.) on query strings |
+| Code execution exploits | RestrictedPython sandbox + pre-execution safety scans |
+| Data exfiltration via sandbox | Blocked network imports (`requests`, `urllib`, `socket`) |
+| Resource exhaustion | Execution timeout (30 s default) |
+| Path traversal | File path validation — only `/tmp/` and `uploads/` allowed |
+| Credential exposure | Environment variables only; `.env` excluded from version control |
+| CORS | Configurable allowed origins (`CORS_ORIGIN` env var) |
+
+**Note**: Rate limiting, HTTPS enforcement, and user authentication are not implemented. The system is designed for local/internal network deployment.
 
 ---
 
 ## Technology Choices
 
-### Why These Tools?
-
-| Tool | Reason |
-|------|--------|
-| **FastAPI** | Type-safe, async-ready, auto-docs |
-| **Pandas** | Data manipulation gold standard |
-| **RestrictedPython** | Safe dynamic code execution |
-| **Google ADK** | Structured agent orchestration |
-| **Ollama** | Local LLMs without GPU hassle |
-| **Next.js** | Full-stack React with SSR |
-| **Docker** | Reproducible deployments |
-
----
-
-## Future Architecture Improvements
-
-- **Event-Driven Pipeline**: Kafka for async agent execution
-- **Distributed Agents**: Multi-machine agent scaling
-- **Query Caching**: Memoize expensive LLM calls
-- **Real-Time Collaboration**: WebSocket for multi-user sessions
-- **ML Pipeline Tracking**: Version hypotheses and results
+| Tool | Rationale |
+|------|-----------|
+| **FastAPI** | Type-safe, auto-docs (Swagger/ReDoc), async-ready |
+| **Pandas** | Standard for in-memory data manipulation |
+| **RestrictedPython** | Lightweight sandbox for generated code; no container overhead |
+| **Google ADK** | Structured agent base class with named agents |
+| **Ollama** | Local LLM inference without GPU requirement |
+| **Next.js 14** | Full-stack React with App Router, server components |
+| **Docker Compose** | Multi-service orchestration with single command |
+| **Redis** | Optional distributed session storage |
