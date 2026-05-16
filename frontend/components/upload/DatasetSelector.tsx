@@ -3,27 +3,63 @@
 import { useState, useCallback } from "react";
 import { api } from "@/lib/api";
 import { ChevronDown } from "lucide-react";
+import { DemoDataset } from "@/lib/types";
 
-interface DatasetInfo {
+interface UploadInfo {
+  type: "uploaded" | "demo";
   name: string;
-  description: string;
-  rows: number;
-  columns: number;
-  use_cases: string[];
+  rows: number | string;
+  columns: number | string;
+  description?: string;
+  use_cases?: string[];
 }
 
 export function DatasetSelector({ 
   onUploadSuccess,
   datasets
 }: { 
-  onUploadSuccess: (filePath: string, info: any) => void;
-  datasets: Record<string, any>;
+  onUploadSuccess: (filePath: string, info: UploadInfo) => void;
+  datasets: Record<string, DemoDataset>;
 }) {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showDatasets, setShowDatasets] = useState(false);
   const [selectedDataset, setSelectedDataset] = useState<string | null>(null);
+
+  const getErrorMessage = (err: unknown, fallback: string) => {
+    if (
+      typeof err === "object" &&
+      err !== null &&
+      "response" in err &&
+      typeof (err as { response?: unknown }).response === "object"
+    ) {
+      const response = (err as { response?: { data?: { detail?: string } } }).response;
+      return response?.data?.detail ?? fallback;
+    }
+    if (err instanceof Error) {
+      return err.message;
+    }
+    return fallback;
+  };
+
+  const uploadFile = useCallback(async (file: File) => {
+    setError(null);
+    setIsUploading(true);
+    try {
+      const result = await api.uploadFile(file);
+      onUploadSuccess(result.file_path, {
+        name: file.name,
+        type: "uploaded",
+        rows: result.rows || "Unknown",
+        columns: result.columns || "Unknown",
+      });
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Upload failed"));
+    } finally {
+      setIsUploading(false);
+    }
+  }, [onUploadSuccess]);
 
   const handleDrag = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -38,30 +74,12 @@ export function DatasetSelector({
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       await uploadFile(e.dataTransfer.files[0]);
     }
-  }, []);
+  }, [uploadFile]);
 
   const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     e.preventDefault();
     if (e.target.files && e.target.files[0]) {
       await uploadFile(e.target.files[0]);
-    }
-  };
-
-  const uploadFile = async (file: File) => {
-    setError(null);
-    setIsUploading(true);
-    try {
-      const result = await api.uploadFile(file);
-      onUploadSuccess(result.file_path, {
-        name: file.name,
-        type: "uploaded",
-        rows: result.rows || "Unknown",
-        columns: result.columns || "Unknown",
-      });
-    } catch (err: any) {
-      setError(err.response?.data?.detail || err.message || "Upload failed");
-    } finally {
-      setIsUploading(false);
     }
   };
 
@@ -80,8 +98,8 @@ export function DatasetSelector({
         use_cases: result.use_cases,
       });
       setShowDatasets(false);
-    } catch (err: any) {
-      setError(err.response?.data?.detail || err.message || "Failed to load demo");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Failed to load demo"));
     } finally {
       setIsUploading(false);
       setSelectedDataset(null);

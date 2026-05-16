@@ -5,7 +5,7 @@ import pandas as pd
 import asyncio
 import time
 from sse_starlette.sse import EventSourceResponse
-from app.utils.file_utils import save_upload_file
+from app.utils.file_utils import save_upload_file, UPLOAD_DIR
 from app.services.adk_agents import InsightOrchestraWorkflow, DataJanitorAgent
 from app.services.nlq_agent import NaturalLanguageQueryAgent
 from app.services.summarizer_agent import InsightSummarizerAgent
@@ -16,11 +16,11 @@ from app.services.sandbox_executor import SandboxExecutor
 from app.agent_progress import get_queue, close_queue, push_event, push_sentinel
 import os
 import logging
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Demo mode flag - disable in production
-DEMO_MODE = os.getenv("DEMO_MODE", "true").lower() == "true"
+DEMO_MODE = settings.demo_mode
 
 router = APIRouter()
 
@@ -28,10 +28,6 @@ router = APIRouter()
 from app.services.session_manager import get_session_manager
 
 _session_manager = get_session_manager()
-
-# Legacy in-memory sessions (deprecated - use _session_manager)
-_sessions = {}
-
 
 class ProcessRequest(BaseModel):
     file_path: str
@@ -54,8 +50,8 @@ def get_df(file_path: str) -> pd.DataFrame:
     if not os.path.isfile(file_path):
         raise HTTPException(status_code=404, detail="File not found.")
 
-    # Ensure the file is within allowed directories
-    allowed_dirs = ["/tmp", "uploads"]
+    # Ensure the file is within allowed directories (absolute paths only)
+    allowed_dirs = ["/tmp", UPLOAD_DIR]
     real_path = os.path.realpath(file_path)
     if not any(real_path.startswith(allowed_dir) for allowed_dir in allowed_dirs):
         raise HTTPException(
@@ -81,28 +77,18 @@ async def upload_csv(file: UploadFile = File(...)):
 
 
 @router.post("/process")
-def process_data(request: ProcessRequest, session_id: Optional[str] = None):
+async def process_data(request: ProcessRequest, session_id: Optional[str] = None):
     """Run full Insight Orchestra workflow with real-time agent progress events."""
     df = get_df(request.file_path)
-
-    # Instrument the four-agent pipeline with real SSE events
-    agents_order = [
-        ("janitor",    "Data Janitor"),
-        ("hypothesis", "Hypothesis Bot"),
-        ("debate",     "Debate Manager"),
-        ("viz",        "Viz Whiz"),
-    ]
-
-    # Run inside a thread to avoid blocking the event loop,
-    # while still being able to push events.
     workflow = InsightOrchestraWorkflow()
-
-    # Manually step through the workflow so we can emit events between stages.
     sid = session_id
+
+    def _run_janitor():
+        return workflow.cleaner.run(df.to_dict(orient="records"))
 
     push_event(sid, agent_id="janitor", status="running")
     t0 = time.monotonic()
-    cleaner_result = workflow.cleaner.run(df.to_dict(orient="records"))
+    cleaner_result = await asyncio.to_thread(_run_janitor)
     cleaned_data = cleaner_result["cleaned_data"]
     r = cleaner_result["report"]
     push_event(sid, agent_id="janitor", status="done",
@@ -111,7 +97,7 @@ def process_data(request: ProcessRequest, session_id: Optional[str] = None):
 
     push_event(sid, agent_id="hypothesis", status="running")
     t0 = time.monotonic()
-    hypothesis_result = workflow.hypothesis.run(cleaned_data)
+    hypothesis_result = await asyncio.to_thread(workflow.hypothesis.run, cleaned_data)
     hypotheses = hypothesis_result["hypotheses"]
     push_event(sid, agent_id="hypothesis", status="done",
                output=f"Generated {len(hypotheses)} hypotheses.",
@@ -119,15 +105,17 @@ def process_data(request: ProcessRequest, session_id: Optional[str] = None):
 
     push_event(sid, agent_id="debate", status="running")
     t0 = time.monotonic()
-    debate_result = workflow.debate.run(hypotheses)
+    debate_result = await asyncio.to_thread(workflow.debate.run, hypotheses)
     consensus = debate_result["summary"].get("consensus")
     push_event(sid, agent_id="debate", status="done",
-               output=f"Top hypothesis scored. Consensus reached.",
+               output="Top hypothesis scored. Consensus reached.",
                duration=int((time.monotonic() - t0) * 1000))
 
     push_event(sid, agent_id="viz", status="running")
     t0 = time.monotonic()
-    viz_result = workflow.viz.run(cleaned_data, consensus, hypotheses=hypotheses)
+    viz_result = await asyncio.to_thread(
+        workflow.viz.run, cleaned_data, consensus, hypotheses=hypotheses
+    )
     num_plots = len(viz_result.get("chart_info", {}).get("plots", []))
     push_event(sid, agent_id="viz", status="done",
                output=f"Generated {num_plots} chart(s).",
@@ -144,7 +132,7 @@ def process_data(request: ProcessRequest, session_id: Optional[str] = None):
 
 
 @router.post("/nlq")
-def natural_language_query(request: NLQRequest):
+async def natural_language_query(request: NLQRequest):
     """Natural language query with LLM-powered code generation."""
     sid = request.session_id
     df = get_df(request.file_path)
@@ -153,7 +141,9 @@ def natural_language_query(request: NLQRequest):
     push_event(sid, agent_id="janitor", status="running")
     t0 = time.monotonic()
     janitor = DataJanitorAgent(name="nlq_cleaner")
-    cleaned_result = janitor.run(df.to_dict(orient="records"))
+    cleaned_result = await asyncio.to_thread(
+        janitor.run, df.to_dict(orient="records")
+    )
     df = pd.DataFrame(cleaned_result["cleaned_data"])
     report = cleaned_result["report"]
     janitor_summary = (
@@ -171,10 +161,27 @@ def natural_language_query(request: NLQRequest):
     if sid:
         context = _session_manager.get(sid)
 
-    # --- Phase 2: NLQ Agent (maps to no visible pipeline card; internally
-    #     it generates code + executes it via sandbox) ---
+    # --- Phase 2: NLQ Agent ---
+    push_event(sid, agent_id="nlq", status="running")
+    t0 = time.monotonic()
     agent = NaturalLanguageQueryAgent()
-    response = agent.run(df, request.question, context)
+    response = await asyncio.to_thread(agent.run, df, request.question, context, sid)
+    if response.execution_success:
+        push_event(
+            sid,
+            agent_id="nlq",
+            status="done",
+            output="Generated and executed query successfully.",
+            duration=int((time.monotonic() - t0) * 1000),
+        )
+    else:
+        push_event(
+            sid,
+            agent_id="nlq",
+            status="error",
+            output=response.error or "Query execution failed.",
+            duration=int((time.monotonic() - t0) * 1000),
+        )
 
     # --- Phase 3: Viz Whiz (emit only when a plot was produced) ---
     if response.plot_json:

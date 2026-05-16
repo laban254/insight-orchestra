@@ -8,6 +8,35 @@ export function FileUpload({ onUploadSuccess }: { onUploadSuccess: (filePath: st
     const [isUploading, setIsUploading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    const getErrorMessage = (err: unknown, fallback: string) => {
+        if (
+            typeof err === "object" &&
+            err !== null &&
+            "response" in err &&
+            typeof (err as { response?: unknown }).response === "object"
+        ) {
+            const response = (err as { response?: { data?: { detail?: string } } }).response;
+            return response?.data?.detail ?? fallback;
+        }
+        if (err instanceof Error) {
+            return err.message;
+        }
+        return fallback;
+    };
+
+    const uploadFile = useCallback(async (file: File) => {
+        setError(null);
+        setIsUploading(true);
+        try {
+            const result = await api.uploadFile(file);
+            onUploadSuccess(result.file_path);
+        } catch (err: unknown) {
+            setError(getErrorMessage(err, "Upload failed"));
+        } finally {
+            setIsUploading(false);
+        }
+    }, [onUploadSuccess]);
+
     const handleDrag = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         e.stopPropagation();
@@ -26,25 +55,12 @@ export function FileUpload({ onUploadSuccess }: { onUploadSuccess: (filePath: st
         if (e.dataTransfer.files && e.dataTransfer.files[0]) {
             await uploadFile(e.dataTransfer.files[0]);
         }
-    }, []);
+    }, [uploadFile]);
 
     const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         e.preventDefault();
         if (e.target.files && e.target.files[0]) {
             await uploadFile(e.target.files[0]);
-        }
-    };
-
-    const uploadFile = async (file: File) => {
-        setError(null);
-        setIsUploading(true);
-        try {
-            const result = await api.uploadFile(file);
-            onUploadSuccess(result.file_path);
-        } catch (err: any) {
-            setError(err.response?.data?.detail || err.message || "Upload failed");
-        } finally {
-            setIsUploading(false);
         }
     };
 
@@ -54,8 +70,8 @@ export function FileUpload({ onUploadSuccess }: { onUploadSuccess: (filePath: st
         try {
             const result = await api.loadDemoData();
             onUploadSuccess(result.file_path);
-        } catch (err: any) {
-            setError(err.response?.data?.detail || err.message || "Failed to load demo");
+        } catch (err: unknown) {
+            setError(getErrorMessage(err, "Failed to load demo"));
         } finally {
             setIsUploading(false);
         }
@@ -103,7 +119,7 @@ export function FileUpload({ onUploadSuccess }: { onUploadSuccess: (filePath: st
             )}
 
             <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-500">Don't have a dataset?</span>
+                <span className="text-sm text-gray-500">Don&apos;t have a dataset?</span>
                 <button
                     onClick={loadDemo}
                     disabled={isUploading}

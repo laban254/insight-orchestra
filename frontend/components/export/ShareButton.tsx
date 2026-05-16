@@ -4,7 +4,12 @@ import { useState } from "react";
 import { Share2, Check, ExternalLink } from "lucide-react";
 import { api } from "@/lib/api";
 
-export function ShareButton({ sessionId, currentMessages }: { sessionId: string, currentMessages: any[] }) {
+interface ShareButtonProps {
+    sessionId: string;
+    currentMessages: unknown[];
+}
+
+export function ShareButton({ sessionId, currentMessages }: ShareButtonProps) {
     const [isSharing, setIsSharing] = useState(false);
     const [shareUrl, setShareUrl] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);

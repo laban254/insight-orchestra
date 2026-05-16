@@ -10,13 +10,14 @@ This module provides:
 
 import json
 import logging
-import os
+import threading
 from typing import Dict, List, Any, Optional
+
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Session configuration
-SESSION_TTL_SECONDS = int(os.getenv("SESSION_TTL_SECONDS", 3600))  # 1 hour default
+SESSION_TTL_SECONDS = settings.session_ttl_seconds
 MAX_HISTORY_PER_SESSION = 10
 
 
@@ -29,19 +30,18 @@ class SessionManager:
         self._redis_client = None
         self._use_redis = False
         self._memory_store: Dict[str, List[Dict]] = {}
-        
+        self._lock = threading.Lock()   # guards _memory_store read-modify-write
+
         # Try to initialize Redis
         self._init_redis()
     
     def _init_redis(self):
         """Initialize Redis connection if available."""
-        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
-        
-        if redis_url == "redis://localhost:6379":
-            # Check if Redis is explicitly disabled
-            if os.getenv("USE_REDIS", "true").lower() == "false":
-                logger.info("Redis disabled via USE_REDIS=false, using in-memory sessions")
-                return
+        redis_url = settings.redis_url
+
+        if not settings.use_redis:
+            logger.info("Redis disabled via USE_REDIS=false, using in-memory sessions")
+            return
         
         try:
             import redis
@@ -67,14 +67,12 @@ class SessionManager:
         """
         if self._use_redis and self._redis_client:
             try:
-                data = self._redis_client.get(f"session:{session_id}")
-                if data:
-                    return json.loads(data)
+                items = self._redis_client.lrange(f"session:{session_id}", 0, -1)
+                return [json.loads(item) for item in items]
             except Exception as e:
                 logger.error(f"Redis get error: {e}")
-        
-        # Fallback to memory
-        return self._memory_store.get(session_id, [])
+
+        return list(self._memory_store.get(session_id, []))
     
     def set(self, session_id: str, history: List[Dict[str, Any]]) -> None:
         """
@@ -84,39 +82,48 @@ class SessionManager:
             session_id: The session identifier
             history: List of interactions to store
         """
-        # Limit history size
         history = history[-MAX_HISTORY_PER_SESSION:]
-        
+
         if self._use_redis and self._redis_client:
             try:
-                self._redis_client.setex(
-                    f"session:{session_id}",
-                    SESSION_TTL_SECONDS,
-                    json.dumps(history)
-                )
+                key = f"session:{session_id}"
+                pipe = self._redis_client.pipeline()
+                pipe.delete(key)
+                for item in history:
+                    pipe.rpush(key, json.dumps(item))
+                pipe.expire(key, SESSION_TTL_SECONDS)
+                pipe.execute()
                 return
             except Exception as e:
                 logger.error(f"Redis set error: {e}")
-        
-        # Fallback to memory
-        self._memory_store[session_id] = history
+
+        with self._lock:
+            self._memory_store[session_id] = list(history)
     
     def append(self, session_id: str, interaction: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
-        Append an interaction to session history.
-        
-        Args:
-            session_id: The session identifier
-            interaction: The interaction to add
-            
-        Returns:
-            Updated session history
+        Append an interaction to session history (atomic in both backends).
         """
-        history = self.get(session_id)
-        history.append(interaction)
-        history = history[-MAX_HISTORY_PER_SESSION:]
-        self.set(session_id, history)
-        return history
+        if self._use_redis and self._redis_client:
+            try:
+                key = f"session:{session_id}"
+                pipe = self._redis_client.pipeline()
+                pipe.rpush(key, json.dumps(interaction))
+                pipe.ltrim(key, -MAX_HISTORY_PER_SESSION, -1)
+                pipe.expire(key, SESSION_TTL_SECONDS)
+                pipe.execute()
+                return self.get(session_id)
+            except Exception as e:
+                logger.error(f"Redis append error: {e}")
+
+        # In-memory: lock protects the read-modify-write
+        with self._lock:
+            history = self._memory_store.get(session_id, [])
+            history = list(history)   # copy before mutating
+            history.append(interaction)
+            history = history[-MAX_HISTORY_PER_SESSION:]
+            self._memory_store[session_id] = history
+            return list(history)
     
     def delete(self, session_id: str) -> None:
         """

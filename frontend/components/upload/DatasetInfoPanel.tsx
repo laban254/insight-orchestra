@@ -2,6 +2,7 @@
 
 import { X, ChevronDown } from "lucide-react";
 import { useState } from "react";
+import { DemoDataset } from "@/lib/types";
 
 interface DatasetInfo {
   name: string;
@@ -21,7 +22,7 @@ export function DatasetInfoPanel({
   info: DatasetInfo | null;
   onReset: () => void;
   onSwitch?: (datasetId: string) => void | Promise<void>;
-  availableDatasets?: any;
+  availableDatasets?: Record<string, DemoDataset> | null;
 }) {
   const [showMenu, setShowMenu] = useState(false);
 
@@ -79,7 +80,7 @@ export function DatasetInfoPanel({
 
             {showMenu && (
               <div className="absolute right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
-                {Object.entries(availableDatasets).map(([id, config]: [string, any]) => (
+                {Object.entries(availableDatasets).map(([id, config]) => (
                   <button
                     key={id}
                     onClick={() => {

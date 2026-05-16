@@ -8,6 +8,7 @@ This agent:
 4. Returns results with visualizations
 """
 
+import re
 import pandas as pd
 import plotly.express as px
 import json
@@ -15,10 +16,17 @@ import logging
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 
-from app.services.llm_service import LLMService, LLMConfig, DataFrameSchema
+from app.services.llm_service import LLMService, LLMConfig, DataFrameSchema, LLMProvider
 from app.services.sandbox_executor import SandboxExecutor, ExecutionResult
 
 logger = logging.getLogger(__name__)
+
+# Keywords that indicate the user wants a visualization
+_PLOT_KEYWORDS = {
+    "plot", "chart", "graph", "visualize", "visualise", "draw",
+    "display", "show", "bar", "histogram", "scatter", "pie",
+    "heatmap", "line", "trend", "distribution",
+}
 
 
 @dataclass
@@ -26,7 +34,7 @@ class NLQResponse:
     """Response from NLQ Agent."""
     answer: str
     code: str
-    reasoning: str
+    reasoning: str = ""
     plot_json: Optional[str] = None
     data_result: Optional[Any] = None
     needs_clarification: bool = False
@@ -99,7 +107,17 @@ Code: result = px.scatter(df, x='age', y='salary', color='department')
 Example 4 - Filtering:
 Code: result = df[df['price'] > 100]
 """
-    
+
+    # Stripped-down prompt for small Ollama models (< 2 B params).
+    # Uses ~60 % fewer tokens, leaving the model more room for its completion.
+    COMPACT_SYSTEM_PROMPT = (
+        "Python data analyst. `df` is already loaded. `pd` and `px` are imported.\n"
+        "Rules: no imports, no df= reassignment, assign final answer to `result`.\n"
+        "Respond with JSON only — no markdown:\n"
+        '{"reasoning":"<one line>","code":"result = ...","needs_clarification":false,'
+        '"clarification_question":null}'
+    )
+
     def __init__(self, llm_service: Optional[LLMService] = None,
                  sandbox: Optional[SandboxExecutor] = None,
                  max_retries: int = 2):
@@ -115,53 +133,175 @@ Code: result = df[df['price'] > 100]
         self.sandbox = sandbox or SandboxExecutor(timeout_seconds=30)
         self.max_retries = max_retries
     
+    @staticmethod
+    def _is_plot_question(question: str) -> bool:
+        """Return True if any word in the question signals a visualization request."""
+        words = set(re.findall(r"[a-z]+", question.lower()))
+        return bool(words & _PLOT_KEYWORDS)
+
     def _get_schema_prompt(self, df: pd.DataFrame) -> str:
-        """Generate schema prompt from DataFrame."""
-        schema = DataFrameSchema.from_dataframe(df)
+        """Generate schema prompt from DataFrame, capped at 50 columns."""
+        schema = DataFrameSchema.from_dataframe(df, max_columns=50)
         return DataFrameSchema.to_prompt(schema)
-    
-    def _generate_code(self, df: pd.DataFrame, question: str,
-                       context: Optional[List[Dict]] = None) -> Dict[str, Any]:
+
+    def _build_few_shot_examples(self, df: pd.DataFrame) -> str:
+        """Generate 1–2 concrete examples using the actual column names."""
+        numeric = df.select_dtypes(include="number").columns.tolist()
+        categorical = df.select_dtypes(
+            include=["object", "string", "category"]
+        ).columns.tolist()
+
+        examples: List[str] = []
+        if categorical and numeric:
+            c, n = categorical[0], numeric[0]
+            examples.append(
+                f"# Group and aggregate\n"
+                f"result = df.groupby('{c}')['{n}'].sum().reset_index()"
+            )
+            examples.append(
+                f"# Bar chart\n"
+                f"result = px.bar("
+                f"df.groupby('{c}')['{n}'].mean().reset_index(), "
+                f"x='{c}', y='{n}')"
+            )
+        elif len(numeric) >= 2:
+            a, b = numeric[0], numeric[1]
+            examples.append(f"# Scatter\nresult = px.scatter(df, x='{a}', y='{b}')")
+            examples.append(f"# Correlation\nresult = df[['{a}', '{b}']].corr()")
+        elif numeric:
+            n = numeric[0]
+            examples.append(f"# Mean\nresult = df['{n}'].mean()")
+            examples.append(f"# Histogram\nresult = px.histogram(df, x='{n}')")
+        return "\n\n".join(examples)
+
+    def _pick_system_prompt(self, is_plot: bool) -> str:
         """
-        Generate Python code from natural language question.
+        Return the shortest effective system prompt for the active provider.
+        Ollama with small models gets the compact version to preserve token budget.
         """
-        user_prompt = f"""DataFrame Information:
-{self._get_schema_prompt(df)}
-
-User Question: {question}
-
-{'Previous Context:' + str(context) if context else ''}
-
-Generate Python code to answer this question. Assign the result to a variable called `result`."""
-
-        system_prompt = self.SYSTEM_PROMPT
-        is_plot = any(word in question.lower() for word in ['plot', 'chart', 'graph', 'visualize', 'draw'])
-        
+        is_ollama = (
+            hasattr(self.llm, "config")
+            and self.llm.config.provider == LLMProvider.OLLAMA
+        )
+        if is_ollama:
+            return self.COMPACT_SYSTEM_PROMPT
         if is_plot:
-            system_prompt = """You are a Plotly Chart Generator.
-You have access to a pandas DataFrame called `df` and plotly.express as `px`.
+            return (
+                "You are a Plotly Chart Generator.\n"
+                "You have access to a pandas DataFrame called `df` and plotly.express as `px`.\n\n"
+                "CRITICAL RULE: generate a Plotly chart with `px` and assign it to `result`.\n"
+                "NEVER use `df.plot()`.\n\n"
+                "OUTPUT FORMAT (JSON only):\n"
+                '{{"reasoning":"...","code":"result = px.bar(...)","needs_clarification":false,'
+                '"clarification_question":null}}'
+            )
+        return self.SYSTEM_PROMPT
 
-CRITICAL RULE:
-You MUST generate a Plotly chart using `px` and assign it to `result`.
-NEVER use `df.plot()`.
+    @staticmethod
+    def _fix_matplotlib_code(code: str) -> str:
+        """
+        Replace matplotlib plt.* calls with plotly express px.* equivalents.
+        Small models often generate matplotlib code instead of plotly.
+        """
+        replacements = [
+            (r"plt\.bar\s*\(", "px.bar("),
+            (r"plt\.barh\s*\(", "px.bar("),
+            (r"plt\.hist\s*\(", "px.histogram("),
+            (r"plt\.scatter\s*\(", "px.scatter("),
+            (r"plt\.plot\s*\(", "px.line("),
+            (r"plt\.pie\s*\(", "px.pie("),
+            (r"plt\.boxplot\s*\(", "px.box("),
+        ]
+        for pattern, replacement in replacements:
+            code = re.sub(pattern, replacement, code)
+        # Remove plt.* calls that have no px equivalent (show, title, xlabel, etc.)
+        code = re.sub(r"^\s*plt\.[a-zA-Z_]+\(.*\)\s*$", "", code, flags=re.MULTILINE)
+        return code
 
-Example:
-result = px.bar(df.head(5), x='director', y='box_office_million')
-"""
+    @staticmethod
+    def _fix_column_names(code: str, df: pd.DataFrame) -> str:
+        """
+        Scan quoted string literals in generated code and replace any value that
+        isn't a real column name with the closest real one.
+
+        Matching strategy (in order):
+          1. Exact match — leave it alone.
+          2. Case-insensitive match — fix capitalisation.
+          3. Substring match — model used part of a column name.
+          4. Difflib edit-distance (cutoff 0.75) — catches typos like 'revnue'.
+          5. No match — leave as-is so sandbox can report the real error.
+        """
+        import difflib
+        columns = df.columns.tolist()
+        col_lower = {c.lower(): c for c in columns}
+
+        def _closest(token: str) -> str:
+            if token in columns:
+                return token
+            tl = token.lower()
+            if tl in col_lower:
+                return col_lower[tl]
+            for col in columns:
+                if tl in col.lower() or col.lower() in tl:
+                    return col
+            close = difflib.get_close_matches(tl, col_lower.keys(), n=1, cutoff=0.75)
+            if close:
+                return col_lower[close[0]]
+            return token
+
+        def _replace(match: re.Match) -> str:
+            quote, token = match.group(1), match.group(2)
+            return f"{quote}{_closest(token)}{quote}"
+
+        return re.sub(r"(['\"])([A-Za-z0-9_ ]+)\1", _replace, code)
+
+    @staticmethod
+    def _recover_truncated_code(code: str) -> str:
+        """
+        When a small model cuts off mid-expression the result is a SyntaxError.
+        Walk backwards line by line until we find a syntactically valid prefix,
+        then return that prefix so at least a partial result is attempted.
+        """
+        lines = code.split("\n")
+        for end in range(len(lines), 0, -1):
+            fragment = "\n".join(lines[:end]).strip()
+            if not fragment:
+                continue
+            try:
+                compile(fragment, "<recovery>", "exec")
+                return fragment
+            except SyntaxError:
+                continue
+        return code  # nothing worked; return original so sandbox can report it
+
+    def _generate_code(self, df: pd.DataFrame, question: str,
+                       context: Optional[List[Dict]] = None,
+                       session_id: Optional[str] = None) -> Dict[str, Any]:
+        """Generate Python code from a natural language question."""
+        is_plot = self._is_plot_question(question)
+        few_shot = self._build_few_shot_examples(df)
+
+        user_prompt = (
+            f"DataFrame Information:\n{self._get_schema_prompt(df)}\n\n"
+            f"Examples using these exact columns:\n{few_shot}\n\n"
+            f"User Question: {question}\n\n"
+            + (f"Previous Context:\n{context}\n\n" if context else "")
+            + "Generate Python code to answer this question. Assign the result to `result`."
+        )
+
+        system_prompt = self._pick_system_prompt(is_plot)
 
         use_fallback = len(question) > 200 or any(
-            word in question.lower() for word in ['complex', 'compare', 'analyze']
+            w in question.lower() for w in ("complex", "compare", "analyze")
         )
-        
+
         try:
             response = self.llm.complete_json(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                use_fallback=use_fallback,
+                system_prompt, user_prompt, use_fallback=use_fallback
             )
             return response
         except Exception as e:
-            logger.error(f"LLM call failed: {e}")
+            logger.error(f"[session={session_id}] LLM call failed: {e}")
             raise
     
     def _ensure_result_assignment(self, code: str) -> str:
@@ -219,31 +359,20 @@ result = px.bar(df.head(5), x='director', y='box_office_million')
             clean_lines.append(line)
         
         # If last line is an expression (not assignment), wrap it
+        # Match simple assignment: identifier (optionally subscripted) followed by =
+        # but NOT ==, !=, <=, >=
+        _ASSIGN_RE = re.compile(r"^[A-Za-z_]\w*(\[.*?\])?\s*(?<![=!<>])=(?!=)")
         if last_non_comment_idx >= 0:
             last_line = clean_lines[last_non_comment_idx].strip()
-            
-            # Check if last line is an assignment
-            if '=' not in last_line or last_line.startswith(('if ', 'for ', 'while ')):
-                # It's an expression, wrap it
+
+            is_assignment = bool(_ASSIGN_RE.match(last_line))
+            is_control = last_line.startswith(('if ', 'for ', 'while ', 'with ', 'try', 'def ', 'class '))
+
+            if not is_assignment and not is_control:
                 indent = len(clean_lines[last_non_comment_idx]) - len(clean_lines[last_non_comment_idx].lstrip())
                 clean_lines[last_non_comment_idx] = ' ' * indent + f'result = {last_line}'
         
         return '\n'.join(clean_lines)
-    
-    def _execute_code(self, code: str, df: pd.DataFrame) -> ExecutionResult:
-        """
-        Execute generated code in sandbox.
-        
-        Args:
-            code: Python code to execute
-            df: pandas DataFrame
-            
-        Returns:
-            ExecutionResult
-        """
-        # Ensure code assigns to result
-        code = self._ensure_result_assignment(code)
-        return self.sandbox.execute_with_retry(code, df, max_retries=self.max_retries)
     
     def _build_answer(self, result: Any, question: str) -> str:
         """Build natural language answer from result."""
@@ -266,34 +395,63 @@ result = px.bar(df.head(5), x='director', y='box_office_million')
         
         elif result is None:
             return "Query executed but no result was returned."
+        elif "matplotlib" in type(result).__module__.lower():
+            return "Chart generated successfully."
         
         else:
             return str(result)
+
+    def _build_fallback_plot(self, df: pd.DataFrame, result_obj: Any):
+        """Build a Plotly chart when chart mode returns a non-Plotly object."""
+        # If query result is a DataFrame, prefer plotting that.
+        if isinstance(result_obj, pd.DataFrame) and not result_obj.empty:
+            numeric_cols = result_obj.select_dtypes(include=["number"]).columns.tolist()
+            categorical_cols = result_obj.select_dtypes(include=["object", "string", "category"]).columns.tolist()
+            if categorical_cols and numeric_cols:
+                return px.bar(result_obj, x=categorical_cols[0], y=numeric_cols[0])
+            if len(numeric_cols) >= 2:
+                return px.scatter(result_obj, x=numeric_cols[0], y=numeric_cols[1])
+            if len(numeric_cols) == 1:
+                return px.histogram(result_obj, x=numeric_cols[0])
+
+        # Fallback to original dataset
+        numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
+        categorical_cols = df.select_dtypes(include=["object", "string", "category"]).columns.tolist()
+        if categorical_cols and numeric_cols:
+            grouped = df.groupby(categorical_cols[0])[numeric_cols[0]].mean().reset_index()
+            return px.bar(grouped, x=categorical_cols[0], y=numeric_cols[0])
+        if len(numeric_cols) >= 2:
+            return px.scatter(df, x=numeric_cols[0], y=numeric_cols[1])
+        if len(numeric_cols) == 1:
+            return px.histogram(df, x=numeric_cols[0])
+        return None
     
+    _PLOTLY_FALLBACK = (
+        "\nif hasattr(result, 'columns') and len(result.columns) >= 2:\n"
+        "    str_cols = result.select_dtypes(include=['object', 'string']).columns\n"
+        "    num_cols = result.select_dtypes(include=['number']).columns\n"
+        "    if len(str_cols) > 0 and len(num_cols) > 0:\n"
+        "        result = px.bar(result, x=str_cols[0], y=num_cols[-1])\n"
+        "    else:\n"
+        "        result = px.bar(result, x=result.columns[1], y=result.columns[-1])\n"
+    )
+
     def run(self, df: pd.DataFrame, question: str,
-            context: Optional[List[Dict]] = None) -> NLQResponse:
-        """
-        Process natural language query.
-        
-        Args:
-            df: pandas DataFrame
-            question: User's question
-            context: Optional conversation history
-            
-        Returns:
-            NLQResponse object
-        """
-        logger.info(f"Processing NLQ: {question[:100]}...")
-        
+            context: Optional[List[Dict]] = None,
+            session_id: Optional[str] = None) -> NLQResponse:
+        """Process a natural language query against the DataFrame."""
+        sid = session_id or "?"
+        logger.info(f"[session={sid}] Processing NLQ: {question[:100]!r}")
+
         try:
             # Step 1: Generate code
-            llm_response = self._generate_code(df, question, context)
-            
+            llm_response = self._generate_code(df, question, context, session_id)
+
             reasoning = llm_response.get("reasoning", "")
             code = llm_response.get("code", "")
             needs_clarification = llm_response.get("needs_clarification", False)
             clarification_question = llm_response.get("clarification_question")
-            
+
             if needs_clarification:
                 return NLQResponse(
                     answer=clarification_question or "Could you clarify your question?",
@@ -304,56 +462,80 @@ result = px.bar(df.head(5), x='director', y='box_office_million')
                     tokens_used=self.llm.total_tokens,
                     cost_usd=self.llm.total_cost,
                 )
-            
-            # Step 2: Execute code
-            executed_code = self._ensure_result_assignment(code)
-            
-            is_plot = any(word in question.lower() for word in ['plot', 'chart', 'graph', 'visualize', 'draw'])
-            logger.info(f"is_plot={is_plot}, generated_code:\n{executed_code}")
-            
-            if is_plot and "px." not in executed_code and "plotly" not in executed_code:
-                logger.info("Auto-injecting plotly fallback into executed_code.")
-                executed_code += "\nif hasattr(result, 'columns') and len(result.columns) >= 2:\n"
-                executed_code += "    # Auto-generate fallback bar chart if there are columns\n"
-                executed_code += "    # using the first string column as x and first numeric as y\n"
-                executed_code += "    str_cols = result.select_dtypes(include=['object', 'string']).columns\n"
-                executed_code += "    num_cols = result.select_dtypes(include=['number']).columns\n"
-                executed_code += "    if len(str_cols) > 0 and len(num_cols) > 0:\n"
-                executed_code += "        result = px.bar(result, x=str_cols[0], y=num_cols[-1])\n"
-                executed_code += "    else:\n"
-                executed_code += "        result = px.bar(result, x=result.columns[1], y=result.columns[-1])\n"
 
-            logger.info("Starting sandbox execution for code.")
-            exec_result = self.sandbox.execute_with_retry(executed_code, df, max_retries=self.max_retries)
-            
+            # Step 2: Pre-process generated code
+            # Replace matplotlib plt.* with plotly px.* equivalents
+            code = self._fix_matplotlib_code(code)
+            # Fix hallucinated column names before anything else
+            code = self._fix_column_names(code, df)
+            # Recover from model truncation (unclosed parens / syntax errors)
+            code = self._recover_truncated_code(code)
+
+            executed_code = self._ensure_result_assignment(code)
+            is_plot = self._is_plot_question(question)
+            logger.info(f"[session={sid}] is_plot={is_plot}")
+
+            if is_plot and "px." not in executed_code and "plotly" not in executed_code:
+                logger.info(f"[session={sid}] Auto-injecting plotly fallback")
+                executed_code += self._PLOTLY_FALLBACK
+
+            exec_result = self.sandbox.execute_with_retry(
+                executed_code, df, max_retries=self.max_retries
+            )
+
             if not exec_result.success:
-                logger.error(f"Sandbox execution failed: {exec_result.error}")
-                # On error, try once more with a simplified approach
-                simplified_prompt = f"""Previous code failed with error: {exec_result.error}\n\nGenerate simpler, more robust Python code that assigns the result to a variable called `result`.\nUse basic pandas operations only."""
-                
+                logger.error(f"[session={sid}] Sandbox failed: {exec_result.error}")
+                valid_cols = df.columns.tolist()
+                retry_prompt = (
+                    f"Original question: {question}\n\n"
+                    f"VALID column names (use ONLY these): {valid_cols}\n\n"
+                    f"Previous code failed with error: {exec_result.error}\n\n"
+                    "Generate simpler, corrected Python code. "
+                    "Assign the result to `result`. Use basic pandas operations only."
+                )
                 try:
                     retry_response = self.llm.complete_json(
                         system_prompt=self.SYSTEM_PROMPT,
-                        user_prompt=simplified_prompt,
+                        user_prompt=retry_prompt,
                     )
                     retry_code = retry_response.get("code", "")
                     if retry_code:
-                        logger.info(f"Retrying with simplified code:\n{retry_code}")
+                        logger.info(f"[session={sid}] Retrying with simplified code")
                         executed_code = self._ensure_result_assignment(retry_code)
-                        exec_result = self.sandbox.execute_with_retry(executed_code, df, max_retries=self.max_retries)
+                        exec_result = self.sandbox.execute_with_retry(
+                            executed_code, df, max_retries=self.max_retries
+                        )
                         if not exec_result.success:
-                            logger.error(f"Retry execution also failed: {exec_result.error}")
+                            logger.error(
+                                f"[session={sid}] Retry also failed: {exec_result.error}"
+                            )
                 except Exception as e:
-                    logger.error(f"Failed to generate retry code: {e}")
+                    logger.error(f"[session={sid}] Retry code generation failed: {e}")
             
             # Step 3: Build answer
             answer = self._build_answer(exec_result.result, question)
             
-            # Step 4: Extract plot JSON if result is a figure
+            # Step 4: Extract plot JSON if result is a Plotly figure.
+            # NOTE: pandas DataFrames also have to_json(), so we MUST check the module
+            # name before calling it — otherwise we send pandas JSON to the frontend
+            # and the chart never renders.
             plot_json = None
             result_obj = exec_result.result
-            if hasattr(result_obj, "to_plotly_json") and "plotly" in type(result_obj).__module__:
+            if (
+                result_obj is not None
+                and hasattr(result_obj, "to_plotly_json")
+                and "plotly" in type(result_obj).__module__
+            ):
                 plot_json = result_obj.to_json()
+
+            if is_plot and not plot_json:
+                try:
+                    fallback_fig = self._build_fallback_plot(df, result_obj)
+                    if fallback_fig is not None:
+                        plot_json = fallback_fig.to_json()
+                        answer = "Chart generated successfully."
+                except Exception as e:
+                    logger.error(f"Fallback chart generation failed: {e}")
             
             return NLQResponse(
                 answer=answer,
@@ -368,7 +550,7 @@ result = px.bar(df.head(5), x='director', y='box_office_million')
             )
             
         except Exception as e:
-            logger.error(f"NLQ processing failed: {e}")
+            logger.error(f"[session={sid}] NLQ processing failed: {e}")
             return NLQResponse(
                 answer=f"Error processing your question: {str(e)}",
                 code="",

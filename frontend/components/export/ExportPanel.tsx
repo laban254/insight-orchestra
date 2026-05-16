@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Download, FileCode, FileText, Table } from "lucide-react";
+import { FileCode, FileText, Table } from "lucide-react";
 import { api } from "@/lib/api";
 
 interface ExportPanelProps {

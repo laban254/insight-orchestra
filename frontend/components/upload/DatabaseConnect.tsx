@@ -2,12 +2,33 @@
 
 import { useState } from "react";
 import { api } from "@/lib/api";
+import { Schema } from "@/lib/types";
 
-export function DatabaseConnect({ onConnectSuccess }: { onConnectSuccess: (schema: any) => void }) {
+interface DatabaseConnectProps {
+    onConnectSuccess: (schema: Schema) => void;
+}
+
+export function DatabaseConnect({ onConnectSuccess }: DatabaseConnectProps) {
     const [type, setType] = useState("postgresql");
     const [connectionString, setConnectionString] = useState("");
     const [isConnecting, setIsConnecting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    const getErrorMessage = (err: unknown) => {
+        if (
+            typeof err === "object" &&
+            err !== null &&
+            "response" in err &&
+            typeof (err as { response?: unknown }).response === "object"
+        ) {
+            const response = (err as { response?: { data?: { detail?: string } } }).response;
+            return response?.data?.detail ?? "Connection failed";
+        }
+        if (err instanceof Error) {
+            return err.message;
+        }
+        return "Connection failed";
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -17,8 +38,8 @@ export function DatabaseConnect({ onConnectSuccess }: { onConnectSuccess: (schem
         try {
             const result = await api.connectDatabase({ type, connection_string: connectionString });
             onConnectSuccess(result.schema);
-        } catch (err: any) {
-            setError(err.response?.data?.detail || err.message || "Connection failed");
+        } catch (err: unknown) {
+            setError(getErrorMessage(err));
         } finally {
             setIsConnecting(false);
         }

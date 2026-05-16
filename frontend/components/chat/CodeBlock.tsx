@@ -7,7 +7,6 @@ import { Copy, Check, ChevronDown, ChevronUp } from "lucide-react";
 interface CodeBlockProps {
     code: string;
     language?: string;
-    onRunAgain?: () => void;
 }
 
 const LINE_HEIGHT = 21;   // px per line in Monaco at fontSize 13
@@ -15,7 +14,7 @@ const MIN_HEIGHT  = 52;   // at least 2 visible lines
 const MAX_HEIGHT  = 260;  // cap before we show "Expand"
 const COLLAPSE_THRESHOLD = 10; // lines before the expand toggle appears
 
-export function CodeBlock({ code, language = "python", onRunAgain }: CodeBlockProps) {
+export function CodeBlock({ code, language = "python" }: CodeBlockProps) {
     const [copied,   setCopied]   = useState(false);
     const [expanded, setExpanded] = useState(false);
 

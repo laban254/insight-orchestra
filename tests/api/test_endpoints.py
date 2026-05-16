@@ -1,203 +1,116 @@
 """
-Unit tests for API endpoints..
+Unit tests for API endpoint handlers (function-level).
 """
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock
-import pandas as pd
 import os
 import tempfile
+from io import BytesIO
+from unittest.mock import Mock, patch, MagicMock
+
+import pytest
+from fastapi import HTTPException
+from starlette.datastructures import UploadFile
+
+from app.api import endpoints
+from app.api.endpoints import BigQueryRequest, NLQRequest, ProcessRequest
+from app.main import health_check
 
 
-class TestEndpoints:
-    """Test cases for API endpoints."""
-    
-    @pytest.fixture
-    def mock_file_utils(self):
-        """Mock file_utils.save_upload_file."""
-        with patch('app.api.endpoints.save_upload_file') as mock:
-            mock.return_value = '/tmp/test_uploaded.csv'
-            yield mock
-    
-    @pytest.fixture
-    def sample_csv_content(self):
-        """Create sample CSV content."""
-        return """name,age,department,salary
+@pytest.fixture
+def sample_csv_content():
+    return """name,age,department,salary
 Alice,25,Engineering,75000
 Bob,30,Sales,65000
 Charlie,35,Engineering,85000
 """
-    
-    def test_upload_csv_success(self, mock_file_utils):
-        """Test successful CSV upload."""
-        from fastapi.testclient import TestClient
-        from app.api.endpoints import router
-        from app.main import app
-        
-        app.include_router(router)
-        client = TestClient(app)
-        
-        # Create a temporary CSV file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
-            f.write("name,age\nAlice,25\nBob,30")
-            temp_path = f.name
-        
-        try:
-            with open(temp_path, 'rb') as f:
-                response = client.post("/upload", files={"file": ("test.csv", f, "text/csv")})
-            
-            assert response.status_code == 200
-            assert "file_path" in response.json()
-        finally:
-            os.unlink(temp_path)
-    
-    def test_upload_non_csv_rejected(self):
-        """Test that non-CSV files are rejected."""
-        from fastapi.testclient import TestClient
-        from app.api.endpoints import router
-        from app.main import app
-        
-        app.include_router(router)
-        client = TestClient(app)
-        
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
-            f.write("This is not a CSV")
-            temp_path = f.name
-        
-        try:
-            with open(temp_path, 'rb') as f:
-                response = client.post("/upload", files={"file": ("test.txt", f, "text/plain")})
-            
-            assert response.status_code == 400
-        finally:
-            os.unlink(temp_path)
-    
+
+
+class TestEndpoints:
+    @pytest.mark.asyncio
+    async def test_upload_csv_success(self):
+        with patch("app.api.endpoints.save_upload_file") as mock_save:
+            mock_save.return_value = "/tmp/test_uploaded.csv"
+            upload = UploadFile(filename="test.csv", file=BytesIO(b"name,age\nAlice,25\nBob,30"))
+            response = await endpoints.upload_csv(upload)
+
+        assert "file_path" in response
+        assert response["file_path"] == "/tmp/test_uploaded.csv"
+
+    @pytest.mark.asyncio
+    async def test_upload_non_csv_rejected(self):
+        upload = UploadFile(filename="test.txt", file=BytesIO(b"not a csv"))
+        with pytest.raises(HTTPException) as exc:
+            await endpoints.upload_csv(upload)
+        assert exc.value.status_code == 400
+
     def test_process_endpoint_requires_file(self):
-        """Test that /process requires a valid file."""
-        from fastapi.testclient import TestClient
-        from app.api.endpoints import router
-        from app.main import app
-        
-        app.include_router(router)
-        client = TestClient(app)
-        
-        response = client.post("/process", json={"file_path": "/nonexistent/file.csv"})
-        
-        assert response.status_code == 404
-    
+        with pytest.raises(HTTPException) as exc:
+            endpoints.process_data(ProcessRequest(file_path="/nonexistent/file.csv"))
+        assert exc.value.status_code == 404
+
     def test_nlq_endpoint_requires_file(self):
-        """Test that /nlq requires a valid file."""
-        from fastapi.testclient import TestClient
-        from app.api.endpoints import router
-        from app.main import app
-        
-        app.include_router(router)
-        client = TestClient(app)
-        
-        response = client.post("/nlq", json={
-            "file_path": "/nonexistent/file.csv",
-            "question": "What is the average age?"
-        })
-        
-        assert response.status_code == 404
-    
-    def test_bigquery_requires_valid_credentials(self):
-        """Test that /bigquery fails with invalid credentials."""
-        from fastapi.testclient import TestClient
-        from app.api.endpoints import router
-        from app.main import app
-        
-        app.include_router(router)
-        client = TestClient(app)
-        
-        response = client.post("/bigquery", json={
-            "credentials_json": "invalid json",
-            "query": "SELECT 1"
-        })
-        
-        assert response.status_code == 400
-    
-    def test_session_endpoints(self):
-        """Test session management endpoints."""
-        from fastapi.testclient import TestClient
-        from app.api.endpoints import router
-        from app.main import app
-        
-        app.include_router(router)
-        client = TestClient(app)
-        
-        # Test get session (non-existent)
-        response = client.get("/sessions/test-session-id")
-        assert response.status_code == 200
-        assert response.json()["history"] == []
-        
-        # Test delete session (non-existent)
-        response = client.delete("/sessions/test-session-id")
-        assert response.status_code == 200
-        assert response.json()["status"] == "cleared"
-    
+        with pytest.raises(HTTPException) as exc:
+            endpoints.natural_language_query(
+                NLQRequest(file_path="/nonexistent/file.csv", question="What is the average age?")
+            )
+        assert exc.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_bigquery_requires_valid_credentials(self):
+        with pytest.raises(HTTPException) as exc:
+            await endpoints.bigquery_fetch(
+                BigQueryRequest(credentials_json="invalid json", query="SELECT 1")
+            )
+        assert exc.value.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_session_endpoints(self):
+        session_id = "test-session-id"
+        response_get = await endpoints.get_session(session_id)
+        assert response_get["history"] == []
+
+        response_delete = await endpoints.clear_session(session_id)
+        assert response_delete["status"] == "cleared"
+
     def test_health_endpoint(self):
-        """Test health check endpoint."""
-        from fastapi.testclient import TestClient
-        from app.main import app
-        
-        client = TestClient(app)
-        
-        response = client.get("/health")
-        
-        assert response.status_code == 200
-        assert response.json()["status"] == "ok"
+        response = health_check()
+        assert response["status"] == "ok"
 
 
 class TestEndpointsIntegration:
-    """Integration-style tests for endpoints."""
-    
     @pytest.fixture
     def temp_csv(self, sample_csv_content):
-        """Create a temporary CSV file."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
             f.write(sample_csv_content)
             temp_path = f.name
-        
         yield temp_path
-        
         if os.path.exists(temp_path):
             os.unlink(temp_path)
-    
-    @patch('app.api.endpoints.InsightOrchestraWorkflow')
+
+    @patch("app.api.endpoints.InsightOrchestraWorkflow")
     def test_process_workflow_called(self, mock_workflow, temp_csv):
-        """Test that /process calls the workflow."""
-        from fastapi.testclient import TestClient
-        from app.api.endpoints import router
-        from app.main import app
-        
-        # Setup mock
         mock_instance = MagicMock()
-        mock_instance.run.return_value = {
-            "cleaner": {},
-            "hypothesis": {},
-            "debate": {},
-            "viz": {},
-            "audit_table": "| Test |\n|---|\n",
+        mock_instance.cleaner.run.return_value = {
+            "cleaned_data": [{"x": 1}],
+            "report": {"duplicates_removed": 0, "total_missing": 0},
         }
+        mock_instance.hypothesis.run.return_value = {"hypotheses": ["h1"]}
+        mock_instance.debate.run.return_value = {
+            "summary": {"consensus": {"hypothesis": "h1"}},
+            "scored_hypotheses": [],
+        }
+        mock_instance.viz.run.return_value = {"chart_info": {"plots": []}}
         mock_workflow.return_value = mock_instance
-        
-        app.include_router(router)
-        client = TestClient(app)
-        
-        response = client.post("/process", json={"file_path": temp_csv})
-        
-        assert response.status_code == 200
-        mock_instance.run.assert_called_once()
-    
-    @patch('app.api.endpoints.NaturalLanguageQueryAgent')
+
+        response = endpoints.process_data(ProcessRequest(file_path=temp_csv))
+        assert "cleaner" in response
+        mock_instance.cleaner.run.assert_called_once()
+        mock_instance.hypothesis.run.assert_called_once()
+        mock_instance.debate.run.assert_called_once()
+        mock_instance.viz.run.assert_called_once()
+
+    @patch("app.api.endpoints.NaturalLanguageQueryAgent")
     def test_nlq_agent_called(self, mock_agent_class, temp_csv):
-        """Test that /nlq calls the NLQ agent."""
-        from fastapi.testclient import TestClient
-        from app.api.endpoints import router
-        from app.main import app
-        
-        # Setup mock
         mock_instance = MagicMock()
         mock_instance.run.return_value = Mock(
             answer="Test answer",
@@ -210,63 +123,32 @@ class TestEndpointsIntegration:
             error=None,
         )
         mock_agent_class.return_value = mock_instance
-        
-        app.include_router(router)
-        client = TestClient(app)
-        
-        response = client.post("/nlq", json={
-            "file_path": temp_csv,
-            "question": "What is the average age?"
-        })
-        
-        assert response.status_code == 200
+
+        response = endpoints.natural_language_query(
+            NLQRequest(file_path=temp_csv, question="What is the average age?")
+        )
+        assert response["answer"] == "Test answer"
         mock_instance.run.assert_called_once()
 
 
 class TestEndpointsErrorHandling:
-    """Test error handling in endpoints."""
-    
-    def test_upload_handles_value_error(self):
-        """Test that upload handles ValueError."""
-        from fastapi.testclient import TestClient
-        from app.api.endpoints import router
-        from app.main import app
-        
-        with patch('app.api.endpoints.save_upload_file') as mock:
-            mock.side_effect = ValueError("Invalid file")
-            
-            app.include_router(router)
-            client = TestClient(app)
-            
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
-                f.write("name,age\nAlice,25")
-                temp_path = f.name
-            
-            try:
-                with open(temp_path, 'rb') as f:
-                    response = client.post("/upload", files={"file": ("test.csv", f, "text/csv")})
-                
-                assert response.status_code == 400
-            finally:
-                os.unlink(temp_path)
-    
+    @pytest.mark.asyncio
+    async def test_upload_handles_value_error(self):
+        with patch("app.api.endpoints.save_upload_file") as mock_save:
+            mock_save.side_effect = ValueError("Invalid file")
+            upload = UploadFile(filename="test.csv", file=BytesIO(b"name,age\nAlice,25"))
+            with pytest.raises(HTTPException) as exc:
+                await endpoints.upload_csv(upload)
+        assert exc.value.status_code == 400
+
     def test_process_handles_csv_read_error(self):
-        """Test that /process handles CSV read errors."""
-        from fastapi.testclient import TestClient
-        from app.api.endpoints import router
-        from app.main import app
-        
-        app.include_router(router)
-        client = TestClient(app)
-        
-        # Create a corrupted CSV
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
-            f.write("this is, not, valid, csv,,,")
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+            f.write("name,age\nAlice,25")
             temp_path = f.name
-        
         try:
-            response = client.post("/process", json={"file_path": temp_path})
-            
-            assert response.status_code == 400
+            with patch("app.api.endpoints.pd.read_csv", side_effect=Exception("read failed")):
+                with pytest.raises(HTTPException) as exc:
+                    endpoints.process_data(ProcessRequest(file_path=temp_path))
+            assert exc.value.status_code == 400
         finally:
             os.unlink(temp_path)

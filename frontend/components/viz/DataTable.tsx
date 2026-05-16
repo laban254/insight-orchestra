@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronRight, FileSpreadsheet } from "lucide-react";
 
 interface DataTableProps {
     columns: string[];
-    data: Record<string, any>[];
+    data: Record<string, unknown>[];
     title?: string;
     rowCount?: number;
 }

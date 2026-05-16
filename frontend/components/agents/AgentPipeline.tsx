@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef } from "react";
 
-type AgentStatus = "waiting" | "running" | "done" | "error";
+type AgentStatus = "waiting" | "running" | "done" | "error" | "skipped";
+type PipelineMode = "analysis" | "nlq";
 
 interface Agent {
     id: string;
@@ -14,30 +15,37 @@ interface Agent {
     duration?: number;
 }
 
-const INITIAL_AGENTS: Agent[] = [
-    { id: "janitor",    name: "Data Janitor",    emoji: "🧹", description: "Cleaning duplicates, imputing missing values" },
-    { id: "hypothesis", name: "Hypothesis Bot",  emoji: "🔬", description: "Generating testable hypotheses from your data" },
-    { id: "debate",     name: "Debate Manager",  emoji: "⚖️", description: "Scoring hypotheses by confidence & business value" },
-    { id: "viz",        name: "Viz Whiz",        emoji: "📊", description: "Auto-generating Plotly charts" },
-].map(a => ({ ...a, status: "waiting" as AgentStatus }));
+const ANALYSIS_AGENTS: Omit<Agent, "status">[] = [
+    { id: "janitor", name: "Data Janitor", emoji: "🧹", description: "Cleaning duplicates, imputing missing values" },
+    { id: "hypothesis", name: "Hypothesis Bot", emoji: "🔬", description: "Generating testable hypotheses from your data" },
+    { id: "debate", name: "Debate Manager", emoji: "⚖️", description: "Scoring hypotheses by confidence & business value" },
+    { id: "viz", name: "Viz Whiz", emoji: "📊", description: "Auto-generating Plotly charts" },
+];
+
+const NLQ_AGENTS: Omit<Agent, "status">[] = [
+    { id: "janitor", name: "Data Janitor", emoji: "🧹", description: "Cleaning duplicates, imputing missing values" },
+    { id: "nlq", name: "Query Agent", emoji: "🤖", description: "Generating and executing analysis code" },
+    { id: "viz", name: "Viz Whiz", emoji: "📊", description: "Generating chart if requested" },
+];
+
+const getInitialAgents = (mode: PipelineMode): Agent[] => {
+    const base = mode === "nlq" ? NLQ_AGENTS : ANALYSIS_AGENTS;
+    return base.map((a) => ({ ...a, status: "waiting" as AgentStatus }));
+};
 
 interface AgentPipelineProps {
     sessionId: string;
     /** When true, stop listening and freeze the UI in its final state */
     isDone?: boolean;
+    mode?: PipelineMode;
 }
 
-export function AgentPipeline({ sessionId, isDone }: AgentPipelineProps) {
-    const [agents, setAgents] = useState<Agent[]>(INITIAL_AGENTS);
-    const [complete, setComplete] = useState(false);
+export function AgentPipeline({ sessionId, isDone, mode = "analysis" }: AgentPipelineProps) {
+    const [agents, setAgents] = useState<Agent[]>(getInitialAgents(mode));
     const sourceRef = useRef<EventSource | null>(null);
 
     useEffect(() => {
         if (!sessionId || isDone) return;
-
-        // Reset to initial state when a new query starts
-        setAgents(INITIAL_AGENTS);
-        setComplete(false);
 
         const source = new EventSource(
             `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/agents/stream/${sessionId}`
@@ -69,32 +77,45 @@ export function AgentPipeline({ sessionId, isDone }: AgentPipelineProps) {
             source.close();
             sourceRef.current = null;
         };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [sessionId]);
+    }, [sessionId, mode, isDone]);
 
     // When parent signals isDone, lock the pipeline
     useEffect(() => {
         if (isDone) {
             sourceRef.current?.close();
-            // Promote any lingering "running" to "done"
-            setAgents(prev => prev.map(a => a.status === "running" ? { ...a, status: "done" } : a));
-            setComplete(true);
         }
     }, [isDone]);
 
-    const anyActive = agents.some(a => a.status === "running" || a.status === "done");
+    const displayAgents = isDone
+        ? agents.map((a) => {
+              if (a.status === "running") return { ...a, status: "done" as AgentStatus };
+              if (a.status === "waiting") {
+                  if (a.id === "viz") {
+                      return {
+                          ...a,
+                          status: "skipped" as AgentStatus,
+                          output: "No chart requested for this query.",
+                      };
+                  }
+                  return { ...a, status: "skipped" as AgentStatus };
+              }
+              return a;
+          })
+        : agents;
+
+    const anyActive = displayAgents.some(a => a.status !== "waiting");
     if (!anyActive && !isDone) return null; // Hide until first event arrives
 
     return (
         <div className="flex flex-col gap-3 p-4 bg-white rounded-xl shadow-sm border border-gray-100 my-4">
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider border-b pb-2 mb-1">
-                Analysis Pipeline
+                {mode === "nlq" ? "Query Pipeline" : "Analysis Pipeline"}
             </h3>
 
-            {agents.map((agent, i) => (
+            {displayAgents.map((agent, i) => (
                 <div key={agent.id} className="flex items-start gap-3 relative">
                     {/* Connector line */}
-                    {i < agents.length - 1 && (
+                    {i < displayAgents.length - 1 && (
                         <div className="absolute left-[17px] top-9 w-0.5 h-5 bg-gray-100" />
                     )}
 
@@ -105,6 +126,7 @@ export function AgentPipeline({ sessionId, isDone }: AgentPipelineProps) {
                         ${agent.status === "running" ? "border-blue-400 bg-blue-50 animate-pulse" : ""}
                         ${agent.status === "done"    ? "border-green-400 bg-green-50" : ""}
                         ${agent.status === "error"   ? "border-red-400 bg-red-50" : ""}
+                        ${agent.status === "skipped" ? "border-gray-200 bg-gray-50" : ""}
                         ${agent.status === "waiting" ? "border-gray-100 opacity-40" : ""}
                     `}>
                         {agent.emoji}
@@ -123,6 +145,11 @@ export function AgentPipeline({ sessionId, isDone }: AgentPipelineProps) {
                             {agent.status === "done" && agent.duration != null && (
                                 <span className="text-xs text-gray-400 font-mono">{agent.duration}ms</span>
                             )}
+                            {agent.status === "skipped" && (
+                                <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                                    Skipped
+                                </span>
+                            )}
                         </div>
                         <p className="text-xs text-gray-400 mt-0.5">{agent.description}</p>
 
@@ -135,10 +162,10 @@ export function AgentPipeline({ sessionId, isDone }: AgentPipelineProps) {
                 </div>
             ))}
 
-            {complete && (
+            {isDone && (
                 <div className="mt-1 pt-2 border-t border-gray-100 flex items-center gap-1.5 text-xs text-green-600 font-medium">
                     <span>✓</span>
-                    <span>Analysis complete</span>
+                    <span>{mode === "nlq" ? "Query complete" : "Analysis complete"}</span>
                 </div>
             )}
         </div>

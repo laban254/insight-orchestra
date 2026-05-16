@@ -48,15 +48,109 @@ class DataJanitorAgent(Agent):
 class HypothesisBotAgent(Agent):
     def __init__(self, name: str, llm_service: Optional[LLMService] = None):
         super().__init__(name=name)
-        self.llm = llm_service or LLMService()
+        llm = llm_service
+        if llm is None:
+            try:
+                llm = LLMService()
+            except Exception:
+                llm = None
+        object.__setattr__(self, "llm", llm)
+
+    def _generate_fallback_hypotheses(self, df: pd.DataFrame) -> Dict[str, Any]:
+        id_like = {"id", "index", "rowid", "passengerid"}
+        numeric_cols = [
+            c for c in df.select_dtypes(include="number").columns.tolist()
+            if c.lower() not in id_like
+        ]
+        categorical_cols = [
+            c
+            for c in df.select_dtypes(include=["object", "string", "category"]).columns.tolist()
+            if c.lower() not in id_like
+        ]
+
+        hypotheses: List[str] = []
+        # numeric pair interactions
+        for i, col_a in enumerate(numeric_cols):
+            for col_b in numeric_cols[i + 1:]:
+                hypotheses.append(f"Is there a relationship between {col_a} and {col_b}?")
+        # categorical group effects
+        for cat in categorical_cols:
+            for num in numeric_cols:
+                hypotheses.append(f"Does {num} differ across {cat} groups?")
+        # single-column fallback
+        for num in numeric_cols:
+            hypotheses.append(f"How is {num} distributed across the dataset?")
+
+        # Ensure uniqueness and max 10
+        deduped: List[str] = []
+        seen = set()
+        for h in hypotheses:
+            if h not in seen:
+                seen.add(h)
+                deduped.append(h)
+            if len(deduped) >= 10:
+                break
+        if not deduped:
+            deduped = ["Is there a meaningful pattern in the available columns?"]
+
+        return {
+            "hypotheses": deduped,
+            "summary": {
+                "num_hypotheses": len(deduped),
+                "reasoning": "Heuristic-generated hypotheses (LLM unavailable).",
+                "revised": False,
+                "numeric_columns": numeric_cols,
+                "categorical_columns": categorical_cols,
+            },
+        }
+
+    @staticmethod
+    def _build_stats_summary(df: pd.DataFrame) -> str:
+        """Compact numeric stats + top categorical value counts for the prompt."""
+        lines = []
+        numeric = df.select_dtypes(include="number")
+        if not numeric.empty:
+            desc = numeric.describe().round(2)
+            lines.append("Numeric statistics (describe):")
+            lines.append(desc.to_string())
+
+            # Correlation pairs above threshold
+            if numeric.shape[1] >= 2:
+                corr = numeric.corr().abs()
+                pairs = (
+                    corr.where(
+                        ~(corr == 1.0) & (corr > 0.4)
+                    )
+                    .stack()
+                    .drop_duplicates()
+                    .sort_values(ascending=False)
+                    .head(5)
+                )
+                if not pairs.empty:
+                    lines.append("\nNotable correlations (|r| > 0.4):")
+                    for (a, b), v in pairs.items():
+                        lines.append(f"  {a} ↔ {b}: {v:.2f}")
+
+        categorical = df.select_dtypes(include=["object", "string", "category"])
+        if not categorical.empty:
+            lines.append("\nCategorical top values:")
+            for col in categorical.columns[:5]:
+                top = df[col].value_counts().head(3).to_dict()
+                lines.append(f"  {col}: {top}")
+
+        return "\n".join(lines)
 
     def run(self, cleaned_data, **kwargs):
         df = pd.DataFrame(cleaned_data)
-        schema_prompt = DataFrameSchema.to_prompt(DataFrameSchema.from_dataframe(df))
-        
-        system_prompt = """You are a Data Science Hypothesis Generator. 
-Based on the provided DataFrame schema, generate 5-10 deep, non-obvious, and testable hypotheses.
-Focus on interactions, trends, and business value. Avoid trivial observations.
+        schema = DataFrameSchema.from_dataframe(df)
+        schema_prompt = DataFrameSchema.to_prompt(schema)
+        stats_summary = self._build_stats_summary(df)
+        fallback = self._generate_fallback_hypotheses(df)
+
+        system_prompt = """You are a Data Science Hypothesis Generator.
+Based on the provided DataFrame schema AND statistics, generate 5-10 deep, non-obvious,
+and testable hypotheses. Focus on interactions, trends, and business value.
+Leverage the correlation data and value distributions — avoid trivial observations.
 
 OUTPUT FORMAT (JSON only):
 {
@@ -64,28 +158,87 @@ OUTPUT FORMAT (JSON only):
   "reasoning": "Briefly explain your strategy"
 }
 """
-        user_prompt = f"DataFrame Schema:\n{schema_prompt}"
-        
+        user_prompt = (
+            f"DataFrame Schema:\n{schema_prompt}\n\n"
+            f"Data Statistics:\n{stats_summary}"
+        )
+        if self.llm is None:
+            return fallback
+
         try:
             response = self.llm.complete_json(system_prompt, user_prompt)
-            hypotheses = response.get("hypotheses", [])
+            hypotheses = response.get("hypotheses") or fallback["hypotheses"]
+            # dedupe and cap
+            hypotheses = list(dict.fromkeys(hypotheses))[:10]
             summary = {
-                "num_hypotheses": len(hypotheses), 
+                "num_hypotheses": len(hypotheses),
                 "reasoning": response.get("reasoning", "LLM-generated hypotheses"),
-                "revised": False
+                "revised": False,
+                "numeric_columns": fallback["summary"]["numeric_columns"],
+                "categorical_columns": fallback["summary"]["categorical_columns"],
             }
             return {"hypotheses": hypotheses, "summary": summary}
-        except Exception as e:
-            # Basic fallback if LLM fails
-            return {"hypotheses": ["Is there a relationship between the first two columns?"], "summary": {"error": str(e)}}
+        except Exception:
+            return fallback
 
 # Debate Manager Agent
 class DebateManagerAgent(Agent):
     def __init__(self, name: str, llm_service: Optional[LLMService] = None):
         super().__init__(name=name)
-        self.llm = llm_service or LLMService()
+        llm = llm_service
+        if llm is None:
+            try:
+                llm = LLMService()
+            except Exception:
+                llm = None
+        object.__setattr__(self, "llm", llm)
+
+    def _fallback_scoring(self, hypotheses: List[str]) -> Dict[str, Any]:
+        scored = []
+        for i, h in enumerate(hypotheses):
+            confidence = max(0.1, min(1.0, 0.85 - i * 0.05))
+            business = max(0.1, min(1.0, 0.80 - i * 0.04))
+            scored.append(
+                {
+                    "hypothesis": h,
+                    "confidence": confidence,
+                    "business_value": business,
+                    "statistical_argument": "Scored with heuristic confidence based on testability.",
+                    "business_argument": "Scored with heuristic business relevance.",
+                }
+            )
+        scored = sorted(
+            scored,
+            key=lambda x: x.get("confidence", 0) * x.get("business_value", 0),
+            reverse=True,
+        )
+        arguments = [
+            {
+                "hypothesis": item["hypothesis"],
+                "statistical": item.get("statistical_argument", ""),
+                "business": item.get("business_argument", ""),
+            }
+            for item in scored
+        ]
+        return {
+            "scored_hypotheses": scored,
+            "summary": {
+                "num_hypotheses": len(hypotheses),
+                "consensus": scored[0] if scored else None,
+                "arguments": arguments,
+            },
+        }
 
     def run(self, hypotheses, **kwargs):
+        if not hypotheses:
+            return {
+                "scored_hypotheses": [],
+                "summary": {"num_hypotheses": 0, "consensus": None, "arguments": []},
+            }
+
+        if self.llm is None:
+            return self._fallback_scoring(hypotheses)
+
         system_prompt = """You are a Data Science Auditor. 
 Assign a 'confidence' (statistical feasibility) and 'business_value' (impact) score (0.0 to 1.0) to each hypothesis.
 Provide a brief 'statistical' and 'business' argument for each.
@@ -123,8 +276,8 @@ OUTPUT FORMAT (JSON only):
             consensus = scored[0] if scored else None
             summary = {"num_hypotheses": len(hypotheses), "consensus": consensus, "arguments": arguments}
             return {"scored_hypotheses": scored, "summary": summary}
-        except Exception as e:
-            return {"scored_hypotheses": [], "summary": {"error": str(e)}}
+        except Exception:
+            return self._fallback_scoring(hypotheses)
 
 # Viz Whiz Agent
 class VizWhizAgent(Agent):
@@ -145,19 +298,40 @@ class VizWhizAgent(Agent):
                 if (df[col] == 'MISSING').sum() / len(df) > 0.8:
                     return False
             return True
+        lower_to_col = {c.lower(): c for c in df.columns}
+        def resolve_col(token):
+            if not token:
+                return None
+            if token in df.columns:
+                return token
+            return lower_to_col.get(token.lower())
+        def extract_cols_from_text(text):
+            vars_found = re.findall(r"\b([A-Za-z0-9_]+)\b", text or "")
+            cols = []
+            for token in vars_found:
+                resolved = resolve_col(token)
+                if resolved and resolved not in cols:
+                    cols.append(resolved)
+            return cols
         def choose_plot_types(x, y):
             plots = []
+            def is_cat(col_name):
+                return (
+                    pd.api.types.is_object_dtype(df[col_name])
+                    or pd.api.types.is_string_dtype(df[col_name])
+                    or isinstance(df[col_name].dtype, pd.CategoricalDtype)
+                )
             if x and y:
                 if pd.api.types.is_numeric_dtype(df[x]) and pd.api.types.is_numeric_dtype(df[y]):
                     corr = abs(df[[x, y]].corr().iloc[0, 1])
                     if corr > 0.3:
                         plots.append({'type': 'scatter', 'title': f"Scatter plot of {x} vs {y}", 'plotly_json': px.scatter(df, x=x, y=y, title=f"Scatter plot of {x} vs {y}").to_json()})
                     plots.append({'type': 'density_heatmap', 'title': f"Density heatmap of {x} vs {y}", 'plotly_json': px.density_heatmap(df, x=x, y=y, title=f"Density heatmap of {x} vs {y}").to_json()})
-                elif pd.api.types.is_object_dtype(df[x]) and pd.api.types.is_numeric_dtype(df[y]):
+                elif is_cat(x) and pd.api.types.is_numeric_dtype(df[y]):
                     if df[x].nunique() < 20:
                         plots.append({'type': 'box', 'title': f"Box plot of {y} by {x}", 'plotly_json': px.box(df, x=x, y=y, title=f"Box plot of {y} by {x}").to_json()})
                     plots.append({'type': 'violin', 'title': f"Violin plot of {y} by {x}", 'plotly_json': px.violin(df, x=x, y=y, title=f"Violin plot of {y} by {x}").to_json()})
-                elif pd.api.types.is_numeric_dtype(df[x]) and pd.api.types.is_object_dtype(df[y]):
+                elif pd.api.types.is_numeric_dtype(df[x]) and is_cat(y):
                     if df[y].nunique() < 20:
                         plots.append({'type': 'box', 'title': f"Box plot of {x} by {y}", 'plotly_json': px.box(df, x=y, y=x, title=f"Box plot of {x} by {y}").to_json()})
                     plots.append({'type': 'violin', 'title': f"Violin plot of {x} by {y}", 'plotly_json': px.violin(df, x=y, y=x, title=f"Violin plot of {x} by {y}").to_json()})
@@ -169,7 +343,7 @@ class VizWhizAgent(Agent):
             return plots
         # Try consensus hypothesis first
         hypothesis = consensus.get('hypothesis', '') if consensus else ''
-        vars_found = re.findall(r'\b([A-Za-z0-9_]+)\b', hypothesis)
+        vars_found = extract_cols_from_text(hypothesis)
         x, y = None, None
         if len(vars_found) >= 2:
             x, y = vars_found[0], vars_found[1]
@@ -181,7 +355,7 @@ class VizWhizAgent(Agent):
         if not possible_plots and hypotheses:
             for hyp in hypotheses:
                 if hyp not in tried:
-                    vars_found = re.findall(r'\b([A-Za-z0-9_]+)\b', hyp)
+                    vars_found = extract_cols_from_text(hyp)
                     x, y = None, None
                     if len(vars_found) >= 2:
                         x, y = vars_found[0], vars_found[1]
@@ -192,20 +366,29 @@ class VizWhizAgent(Agent):
                         if plots:
                             possible_plots.extend(plots)
                             break
-        # Fallback: try all pairs of numeric/categorical columns
+        # Fallback: try pairs of numeric/categorical columns, capped to avoid O(n²) explosion
+        _MAX_FALLBACK_PLOTS = 5
         if not possible_plots:
             numeric_cols = df.select_dtypes(include='number').columns.tolist()
-            categorical_cols = df.select_dtypes(include='object').columns.tolist()
+            categorical_cols = df.select_dtypes(include=['object', 'string', 'category']).columns.tolist()
+            outer_loop: list = []
             for x1 in numeric_cols:
                 for y1 in numeric_cols:
                     if x1 != y1 and is_valid_col(x1) and is_valid_col(y1):
-                        possible_plots.extend(choose_plot_types(x1, y1))
+                        outer_loop.append((x1, y1))
                 for y1 in categorical_cols:
                     if is_valid_col(x1) and is_valid_col(y1):
-                        possible_plots.extend(choose_plot_types(x1, y1))
-            for x1 in numeric_cols:
-                if is_valid_col(x1):
-                    possible_plots.extend(choose_plot_types(x1, None))
+                        outer_loop.append((x1, y1))
+            for x1, y1 in outer_loop:
+                possible_plots.extend(choose_plot_types(x1, y1))
+                if len(possible_plots) >= _MAX_FALLBACK_PLOTS:
+                    break
+            if not possible_plots:
+                for x1 in numeric_cols:
+                    if is_valid_col(x1):
+                        possible_plots.extend(choose_plot_types(x1, None))
+                        if len(possible_plots) >= _MAX_FALLBACK_PLOTS:
+                            break
         # Filter to only unique plot types for each variable pair
         unique_plots = []
         seen = set()
@@ -225,7 +408,13 @@ class VizWhizAgent(Agent):
 # Define the ADK workflow
 class InsightOrchestraWorkflow:
     def __init__(self, llm_service: Optional[LLMService] = None):
-        self.llm = llm_service or LLMService()
+        llm = llm_service
+        if llm is None:
+            try:
+                llm = LLMService()
+            except Exception:
+                llm = None
+        self.llm = llm
         self.cleaner = DataJanitorAgent(name="DataJanitorAgent")
         self.hypothesis = HypothesisBotAgent(name="HypothesisBotAgent", llm_service=self.llm)
         self.debate = DebateManagerAgent(name="DebateManagerAgent", llm_service=self.llm)

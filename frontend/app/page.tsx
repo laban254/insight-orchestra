@@ -8,6 +8,7 @@ import { DatasetInfoPanel } from "@/components/upload/DatasetInfoPanel";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { Database, FileUp } from "lucide-react";
 import { api } from "@/lib/api";
+import { DemoDataset } from "@/lib/types";
 
 interface DatasetInfo {
   name: string;
@@ -22,7 +23,7 @@ export default function Home() {
   const [filePath, setFilePath] = useState<string | null>(null);
   const [datasetInfo, setDatasetInfo] = useState<DatasetInfo | null>(null);
   const [uploadMode, setUploadMode] = useState<"file" | "db">("file");
-  const [availableDatasets, setAvailableDatasets] = useState<any>(null);
+  const [availableDatasets, setAvailableDatasets] = useState<Record<string, DemoDataset> | null>(null);
 
   // Load available datasets on mount
   useEffect(() => {
@@ -66,7 +67,7 @@ export default function Home() {
 
   if (filePath) {
     return (
-      <main className="h-screen w-full flex flex-col bg-gray-50">
+      <main className="min-h-screen w-full flex flex-col bg-gray-50">
         <div className="fixed top-0 left-0 w-full h-16 bg-white border-b border-gray-200 px-6 flex items-center justify-between z-10 shadow-sm">
           <div className="flex items-center gap-3 flex-1">
             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-lg">
@@ -141,7 +142,7 @@ export default function Home() {
               )
             ) : (
               <DatabaseConnect
-                onConnectSuccess={(schema: any) => {
+                onConnectSuccess={() => {
                   handleUploadSuccess("database-session", {
                     name: "Database Connection",
                     type: "uploaded",
@@ -158,4 +159,3 @@ export default function Home() {
     </main>
   );
 }
-

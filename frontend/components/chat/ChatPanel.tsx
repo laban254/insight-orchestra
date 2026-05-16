@@ -26,11 +26,25 @@ export function ChatPanel({ filePath }: { filePath: string }) {
 
     useEffect(() => { scrollToBottom(); }, [messages, isLoading]);
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!input.trim() || isLoading) return;
+    const getErrorMessage = (error: unknown) => {
+        if (
+            typeof error === "object" &&
+            error !== null &&
+            "response" in error &&
+            typeof (error as { response?: unknown }).response === "object"
+        ) {
+            const response = (error as { response?: { data?: { detail?: string } } }).response;
+            return response?.data?.detail ?? "An unexpected error occurred.";
+        }
+        if (error instanceof Error) {
+            return error.message;
+        }
+        return "An unexpected error occurred.";
+    };
 
-        const userQuery = input.trim();
+    const submitQuery = async (userQuery: string) => {
+        if (!userQuery || isLoading) return;
+
         setInput("");
         setMessages(prev => [...prev, { role: "user", content: userQuery }]);
         setIsLoading(true);
@@ -51,16 +65,21 @@ export function ChatPanel({ filePath }: { filePath: string }) {
                 plotJson: response.plot_json,
                 reasoning: response.reasoning,
             }]);
-        } catch (error: any) {
+        } catch (error: unknown) {
             setMessages(prev => [...prev, {
                 role: "assistant",
-                content: error.response?.data?.detail || error.message || "An unexpected error occurred.",
+                content: getErrorMessage(error),
                 isError: true,
             }]);
         } finally {
             setIsLoading(false);
             setQueryDone(true); // freeze the pipeline
         }
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        await submitQuery(input.trim());
     };
 
     return (
@@ -86,6 +105,7 @@ export function ChatPanel({ filePath }: { filePath: string }) {
                                 key={pipelineKey}
                                 sessionId={sessionId}
                                 isDone={queryDone}
+                                mode="nlq"
                             />
                         </div>
                     </div>
@@ -106,7 +126,7 @@ export function ChatPanel({ filePath }: { filePath: string }) {
                         onKeyDown={(e) => {
                             if (e.key === "Enter" && !e.shiftKey) {
                                 e.preventDefault();
-                                handleSubmit(e as any);
+                                void submitQuery(input.trim());
                             }
                         }}
                         placeholder="Ask a question about your data…"
