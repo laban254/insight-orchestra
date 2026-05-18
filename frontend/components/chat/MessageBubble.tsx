@@ -4,6 +4,8 @@ import { MessageCircle, Bot, Lightbulb } from "lucide-react";
 import { CodeBlock } from "./CodeBlock";
 import { ChartRenderer } from "../viz/ChartRenderer";
 import { useState } from "react";
+import { Agent } from "../agents/AgentPipeline";
+import { PipelineBlock } from "../agents/PipelineBlock";
 
 export interface MessageProps {
     role: "user" | "assistant";
@@ -12,9 +14,10 @@ export interface MessageProps {
     plotJson?: string | null;
     reasoning?: string | null;
     isError?: boolean;
+    pipelineAgents?: Agent[];
 }
 
-export function MessageBubble({ role, content, code, plotJson, reasoning, isError }: MessageProps) {
+export function MessageBubble({ role, content, code, plotJson, reasoning, isError, pipelineAgents }: MessageProps) {
     const isUser = role === "user";
     const [showReasoning, setShowReasoning] = useState(false);
 
@@ -29,17 +32,12 @@ export function MessageBubble({ role, content, code, plotJson, reasoning, isErro
         return errorMsg;
     };
 
-    // Format numbers dynamically (e.g. "The answer is 1000" -> bold the numbers)
     const formatContent = (text: string) => {
         if (isUser) return text;
         const msg = getErrorContent(text);
-
-        // Simple bolding of numbers that appear at the end of "is X"
         return msg.split("\n").map((line, i) => {
             const bolded = line.replace(/\b(\d+(?:\.\d+)?)\b/g, (match) => `**${match}**`);
-            // Custom rudimentary markdown-lite rendering to make answers pop
             const parts = bolded.split(/(\*\*.*?\*\*)/g);
-
             return (
                 <span key={i} className="block mb-1 last:mb-0">
                     {parts.map((p, j) => {
@@ -53,24 +51,32 @@ export function MessageBubble({ role, content, code, plotJson, reasoning, isErro
         });
     };
 
+    const showPipeline = !isUser && pipelineAgents && pipelineAgents.length > 0 &&
+        pipelineAgents.some(a => a.status !== "waiting");
+
     return (
         <div className={`flex w-full ${isUser ? "justify-end" : "justify-start"} my-4`}>
             <div className={`flex w-full max-w-[85%] gap-4 ${isUser ? "flex-row-reverse" : "flex-row"}`}>
 
                 {/* Avatar */}
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1 shadow-sm
-          ${isUser ? "bg-blue-600 text-white" : isError ? "bg-red-500 text-white" : "bg-purple-600 text-white"}`}
+                    ${isUser ? "bg-blue-600 text-white" : isError ? "bg-red-500 text-white" : "bg-purple-600 text-white"}`}
                 >
                     {isUser ? <MessageCircle size={15} /> : <Bot size={15} />}
                 </div>
 
-                {/* Message Body */}
+                {/* Message body */}
                 <div className="flex flex-col gap-3 min-w-0 flex-1">
 
-                    {/* Text content */}
+                    {/* Collapsible pipeline summary */}
+                    {showPipeline && (
+                        <PipelineBlock agents={pipelineAgents!} />
+                    )}
+
+                    {/* Text */}
                     {content && (
                         <div className={`px-5 py-4 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap
-              ${isUser
+                            ${isUser
                                 ? "bg-blue-600 text-white rounded-tr-none shadow-sm ml-auto max-w-fit"
                                 : isError
                                     ? "bg-red-50 border border-red-100 text-red-800 rounded-tl-none w-fit"
@@ -80,14 +86,14 @@ export function MessageBubble({ role, content, code, plotJson, reasoning, isErro
                         </div>
                     )}
 
-                    {/* Generated Plotly Chart */}
+                    {/* Chart */}
                     {plotJson && !isUser && (
                         <div className="w-full">
                             <ChartRenderer plotJsonStr={plotJson} />
                         </div>
                     )}
 
-                    {/* Reasoning Accordion */}
+                    {/* Reasoning */}
                     {reasoning && !isUser && !isError && (
                         <div className="w-full">
                             <button
@@ -105,7 +111,7 @@ export function MessageBubble({ role, content, code, plotJson, reasoning, isErro
                         </div>
                     )}
 
-                    {/* Generated Code */}
+                    {/* Code */}
                     {code && !isUser && (
                         <div className="w-full max-w-full">
                             <CodeBlock code={code} language="python" />

@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useRef } from "react";
 
-type AgentStatus = "waiting" | "running" | "done" | "error" | "skipped";
+export type AgentStatus = "waiting" | "running" | "done" | "error" | "skipped";
 type PipelineMode = "analysis" | "nlq";
 
-interface Agent {
+export interface Agent {
     id: string;
     name: string;
     emoji: string;
@@ -35,14 +35,23 @@ const getInitialAgents = (mode: PipelineMode): Agent[] => {
 
 interface AgentPipelineProps {
     sessionId: string;
-    /** When true, stop listening and freeze the UI in its final state */
     isDone?: boolean;
     mode?: PipelineMode;
+    variant?: "default" | "sidebar";
+    onAgentsChange?: (agents: Agent[]) => void;
 }
 
-export function AgentPipeline({ sessionId, isDone, mode = "analysis" }: AgentPipelineProps) {
+export function AgentPipeline({ sessionId, isDone, mode = "analysis", variant = "default", onAgentsChange }: AgentPipelineProps) {
     const [agents, setAgents] = useState<Agent[]>(getInitialAgents(mode));
     const sourceRef = useRef<EventSource | null>(null);
+
+    const updateAgents = (updater: (prev: Agent[]) => Agent[]) => {
+        setAgents(prev => {
+            const next = updater(prev);
+            onAgentsChange?.(next);
+            return next;
+        });
+    };
 
     useEffect(() => {
         if (!sessionId || isDone) return;
@@ -55,7 +64,7 @@ export function AgentPipeline({ sessionId, isDone, mode = "analysis" }: AgentPip
         source.onmessage = (e) => {
             try {
                 const update = JSON.parse(e.data);
-                setAgents(prev =>
+                updateAgents(prev =>
                     prev.map(a =>
                         a.id === update.agent_id
                             ? { ...a, status: update.status, output: update.output, duration: update.duration }
@@ -69,17 +78,16 @@ export function AgentPipeline({ sessionId, isDone, mode = "analysis" }: AgentPip
 
         source.onerror = () => {
             source.close();
-            // Mark any still-running agents as done on disconnect
-            setAgents(prev => prev.map(a => a.status === "running" ? { ...a, status: "done" } : a));
+            updateAgents(prev => prev.map(a => a.status === "running" ? { ...a, status: "done" } : a));
         };
 
         return () => {
             source.close();
             sourceRef.current = null;
         };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sessionId, mode, isDone]);
 
-    // When parent signals isDone, lock the pipeline
     useEffect(() => {
         if (isDone) {
             sourceRef.current?.close();
@@ -104,14 +112,12 @@ export function AgentPipeline({ sessionId, isDone, mode = "analysis" }: AgentPip
         : agents;
 
     const anyActive = displayAgents.some(a => a.status !== "waiting");
-    if (!anyActive && !isDone) return null; // Hide until first event arrives
+    if (!anyActive && !isDone) return null;
 
-    return (
-        <div className="flex flex-col gap-3 p-4 bg-white rounded-xl shadow-sm border border-gray-100 my-4">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider border-b pb-2 mb-1">
-                {mode === "nlq" ? "Query Pipeline" : "Analysis Pipeline"}
-            </h3>
+    const isSidebar = variant === "sidebar";
 
+    const content = (
+        <>
             {displayAgents.map((agent, i) => (
                 <div key={agent.id} className="flex items-start gap-3 relative">
                     {/* Connector line */}
@@ -158,16 +164,34 @@ export function AgentPipeline({ sessionId, isDone, mode = "analysis" }: AgentPip
                                 {agent.output}
                             </div>
                         )}
+                        {agent.output && agent.status === "error" && (
+                            <div className="mt-1.5 text-xs bg-red-50 rounded-lg px-3 py-2 border border-red-100 text-red-600 leading-relaxed">
+                                {agent.output}
+                            </div>
+                        )}
                     </div>
                 </div>
             ))}
 
             {isDone && (
-                <div className="mt-1 pt-2 border-t border-gray-100 flex items-center gap-1.5 text-xs text-green-600 font-medium">
+                <div className={`pt-2 border-t border-gray-100 flex items-center gap-1.5 text-xs text-green-600 font-medium ${isSidebar ? "mt-2" : "mt-1"}`}>
                     <span>✓</span>
                     <span>{mode === "nlq" ? "Query complete" : "Analysis complete"}</span>
                 </div>
             )}
+        </>
+    );
+
+    if (isSidebar) {
+        return <div className="flex flex-col gap-4">{content}</div>;
+    }
+
+    return (
+        <div className="flex flex-col gap-3 p-4 bg-white rounded-xl shadow-sm border border-gray-100 my-4">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider border-b pb-2 mb-1">
+                {mode === "nlq" ? "Query Pipeline" : "Analysis Pipeline"}
+            </h3>
+            {content}
         </div>
     );
 }

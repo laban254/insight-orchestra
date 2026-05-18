@@ -4,7 +4,8 @@ import { useState, useRef, useEffect } from "react";
 import { Send, Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { MessageBubble, MessageProps } from "./MessageBubble";
-import { AgentPipeline } from "../agents/AgentPipeline";
+import { AgentPipeline, Agent } from "../agents/AgentPipeline";
+import { PipelineBlock } from "../agents/PipelineBlock";
 
 export function ChatPanel({ filePath }: { filePath: string }) {
     const [messages, setMessages] = useState<MessageProps[]>([
@@ -15,30 +16,34 @@ export function ChatPanel({ filePath }: { filePath: string }) {
     ]);
     const [input,       setInput]       = useState("");
     const [isLoading,   setIsLoading]   = useState(false);
-    const [queryDone,   setQueryDone]   = useState(false);   // freezes the pipeline in done state
+    const [queryDone,   setQueryDone]   = useState(false);
+    const [liveAgents,  setLiveAgents]  = useState<Agent[]>([]);
     const [sessionId]                   = useState(() => Math.random().toString(36).substring(2, 9));
-    const [pipelineKey, setPipelineKey] = useState(0);       // increment to reset AgentPipeline
-    const messagesEndRef                = useRef<HTMLDivElement>(null);
+    const [pipelineKey, setPipelineKey] = useState(0);
 
-    const scrollToBottom = () => {
+    // Ref always holds the latest agents — safe to read in async submitQuery
+    const agentsRef      = useRef<Agent[]>([]);
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    };
+    }, [messages, isLoading]);
 
-    useEffect(() => { scrollToBottom(); }, [messages, isLoading]);
+    const handleAgentsChange = (agents: Agent[]) => {
+        agentsRef.current = agents;
+        setLiveAgents([...agents]);
+    };
 
     const getErrorMessage = (error: unknown) => {
         if (
-            typeof error === "object" &&
-            error !== null &&
+            typeof error === "object" && error !== null &&
             "response" in error &&
             typeof (error as { response?: unknown }).response === "object"
         ) {
-            const response = (error as { response?: { data?: { detail?: string } } }).response;
-            return response?.data?.detail ?? "An unexpected error occurred.";
+            const r = (error as { response?: { data?: { detail?: string } } }).response;
+            return r?.data?.detail ?? "An unexpected error occurred.";
         }
-        if (error instanceof Error) {
-            return error.message;
-        }
+        if (error instanceof Error) return error.message;
         return "An unexpected error occurred.";
     };
 
@@ -49,7 +54,9 @@ export function ChatPanel({ filePath }: { filePath: string }) {
         setMessages(prev => [...prev, { role: "user", content: userQuery }]);
         setIsLoading(true);
         setQueryDone(false);
-        setPipelineKey(k => k + 1); // new key = new EventSource connection
+        setLiveAgents([]);
+        agentsRef.current = [];
+        setPipelineKey(k => k + 1);
 
         try {
             const response = await api.naturalLanguageQuery({
@@ -64,52 +71,53 @@ export function ChatPanel({ filePath }: { filePath: string }) {
                 code: response.code,
                 plotJson: response.plot_json,
                 reasoning: response.reasoning,
+                pipelineAgents: [...agentsRef.current],
             }]);
         } catch (error: unknown) {
             setMessages(prev => [...prev, {
                 role: "assistant",
                 content: getErrorMessage(error),
                 isError: true,
+                pipelineAgents: [...agentsRef.current],
             }]);
         } finally {
             setIsLoading(false);
-            setQueryDone(true); // freeze the pipeline
+            setQueryDone(true);
+            setLiveAgents([]);
         }
-    };
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        await submitQuery(input.trim());
     };
 
     return (
         <div className="flex flex-col h-full bg-gray-50/50 rounded-xl overflow-hidden border border-gray-200 shadow-xl">
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24">
+            <div className="flex-1 overflow-y-auto p-4 md:p-6">
                 {messages.map((msg, idx) => (
                     <MessageBubble key={idx} {...msg} />
                 ))}
 
-                {/* Live agent pipeline — shows during load AND stays frozen after */}
-                {(isLoading || queryDone) && (
-                    <div className="flex items-start gap-4 my-4">
-                        <div className="w-8 h-8 rounded-full bg-purple-600 text-white flex items-center justify-center flex-shrink-0 mt-1">
-                            {isLoading
-                                ? <Loader2 size={15} className="animate-spin" />
-                                : <span className="text-xs">✓</span>
-                            }
+                {/* Live pipeline pill — same collapsed style as after-done */}
+                {isLoading && (
+                    <div className="flex items-start gap-3 my-3">
+                        <div className="w-8 h-8 rounded-full bg-purple-600 text-white flex items-center justify-center flex-shrink-0 mt-0.5 opacity-0">
+                            {/* spacer to align with assistant avatar */}
                         </div>
-                        <div className="flex-1 max-w-2xl min-w-0">
-                            <AgentPipeline
-                                key={pipelineKey}
-                                sessionId={sessionId}
-                                isDone={queryDone}
-                                mode="nlq"
-                            />
+                        <div className="flex-1 max-w-2xl pt-0.5">
+                            <PipelineBlock agents={liveAgents} isRunning />
                         </div>
                     </div>
                 )}
+
+                {/* Hidden SSE listener — drives liveAgents + agentsRef */}
+                <div className="hidden">
+                    <AgentPipeline
+                        key={pipelineKey}
+                        sessionId={sessionId}
+                        isDone={queryDone}
+                        mode="nlq"
+                        onAgentsChange={handleAgentsChange}
+                    />
+                </div>
 
                 <div ref={messagesEndRef} />
             </div>
@@ -117,8 +125,8 @@ export function ChatPanel({ filePath }: { filePath: string }) {
             {/* Input */}
             <div className="p-4 bg-white border-t border-gray-200">
                 <form
-                    onSubmit={handleSubmit}
-                    className="relative max-w-4xl mx-auto flex items-end gap-2 bg-gray-50 border border-gray-200 rounded-2xl p-2 shadow-sm focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all"
+                    onSubmit={(e) => { e.preventDefault(); void submitQuery(input.trim()); }}
+                    className="relative flex items-end gap-2 bg-gray-50 border border-gray-200 rounded-2xl p-2 shadow-sm focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all"
                 >
                     <textarea
                         value={input}

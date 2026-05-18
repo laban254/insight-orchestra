@@ -85,7 +85,7 @@ export default function Home() {
           />
         </div>
 
-        <div className="flex-1 w-full max-w-5xl mx-auto p-4 md:p-6 mb-4 pt-20">
+        <div className="flex-1 w-full max-w-5xl mx-auto p-4 md:p-6 mb-4 pt-20" style={{ height: "calc(100vh - 64px)" }}>
           <ChatPanel filePath={filePath} />
         </div>
       </main>
