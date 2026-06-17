@@ -255,8 +255,9 @@ Includes retry logic: if execution fails, the error is fed back to the LLM for c
 | Provider | Type | Configuration |
 |----------|------|---------------|
 | **OpenAI** | Cloud API | `LLM_PROVIDER=openai`, `OPENAI_API_KEY`, `OPENAI_MODEL` |
+| **DeepSeek** | Cloud API (OpenAI-compatible) | `LLM_PROVIDER=deepseek`, `DEEPSEEK_API_KEY`, `DEEPSEEK_MODEL`, `DEEPSEEK_BASE_URL` |
+| **Anthropic** | Cloud API | `LLM_PROVIDER=anthropic`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` |
 | **Ollama** | Local | `LLM_PROVIDER=ollama`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL` |
-| **Anthropic** | Declared but not implemented | Throws `NotImplementedError` |
 
 **Public Methods**:
 ```python
@@ -420,7 +421,7 @@ The frontend [`AgentPipeline`](frontend/components/agents/AgentPipeline.tsx) com
 Each agent is an independent worker with a single responsibility. Agents are chained sequentially in `InsightOrchestraWorkflow.run()`.
 
 ### 2. Provider Abstraction
-`LLMService` provides a unified interface (`complete()`, `complete_json()`) that abstracts over OpenAI and Ollama. Providers are selected via the `LLM_PROVIDER` environment variable.
+`LLMService` provides a unified interface (`complete()`, `complete_json()`) that abstracts over OpenAI, DeepSeek, Anthropic, and Ollama. Providers are selected via the `LLM_PROVIDER` environment variable. DeepSeek reuses the OpenAI client path via its OpenAI-compatible API.
 
 ### 3. Sandbox Pattern
 Generated code is isolated via RestrictedPython with pre-execution safety checks, execution timeout, and output capture. This prevents malicious or buggy code from affecting the host system.

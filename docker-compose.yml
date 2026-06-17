@@ -1,9 +1,13 @@
 
+x-logging: &default-logging
+  driver: local
+
 services:
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    logging: *default-logging
     ports:
       - "8000:8000"
     env_file:
@@ -25,6 +29,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    logging: *default-logging
     ports:
       - "8501:8501"
     environment:
@@ -41,6 +46,7 @@ services:
       - "11435:11434"
     volumes:
       - ollama_data:/root/.ollama
+    logging: *default-logging
 
 volumes:
   uploads:

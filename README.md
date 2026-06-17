@@ -65,16 +65,23 @@ cd insight-orchestra
 cp .env.example .env
 ```
 
-Edit `.env` to set your LLM provider:
+Edit `backend/.env` to set your LLM provider:
 
 ```bash
-# For OpenAI (recommended for most users)
+# For OpenAI (cloud)
 LLM_PROVIDER=openai
 OPENAI_API_KEY=sk-...
 
-# For local inference with Ollama
-# LLM_PROVIDER=ollama
-# OLLAMA_MODEL=qwen2.5:0.5b
+# For DeepSeek (cloud — OpenAI-compatible, cheap & fast)
+LLM_PROVIDER=deepseek
+DEEPSEEK_API_KEY=sk-...
+DEEPSEEK_MODEL=deepseek-chat
+
+# For local inference with Ollama (default — no API key needed)
+LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://ollama:11434
+OLLAMA_MODEL=qwen2.5:1.5b    # pull with: docker compose exec ollama ollama pull qwen2.5:1.5b
+REQUEST_TIMEOUT=600
 ```
 
 ### 2. Start services
@@ -91,25 +98,26 @@ docker-compose up -d --build
 
 | Service | URL |
 |---------|-----|
-| Frontend | http://localhost:3000 |
+| Frontend | http://localhost:8501 |
 | Backend API | http://localhost:8000 |
 | Swagger Docs | http://localhost:8000/docs |
-| Ollama | http://localhost:11434 |
+| Ollama | http://localhost:11435 |
 
 ---
 
 ## The Multi-Agent Pipeline
 
-The pipeline runs automatically when you upload data via the `/process` endpoint:
+The pipeline runs **automatically** the moment you upload or select a dataset. Results (narrative, charts, suggested follow-up questions) appear in the chat as the first message.
 
 | Stage | Agent | Function |
 |-------|-------|----------|
-| 1 | **Data Janitor** | Removes duplicates, imputes missing values (mean for numeric, mode for categorical), flags bias (>30% missing), detects constant columns |
-| 2 | **Hypothesis Bot** | Sends DataFrame schema to the LLM, which returns 5–10 testable hypotheses with reasoning |
-| 3 | **Debate Manager** | LLM scores each hypothesis on `confidence` and `business_value` (0–1); sorts by combined score; selects consensus winner |
-| 4 | **Viz Whiz** | Parses the top hypothesis for variable names, selects chart type based on data types (scatter, box, violin, histogram, bar, density heatmap), generates Plotly JSON |
+| 1 | **Data Janitor** | Removes duplicates; imputes missing values (median for numeric, mode for categorical); flags bias (>30% missing); detects outliers via IQR |
+| 2 | **Hypothesis Bot** | Builds descriptive statistics + correlations, then asks the LLM to generate 5–8 specific, directional, evidence-backed insights referencing actual column names and numbers |
+| 3 | **Debate Manager** | LLM scores each hypothesis on `confidence` and `business_value` (0–1) using the real data stats as evidence; sorts by combined score; selects consensus winner |
+| 4 | **Viz Whiz** | Asks the LLM which columns best illustrate the top insight; falls back to regex extraction then structured heuristics; generates up to 6 Plotly charts |
+| 5 | **Insight Summarizer** | LLM writes a 3–5 sentence narrative summarising all findings; generates 4–5 specific follow-up questions using actual column names |
 
-Each stage emits real-time progress events via SSE, consumed by the [`AgentPipeline`](frontend/components/agents/AgentPipeline.tsx) frontend component.
+Each stage emits real-time progress events via SSE, shown in the UI as a collapsible pipeline pill.
 
 See [Agent Pipeline Guide](docs/AGENTS.md) for detailed workflow and examples.
 

@@ -67,10 +67,12 @@ Input: Raw DataFrame (from CSV or database)
 [3] Flag bias: columns with >30% missing values
   ↓
 [4] Impute missing values:
-    - Numeric columns → fill with column mean
+    - Numeric columns → fill with column MEDIAN (robust to skewed data)
     - Categorical columns → fill with column mode (or "MISSING" if none)
   ↓
-[5] Detect constant columns (single unique value)
+[5] Outlier detection via IQR method (flags but does NOT remove)
+  ↓
+[6] Detect constant columns (single unique value)
   ↓
 Output: Cleaned DataFrame + metadata report
 ```
@@ -93,11 +95,13 @@ DataFrame:
 1. Duplicates: Found 1, removed
 2. Missing values: age (2), salary (1), department (0)
 3. Imputation:
-   - age: Filled with mean (27.5)
+   - age: Filled with median (27.5)
    - salary: Filled with median (97000)
 4. Bias flags:
    - 'salary' missing 20% → flagged
-5. Constant columns: None found
+5. Outlier detection (IQR):
+   - salary: 0 outliers detected
+6. Constant columns: None found
 ```
 
 **Output**:
@@ -111,7 +115,7 @@ DataFrame:
     "missing_values": {"age": 2, "salary": 1, "department": 0},
     "total_missing": 3,
     "bias_flags": ["Column 'salary' missing for 20.0% of rows."],
-    "missing_values_imputed": true,
+    "outlier_flags": ["salary: 0 outlier(s) detected (IQR method)"],
     "constant_columns": [],
     "final_shape": [4, 4]
   }
@@ -120,15 +124,16 @@ DataFrame:
 
 ### Implementation
 
-The agent inherits from `google.adk.Agent` and implements a single `run(data, **kwargs)` method. All logic (duplicate detection, missing value imputation, bias flagging) is inline — there are no separate helper methods.
+The agent inherits from `google.adk.Agent` and implements a single `run(data, **kwargs)` method.
 
 ```python
 class DataJanitorAgent(Agent):
     def run(self, data, **kwargs):
         df = pd.DataFrame(data)
         # Duplicate detection & removal
-        # Missing value imputation (mean/mode)
+        # Missing value imputation (median for numeric, mode for categorical)
         # Bias flagging (>30% missing)
+        # Outlier detection via IQR
         # Constant column detection
         return {"cleaned_data": [...], "report": {...}}
 ```
@@ -137,9 +142,9 @@ class DataJanitorAgent(Agent):
 
 ## Stage 2: Hypothesis Bot Agent
 
-**File**: [`adk_agents.py`](backend/app/services/adk_agents.py:48) → `HypothesisBotAgent`
+**File**: [`adk_agents.py`](backend/app/services/adk_agents.py:60) → `HypothesisBotAgent`
 
-**Purpose**: Generate 5–10 testable, non-obvious hypotheses from the cleaned dataset using an LLM.
+**Purpose**: Generate 5–8 specific, directional, evidence-backed insights from the cleaned dataset using an LLM grounded in actual statistics.
 
 ### Workflow
 
@@ -147,48 +152,35 @@ class DataJanitorAgent(Agent):
 Input: Cleaned DataFrame
   ↓
 [1] Extract schema via DataFrameSchema helper
-    - Column names, data types, sample values
-    - Null counts, shape
   ↓
-[2] Format schema prompt (human-readable description)
+[2] Build statistics summary via _build_stats_summary():
+    - Descriptive stats (mean, std, min, max, quartiles) for all numeric cols
+    - Pearson correlations with |r| > 0.3 (labelled positive/negative)
+    - Top category distributions for up to 6 categorical cols
   ↓
-[3] Call LLM with system prompt:
-    System: "You are a Data Science Hypothesis Generator.
-     Generate 5-10 deep, non-obvious, testable hypotheses.
-     Focus on interactions, trends, and business value."
-    User: DataFrame schema
+[3] Call LLM with system + stats prompts:
+    System: forces directional insights with actual numbers
+            e.g. "West region generates 34% more revenue (r=0.72)"
+    User: DataFrame schema + full statistics summary
   ↓
-[4] Parse LLM JSON response
+[4] Parse LLM JSON response → deduplicate → cap at 8
   ↓
-[5] On LLM failure: return single fallback hypothesis
+[5] On LLM failure: compute fallback from actual group means + correlations
   ↓
-Output: {hypotheses: [...], summary: {num_hypotheses, reasoning}}
+Output: {hypotheses: [...], summary: {num_hypotheses, reasoning, numeric_columns, categorical_columns}}
 ```
 
 ### Example
 
-**Input Schema** (via `DataFrameSchema.to_prompt()`):
-```
-DataFrame Shape: 1000 rows × 5 columns
-
-Columns:
-  - age: int64 (nulls: 12, samples: [25, 30, 42, 55, 38])
-  - salary: float64 (nulls: 3, samples: [50000, 75000, 95000, 120000, 85000])
-  - years_experience: int64 (nulls: 0, samples: [0, 5, 15, 25, 40])
-  - department: object (nulls: 0, samples: [Engineering, Sales, HR, Marketing])
-  - performance_score: float64 (nulls: 0, samples: [3.5, 4.0, 2.5, 5.0, 3.0])
-```
-
-**LLM Response**:
+**LLM Output** (directional, evidence-backed):
 ```json
 {
   "hypotheses": [
-    "Age and salary correlate strongly",
-    "Engineering department has highest median salary",
-    "Performance scores plateau after 10 years of experience",
-    "Salary variance is higher in Sales than other departments"
+    "Age and Salary are strongly positively correlated (r=0.68) — each additional year of age corresponds to roughly $1,200 more in annual salary.",
+    "'Engineering' leads 'department' with the highest average salary (42% above 'Marketing') — worth investigating whether this gap is structural.",
+    "Performance scores plateau after 10 years of experience — the top quartile of experience shows only 0.3 point advantage over the median."
   ],
-  "reasoning": "Analyzed numeric distributions and category breakdowns for hidden relationships"
+  "reasoning": "Grounded in correlation matrix and group-level aggregations"
 }
 ```
 
@@ -196,53 +188,55 @@ Columns:
 
 ```python
 class HypothesisBotAgent(Agent):
-    def __init__(self, name: str, llm_service: Optional[LLMService] = None):
-        super().__init__(name=name)
-        self.llm = llm_service or LLMService()
+    @staticmethod
+    def _build_stats_summary(df: pd.DataFrame) -> str:
+        # Descriptive stats, correlations > 0.3, category distributions
+        ...
 
     def run(self, cleaned_data, **kwargs):
         df = pd.DataFrame(cleaned_data)
-        schema_prompt = DataFrameSchema.to_prompt(
-            DataFrameSchema.from_dataframe(df))
-        # ... call LLM, parse response ...
+        schema_prompt = DataFrameSchema.to_prompt(DataFrameSchema.from_dataframe(df))
+        stats_summary = self._build_stats_summary(df)
+        # Call LLM with both schema and stats
+        # Fall back to heuristic group/correlation analysis if LLM fails
 ```
 
 ---
 
 ## Stage 3: Debate Manager Agent
 
-**File**: [`adk_agents.py`](backend/app/services/adk_agents.py:83) → `DebateManagerAgent`
+**File**: [`adk_agents.py`](backend/app/services/adk_agents.py:193) → `DebateManagerAgent`
 
-**Purpose**: Score and rank hypotheses by asking an LLM to act as a data science auditor.
+**Purpose**: Score and rank hypotheses using an LLM that receives the actual data statistics as evidence — not just the hypothesis text.
 
 ### Scoring System
 
-Each hypothesis is evaluated by the LLM on two dimensions (0–1 scale):
+Each hypothesis is evaluated on two dimensions (0–1 scale):
 
 | Dimension | Description |
 |-----------|-------------|
-| **confidence** | Statistical feasibility — can this be validated with data? |
-| **business_value** | Business impact — does resolving this matter? |
+| **confidence** | How strongly the hypothesis is supported by the data statistics provided |
+| **business_value** | How actionable and impactful the finding is for decision-making |
 
-The LLM also provides a `statistical_argument` and `business_argument` for each hypothesis. Hypotheses are sorted by `confidence × business_value` in descending order. The top-scoring hypothesis becomes the **consensus**.
+The LLM also provides a `statistical_argument` (citing specific stats) and `business_argument` for each. Hypotheses are sorted by `confidence × business_value`. The top-scoring hypothesis becomes the **consensus**.
 
 ### Workflow
 
 ```
-Input: List of hypothesis strings
+Input: List of hypothesis strings + data statistics summary
   ↓
-[1] Send to LLM with system prompt:
-    System: "You are a Data Science Auditor.
-     Assign confidence and business_value (0.0 to 1.0)
-     to each hypothesis. Provide arguments."
+[1] Include full statistics context in LLM prompt
+    (same _build_stats_summary output from Hypothesis Bot)
   ↓
-[2] Parse LLM JSON response → scored_hypotheses[]
+[2] LLM scores each hypothesis against the actual evidence
   ↓
-[3] Sort by confidence × business_value (descending)
+[3] Parse LLM JSON response → scored_hypotheses[]
   ↓
-[4] Select consensus = scored_hypotheses[0]
+[4] Sort by confidence × business_value (descending)
   ↓
-[5] On LLM failure: return empty array with error
+[5] Select consensus = scored_hypotheses[0]
+  ↓
+[6] On LLM failure: positional fallback (0.85 → 0.60 descending)
   ↓
 Output: {scored_hypotheses, summary}
 ```
@@ -273,53 +267,50 @@ Output: {scored_hypotheses, summary}
 
 ## Stage 4: Viz Whiz Agent
 
-**File**: [`adk_agents.py`](backend/app/services/adk_agents.py:130) → `VizWhizAgent`
+**File**: [`adk_agents.py`](backend/app/services/adk_agents.py:272) → `VizWhizAgent`
 
-**Purpose**: Auto-select visualization types and generate Plotly JSON for rendering in the frontend.
+**Purpose**: Auto-select visualization types and generate up to 6 Plotly charts, using LLM-based column selection grounded in the consensus insight.
 
 ### Chart Selection Logic
-
-The agent uses regex to extract variable names from the consensus hypothesis, then checks data types to select chart types:
 
 ```
 Consensus hypothesis
   ↓
-Extract variable names via regex (\b[A-Za-z0-9_]+\b)
+[1] LLM column selection (_llm_pick_columns):
+    Ask LLM: "Which 1-2 columns best illustrate this insight?"
+    → Returns {"x": "col_name", "y": "col_name_or_null"}
   ↓
-Validate columns exist and have >1 unique value
-  ↓
-Determine data types:
-  ↓
-Match to chart type:
+[2] If LLM selection valid → generate chart(s) based on data types:
 
   Numeric × Numeric
-    → Scatter plot (if correlation > 0.3)
-    → Density heatmap
+    → Scatter plot with OLS trendline (if |r| > 0.2)
+    → Density heatmap (weak correlation)
 
   Categorical × Numeric
-    → Box plot (if categories < 20)
-    → Violin plot
-
-  Numeric × Categorical
-    → Box plot (swapped axes, if categories < 20)
-    → Violin plot (swapped axes)
+    → Bar chart (aggregated means, top 15 categories)
+    + Box plot (if < 12 unique categories)
 
   Single Numeric
     → Histogram
 
   Single Categorical
-    → Bar chart
+    → Bar chart (value counts)
+  ↓
+[3] Fallback 1: Regex extraction from hypothesis text
+[4] Fallback 2: Other hypotheses (try each)
+[5] Fallback 3: Best categorical × numeric pairs from schema
+[6] Fallback 4: Single numeric histograms
 ```
 
 ### Fallback Strategy
 
-1. Try consensus hypothesis variables first
-2. Try other hypotheses
-3. Try all numeric × numeric column pairs
-4. Try all numeric × categorical column pairs
-5. Try all single numeric columns
+1. **LLM column selection** from consensus hypothesis (primary)
+2. **Regex** extraction from consensus hypothesis text
+3. **Other hypotheses** — try each in order
+4. **Schema heuristics** — best categorical × numeric combinations
+5. **Single numerics** — histogram for each numeric column
 
-Duplicates are filtered out (unique by type + title).
+Duplicates are filtered by `(type, title)`. Maximum 6 charts returned.
 
 ### Example Output
 
@@ -347,7 +338,7 @@ Duplicates are filtered out (unique by type + title).
 
 ## Orchestration: InsightOrchestraWorkflow
 
-**File**: [`adk_agents.py`](backend/app/services/adk_agents.py:226) → `InsightOrchestraWorkflow`
+**File**: [`adk_agents.py`](backend/app/services/adk_agents.py:437) → `InsightOrchestraWorkflow`
 
 ### Sequential Execution
 
@@ -355,43 +346,38 @@ Duplicates are filtered out (unique by type + title).
 class InsightOrchestraWorkflow:
     def __init__(self, llm_service=None):
         self.llm = llm_service or LLMService()
-        self.cleaner = DataJanitorAgent(name="DataJanitorAgent")
+        self.cleaner    = DataJanitorAgent(name="DataJanitorAgent")
         self.hypothesis = HypothesisBotAgent(name="HypothesisBotAgent", llm_service=self.llm)
-        self.debate = DebateManagerAgent(name="DebateManagerAgent", llm_service=self.llm)
-        self.viz = VizWhizAgent(name="VizWhizAgent")
+        self.debate     = DebateManagerAgent(name="DebateManagerAgent", llm_service=self.llm)
+        self.viz        = VizWhizAgent(name="VizWhizAgent", llm_service=self.llm)
 
     def run(self, data):
-        cleaner_result = self.cleaner.run(data)
-        cleaned_data = cleaner_result["cleaned_data"]
+        cleaner_result  = self.cleaner.run(data)
+        cleaned_data    = cleaner_result["cleaned_data"]
+        df              = pd.DataFrame(cleaned_data)
+
+        # Build stats once — shared by Hypothesis Bot AND Debate Manager
+        stats_summary     = HypothesisBotAgent._build_stats_summary(df)
 
         hypothesis_result = self.hypothesis.run(cleaned_data)
-        hypotheses = hypothesis_result["hypotheses"]
+        hypotheses        = hypothesis_result["hypotheses"]
 
-        debate_result = self.debate.run(hypotheses)
-        consensus = debate_result["summary"].get("consensus")
-
-        # Self-refinement: revise hypotheses with segmentation suggestions
-        revised_hypotheses = []
-        for h in hypotheses:
-            if 'group' in h or 'association' in h:
-                revised_hypotheses.append(h + " (add regional or temporal segmentation)")
-            else:
-                revised_hypotheses.append(h)
+        # Debate Manager receives actual data stats for evidence-based scoring
+        debate_result  = self.debate.run(hypotheses, data_stats=stats_summary)
+        consensus      = debate_result["summary"].get("consensus")
 
         viz_result = self.viz.run(cleaned_data, consensus, hypotheses=hypotheses)
 
         return {
-            "cleaner": cleaner_result,
+            "cleaner":    cleaner_result,
             "hypothesis": hypothesis_result,
-            "debate": debate_result,
-            "viz": viz_result,
-            "audit_table": md_table  # Markdown audit summary
+            "debate":     debate_result,
+            "viz":        viz_result,
+            "stats":      stats_summary,
         }
 ```
 
-### Self-Refinement
-
-After the Debate Manager scores hypotheses, the workflow applies a simple keyword-based refinement: hypotheses containing "group" or "association" get a segmentation suggestion appended. This is tracked in the audit table output.
+The `/process` endpoint runs this workflow, then passes results to `InsightSummarizerAgent` for the narrative and suggested questions. Each agent stage also emits SSE progress events so the UI shows real-time status.
 
 ---
 
@@ -435,7 +421,23 @@ Return: NLQResponse {answer, code, reasoning, plot_json, success flag}
 
 **File**: [`summarizer_agent.py`](backend/app/services/summarizer_agent.py:2) → `InsightSummarizerAgent`
 
-**Purpose**: Concatenate workflow results into a text summary. Uses simple string formatting, not LLM.
+**Purpose**: LLM-powered agent that writes a concise narrative summary of the full pipeline results and generates specific follow-up questions using actual column names.
+
+**Process**:
+```
+Workflow results (cleaner + hypothesis + debate + viz stats)
+  ↓
+Build structured context: row count, top insight, all hypotheses, chart count
+  ↓
+LLM writes 3-5 sentence narrative in plain English
+LLM generates 4-5 specific follow-up questions referencing real column names
+  ↓
+On LLM failure: template-based fallback using actual column names
+  ↓
+Return: {narrative: "...", suggested_questions: [...]}
+```
+
+The narrative and suggested questions are shown to the user in the chat immediately after the pipeline completes.
 
 ### Report Generator Agent
 
@@ -449,18 +451,25 @@ Return: NLQResponse {answer, code, reasoning, plot_json, success flag}
 
 ### LLM Service Configuration
 
-The agents use `LLMService` configured via environment variables:
+The agents use `LLMService` configured via environment variables in `backend/.env`:
 
 ```bash
-# In .env (project root)
-LLM_PROVIDER=openai              # openai | ollama
+# Cloud (OpenAI)
+LLM_PROVIDER=openai
 OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-4o-mini
 
-# Or for local LLM:
-# LLM_PROVIDER=ollama
-# OLLAMA_BASE_URL=http://localhost:11434
-# OLLAMA_MODEL=llama3.1:8b
+# Cloud (DeepSeek) — OpenAI-compatible, cheap & fast
+LLM_PROVIDER=deepseek
+DEEPSEEK_API_KEY=sk-...
+DEEPSEEK_MODEL=deepseek-chat           # or deepseek-reasoner
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+
+# Local (Ollama) — default
+LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://ollama:11434   # Docker internal hostname
+OLLAMA_MODEL=qwen2.5:1.5b             # pull: docker compose exec ollama ollama pull qwen2.5:1.5b
+REQUEST_TIMEOUT=600                   # 10 min recommended for CPU-only inference
 ```
 
 ### Sandbox Configuration

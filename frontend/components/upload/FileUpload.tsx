@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { UploadCloud, Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
 
 export function FileUpload({ onUploadSuccess }: { onUploadSuccess: (filePath: string) => void }) {
@@ -78,54 +79,47 @@ export function FileUpload({ onUploadSuccess }: { onUploadSuccess: (filePath: st
     };
 
     return (
-        <div className="w-full max-w-md mx-auto space-y-4">
+        <div className="w-full space-y-4">
             <div
-                className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer
-          ${isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}
-        `}
+                className={`cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition-colors ${
+                    isDragging ? "border-accent bg-accent-soft/30" : "border-border hover:border-accent/50"
+                }`}
                 onDragEnter={handleDrag}
                 onDragLeave={handleDrag}
                 onDragOver={handleDrag}
                 onDrop={handleDrop}
             >
-                <input
-                    type="file"
-                    accept=".csv"
-                    className="hidden"
-                    id="file-upload"
-                    onChange={handleChange}
-                />
-                <label htmlFor="file-upload" className="cursor-pointer">
-                    <div className="space-y-2">
-                        <div className="flex justify-center">
-                            <span className="text-4xl text-gray-400">📄</span>
-                        </div>
-                        {isUploading ? (
-                            <p className="text-blue-500 font-medium">Uploading...</p>
-                        ) : (
-                            <>
-                                <p className="text-sm font-medium text-gray-700">Click to upload or drag and drop</p>
-                                <p className="text-xs text-gray-500">CSV files only</p>
-                            </>
-                        )}
-                    </div>
+                <input type="file" accept=".csv" className="hidden" id="file-upload" onChange={handleChange} />
+                <label htmlFor="file-upload" className="flex cursor-pointer flex-col items-center gap-2">
+                    {isUploading ? (
+                        <>
+                            <Loader2 size={26} className="animate-spin text-accent" />
+                            <p className="text-sm font-medium text-accent">Uploading…</p>
+                        </>
+                    ) : (
+                        <>
+                            <div className="grid h-12 w-12 place-items-center rounded-xl bg-surface-2 text-accent">
+                                <UploadCloud size={22} />
+                            </div>
+                            <p className="text-sm font-medium text-fg">Click to upload or drag and drop</p>
+                            <p className="text-xs text-faint">CSV files only</p>
+                        </>
+                    )}
                 </label>
             </div>
 
             {error && (
-                <div className="p-3 text-sm text-red-500 bg-red-50 rounded-md">
-                    {error}
-                </div>
+                <div className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2.5 text-sm text-danger">{error}</div>
             )}
 
             <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-500">Don&apos;t have a dataset?</span>
+                <span className="text-sm text-faint">Don&apos;t have a dataset?</span>
                 <button
                     onClick={loadDemo}
                     disabled={isUploading}
-                    className="text-sm text-blue-600 hover:text-blue-800 font-medium disabled:opacity-50"
+                    className="text-sm font-medium text-accent transition-opacity hover:opacity-80 disabled:opacity-50"
                 >
-                    Use Demo Dataset
+                    Use demo dataset
                 </button>
             </div>
         </div>

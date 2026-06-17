@@ -46,15 +46,14 @@ export function DatabaseConnect({ onConnectSuccess }: DatabaseConnectProps) {
     };
 
     return (
-        <div className="w-full max-w-md mx-auto bg-white p-6 rounded-lg border border-gray-200">
-            <h3 className="text-lg font-medium mb-4">Connect to Database</h3>
+        <div className="w-full">
             <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Database Type</label>
+                    <label className="mb-1.5 block text-xs font-medium text-muted">Database type</label>
                     <select
                         value={type}
                         onChange={(e) => setType(e.target.value)}
-                        className="w-full rounded-md border border-gray-300 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                        className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-fg outline-none transition-colors focus:border-accent/60"
                     >
                         <option value="postgresql">PostgreSQL</option>
                         <option value="mysql">MySQL</option>
@@ -64,9 +63,7 @@ export function DatabaseConnect({ onConnectSuccess }: DatabaseConnectProps) {
                 </div>
 
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Connection String
-                    </label>
+                    <label className="mb-1.5 block text-xs font-medium text-muted">Connection string</label>
                     <input
                         type="text"
                         value={connectionString}
@@ -77,26 +74,24 @@ export function DatabaseConnect({ onConnectSuccess }: DatabaseConnectProps) {
                                     type === "sqlite" ? "/path/to/database.db" :
                                         type === "duckdb" ? "/path/to/database.duckdb or :memory:" : ""
                         }
-                        className="w-full rounded-md border border-gray-300 p-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                        className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 font-mono text-sm text-fg outline-none transition-colors placeholder:text-faint focus:border-accent/60"
                         required
                     />
-                    <p className="mt-1 text-xs text-gray-500">
-                        For SQLite and DuckDB, you can use <code>:memory:</code>
+                    <p className="mt-1.5 text-xs text-faint">
+                        For SQLite and DuckDB you can use <code className="rounded bg-surface-2 px-1 font-mono text-accent">:memory:</code>
                     </p>
                 </div>
 
                 {error && (
-                    <div className="p-3 text-sm text-red-500 bg-red-50 rounded-md">
-                        {error}
-                    </div>
+                    <div className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2.5 text-sm text-danger">{error}</div>
                 )}
 
                 <button
                     type="submit"
                     disabled={isConnecting || !connectionString}
-                    className="w-full bg-blue-600 text-white rounded-md py-2 px-4 text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className="w-full rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-accent-fg transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                    {isConnecting ? "Connecting..." : "Connect"}
+                    {isConnecting ? "Connecting…" : "Connect"}
                 </button>
             </form>
         </div>

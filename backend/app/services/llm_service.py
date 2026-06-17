@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 class LLMProvider(str, Enum):
     OPENAI    = "openai"
     ANTHROPIC = "anthropic"
+    DEEPSEEK  = "deepseek"
     OLLAMA    = "ollama"
 
 
@@ -53,12 +54,16 @@ class LLMService:
         "claude-3-5-haiku-20241022": {"input": 0.80, "output": 4.00},
         "claude-3-5-sonnet-20241022": {"input": 3.00, "output": 15.00},
         "claude-opus-4-5": {"input": 15.00, "output": 75.00},
+        "deepseek-chat": {"input": 0.27, "output": 1.10},
+        "deepseek-reasoner": {"input": 0.55, "output": 2.19},
     }
 
     def __init__(self, config: Optional[LLMConfig] = None):
         if config is None:
+            from app import runtime_config
+
             try:
-                provider = LLMProvider(settings.llm_provider.lower())
+                provider = LLMProvider(runtime_config.get_provider().lower())
             except ValueError:
                 provider = LLMProvider.OPENAI
 
@@ -72,11 +77,23 @@ class LLMService:
                 model = settings.anthropic_model
                 fallback_model = model
                 base_url = ""
+            elif provider == LLMProvider.DEEPSEEK:
+                api_key = settings.deepseek_api_key
+                model = settings.deepseek_model
+                fallback_model = model
+                base_url = settings.deepseek_base_url
             else:  # OLLAMA
                 api_key = ""
                 model = settings.ollama_model
                 fallback_model = model
                 base_url = settings.ollama_base_url
+
+            # A live model override (set via POST /config) wins over env defaults.
+            override_model = runtime_config.get_model_override()
+            if override_model:
+                model = override_model
+                if provider != LLMProvider.OPENAI:
+                    fallback_model = override_model
 
             config = LLMConfig(
                 provider=provider,
@@ -98,6 +115,8 @@ class LLMService:
             raise ValueError("OPENAI_API_KEY not set")
         if self.config.provider == LLMProvider.ANTHROPIC and not config.api_key:
             raise ValueError("ANTHROPIC_API_KEY not set")
+        if self.config.provider == LLMProvider.DEEPSEEK and not config.api_key:
+            raise ValueError("DEEPSEEK_API_KEY not set")
 
     # ------------------------------------------------------------------
     # Client initialisation (thread-safe lazy singleton per provider)
@@ -110,6 +129,13 @@ class LLMService:
                 if self._client is None:
                     if self.config.provider == LLMProvider.OPENAI:
                         self._client = OpenAI(api_key=self.config.api_key)
+                    elif self.config.provider == LLMProvider.DEEPSEEK:
+                        # DeepSeek ships an OpenAI-compatible API; reuse the SDK
+                        # with its base URL.
+                        self._client = OpenAI(
+                            api_key=self.config.api_key,
+                            base_url=self.config.base_url,
+                        )
                     elif self.config.provider == LLMProvider.ANTHROPIC:
                         if not _ANTHROPIC_AVAILABLE:
                             raise ImportError(
@@ -237,7 +263,7 @@ class LLMService:
             try:
                 if self.config.provider == LLMProvider.OLLAMA:
                     return self._call_ollama(messages, model)
-                elif self.config.provider == LLMProvider.OPENAI:
+                elif self.config.provider in (LLMProvider.OPENAI, LLMProvider.DEEPSEEK):
                     return self._call_openai(messages, model)
                 elif self.config.provider == LLMProvider.ANTHROPIC:
                     return self._call_anthropic(messages, model)

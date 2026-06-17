@@ -2,205 +2,184 @@
 
 import { useState, useCallback } from "react";
 import { api } from "@/lib/api";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, UploadCloud, Database, Loader2 } from "lucide-react";
 import { DemoDataset } from "@/lib/types";
 
 interface UploadInfo {
-  type: "uploaded" | "demo";
-  name: string;
-  rows: number | string;
-  columns: number | string;
-  description?: string;
-  use_cases?: string[];
+    type: "uploaded" | "demo";
+    name: string;
+    rows: number | string;
+    columns: number | string;
+    description?: string;
+    use_cases?: string[];
 }
 
-export function DatasetSelector({ 
-  onUploadSuccess,
-  datasets
-}: { 
-  onUploadSuccess: (filePath: string, info: UploadInfo) => void;
-  datasets: Record<string, DemoDataset>;
+export function DatasetSelector({
+    onUploadSuccess,
+    datasets,
+}: {
+    onUploadSuccess: (filePath: string, info: UploadInfo) => void;
+    datasets: Record<string, DemoDataset>;
 }) {
-  const [isDragging, setIsDragging] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [showDatasets, setShowDatasets] = useState(false);
-  const [selectedDataset, setSelectedDataset] = useState<string | null>(null);
+    const [isDragging, setIsDragging] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [showDatasets, setShowDatasets] = useState(false);
+    const [selectedDataset, setSelectedDataset] = useState<string | null>(null);
 
-  const getErrorMessage = (err: unknown, fallback: string) => {
-    if (
-      typeof err === "object" &&
-      err !== null &&
-      "response" in err &&
-      typeof (err as { response?: unknown }).response === "object"
-    ) {
-      const response = (err as { response?: { data?: { detail?: string } } }).response;
-      return response?.data?.detail ?? fallback;
-    }
-    if (err instanceof Error) {
-      return err.message;
-    }
-    return fallback;
-  };
+    const getErrorMessage = (err: unknown, fallback: string) => {
+        if (typeof err === "object" && err !== null && "response" in err) {
+            const response = (err as { response?: { data?: { detail?: string } } }).response;
+            if (response?.data?.detail) return response.data.detail;
+        }
+        return err instanceof Error ? err.message : fallback;
+    };
 
-  const uploadFile = useCallback(async (file: File) => {
-    setError(null);
-    setIsUploading(true);
-    try {
-      const result = await api.uploadFile(file);
-      onUploadSuccess(result.file_path, {
-        name: file.name,
-        type: "uploaded",
-        rows: result.rows || "Unknown",
-        columns: result.columns || "Unknown",
-      });
-    } catch (err: unknown) {
-      setError(getErrorMessage(err, "Upload failed"));
-    } finally {
-      setIsUploading(false);
-    }
-  }, [onUploadSuccess]);
+    const uploadFile = useCallback(
+        async (file: File) => {
+            setError(null);
+            setIsUploading(true);
+            try {
+                const result = await api.uploadFile(file);
+                onUploadSuccess(result.file_path, {
+                    name: file.name,
+                    type: "uploaded",
+                    rows: result.rows || "Unknown",
+                    columns: result.columns || "Unknown",
+                });
+            } catch (err: unknown) {
+                setError(getErrorMessage(err, "Upload failed"));
+            } finally {
+                setIsUploading(false);
+            }
+        },
+        [onUploadSuccess]
+    );
 
-  const handleDrag = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(e.type === "dragenter" || e.type === "dragover");
-  }, []);
+    const handleDrag = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(e.type === "dragenter" || e.type === "dragover");
+    }, []);
 
-  const handleDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      await uploadFile(e.dataTransfer.files[0]);
-    }
-  }, [uploadFile]);
+    const handleDrop = useCallback(
+        async (e: React.DragEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDragging(false);
+            if (e.dataTransfer.files?.[0]) await uploadFile(e.dataTransfer.files[0]);
+        },
+        [uploadFile]
+    );
 
-  const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    e.preventDefault();
-    if (e.target.files && e.target.files[0]) {
-      await uploadFile(e.target.files[0]);
-    }
-  };
+    const handleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files?.[0]) await uploadFile(e.target.files[0]);
+    };
 
-  const loadDemo = async (datasetId: string) => {
-    setError(null);
-    setIsUploading(true);
-    setSelectedDataset(datasetId);
-    try {
-      const result = await api.loadDemoData(datasetId);
-      onUploadSuccess(result.file_path, {
-        name: result.dataset_name,
-        type: "demo",
-        rows: result.row_count,
-        columns: result.column_count,
-        description: result.description,
-        use_cases: result.use_cases,
-      });
-      setShowDatasets(false);
-    } catch (err: unknown) {
-      setError(getErrorMessage(err, "Failed to load demo"));
-    } finally {
-      setIsUploading(false);
-      setSelectedDataset(null);
-    }
-  };
+    const loadDemo = async (datasetId: string) => {
+        setError(null);
+        setIsUploading(true);
+        setSelectedDataset(datasetId);
+        try {
+            const result = await api.loadDemoData(datasetId);
+            onUploadSuccess(result.file_path, {
+                name: result.dataset_name,
+                type: "demo",
+                rows: result.row_count,
+                columns: result.column_count,
+                description: result.description,
+                use_cases: result.use_cases,
+            });
+            setShowDatasets(false);
+        } catch (err: unknown) {
+            setError(getErrorMessage(err, "Failed to load demo"));
+        } finally {
+            setIsUploading(false);
+            setSelectedDataset(null);
+        }
+    };
 
-  return (
-    <div className="w-full max-w-2xl mx-auto space-y-4">
-      {/* Upload Section */}
-      <div
-        className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer
-          ${isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'}
-        `}
-        onDragEnter={handleDrag}
-        onDragLeave={handleDrag}
-        onDragOver={handleDrag}
-        onDrop={handleDrop}
-      >
-        <input
-          type="file"
-          accept=".csv"
-          className="hidden"
-          id="file-upload"
-          onChange={handleChange}
-        />
-        <label htmlFor="file-upload" className="cursor-pointer">
-          <div className="space-y-2">
-            <div className="flex justify-center">
-              <span className="text-4xl text-gray-400">📄</span>
+    return (
+        <div className="w-full space-y-4">
+            {/* Dropzone */}
+            <div
+                className={`relative cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition-colors ${
+                    isDragging ? "border-accent bg-accent-soft/30" : "border-border hover:border-accent/50"
+                }`}
+                onDragEnter={handleDrag}
+                onDragLeave={handleDrag}
+                onDragOver={handleDrag}
+                onDrop={handleDrop}
+            >
+                <input type="file" accept=".csv" className="hidden" id="file-upload" onChange={handleChange} />
+                <label htmlFor="file-upload" className="flex cursor-pointer flex-col items-center gap-2">
+                    {isUploading && !selectedDataset ? (
+                        <>
+                            <Loader2 size={26} className="animate-spin text-accent" />
+                            <p className="text-sm font-medium text-accent">Uploading…</p>
+                        </>
+                    ) : (
+                        <>
+                            <div className="grid h-12 w-12 place-items-center rounded-xl bg-surface-2 text-accent">
+                                <UploadCloud size={22} />
+                            </div>
+                            <p className="text-sm font-medium text-fg">Click to upload or drag and drop</p>
+                            <p className="text-xs text-faint">CSV files only</p>
+                        </>
+                    )}
+                </label>
             </div>
-            {isUploading ? (
-              <p className="text-blue-500 font-medium">Uploading...</p>
-            ) : (
-              <>
-                <p className="text-sm font-medium text-gray-700">Click to upload or drag and drop</p>
-                <p className="text-xs text-gray-500">CSV files only</p>
-              </>
+
+            {error && (
+                <div className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2.5 text-sm text-danger">{error}</div>
             )}
-          </div>
-        </label>
-      </div>
 
-      {error && (
-        <div className="p-3 text-sm text-red-500 bg-red-50 rounded-md">
-          {error}
-        </div>
-      )}
+            {/* Demo datasets */}
+            <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                    <div className="h-px flex-1 bg-border" />
+                    <span className="text-xs font-medium text-faint">or try a demo dataset</span>
+                    <div className="h-px flex-1 bg-border" />
+                </div>
 
-      {/* Demo Datasets Selector */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-gray-600 font-medium">Or try a demo:</span>
-        </div>
-
-        {/* Dataset Dropdown */}
-        <div className="relative">
-          <button
-            onClick={() => setShowDatasets(!showDatasets)}
-            disabled={isUploading}
-            className="w-full px-4 py-3 bg-white border border-gray-200 rounded-lg flex items-center justify-between hover:border-gray-300 disabled:opacity-50 text-left"
-          >
-            <span className="text-sm font-medium text-gray-700">
-              {selectedDataset ? `Loading ${datasets[selectedDataset]?.name || 'Dataset'}...` : 'Select a demo dataset'}
-            </span>
-            <ChevronDown size={16} className={`transition-transform ${showDatasets ? 'rotate-180' : ''}`} />
-          </button>
-
-          {showDatasets && (
-            <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
-              {Object.entries(datasets).map(([id, config]) => (
-                <button
-                  key={id}
-                  onClick={() => loadDemo(id)}
-                  disabled={isUploading}
-                  className="w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0 disabled:opacity-50"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <p className="font-medium text-sm text-gray-900">{config.name}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">{config.description}</p>
-                      <div className="flex gap-2 mt-2">
-                        <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded">
-                          {config.rows} rows
+                <div className="relative">
+                    <button
+                        onClick={() => setShowDatasets((v) => !v)}
+                        disabled={isUploading}
+                        className="flex w-full items-center justify-between rounded-xl border border-border bg-surface px-4 py-3 text-left transition-colors hover:border-accent/50 disabled:opacity-50"
+                    >
+                        <span className="flex items-center gap-2 text-sm font-medium text-fg">
+                            <Database size={15} className="text-accent-2" />
+                            {selectedDataset ? `Loading ${datasets[selectedDataset]?.name || "dataset"}…` : "Select a demo dataset"}
                         </span>
-                        <span className="text-xs bg-purple-50 text-purple-700 px-2 py-1 rounded">
-                          {config.columns} cols
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </button>
-              ))}
+                        <ChevronDown size={16} className={`text-muted transition-transform ${showDatasets ? "rotate-180" : ""}`} />
+                    </button>
+
+                    {showDatasets && (
+                        <div className="absolute bottom-full left-0 right-0 z-20 mb-2 max-h-[60vh] overflow-y-auto rounded-xl border border-border bg-surface shadow-[var(--shadow)]">
+                            {Object.entries(datasets).map(([id, config]) => (
+                                <button
+                                    key={id}
+                                    onClick={() => loadDemo(id)}
+                                    disabled={isUploading}
+                                    className="w-full border-b border-border-soft px-4 py-3 text-left transition-colors last:border-0 hover:bg-surface-2 disabled:opacity-50"
+                                >
+                                    <p className="text-sm font-medium text-fg">{config.name}</p>
+                                    <p className="mt-0.5 text-xs text-faint">{config.description}</p>
+                                    <div className="mt-2 flex gap-2">
+                                        <span className="rounded-md bg-accent-soft/50 px-2 py-0.5 font-mono text-[11px] text-accent">
+                                            {config.rows} rows
+                                        </span>
+                                        <span className="rounded-md bg-surface-2 px-2 py-0.5 font-mono text-[11px] text-muted">
+                                            {config.columns} cols
+                                        </span>
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
             </div>
-          )}
         </div>
-      </div>
-
-      {/* Info Text */}
-      <p className="text-xs text-gray-500 text-center">
-        💡 Demo datasets are perfect for trying out Insight Orchestra before uploading your own data
-      </p>
-    </div>
-  );
+    );
 }

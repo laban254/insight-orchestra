@@ -6,7 +6,7 @@ import asyncio
 import time
 from sse_starlette.sse import EventSourceResponse
 from app.utils.file_utils import save_upload_file, UPLOAD_DIR
-from app.services.adk_agents import InsightOrchestraWorkflow, DataJanitorAgent
+from app.services.adk_agents import InsightOrchestraWorkflow, DataJanitorAgent, HypothesisBotAgent
 from app.services.nlq_agent import NaturalLanguageQueryAgent
 from app.services.summarizer_agent import InsightSummarizerAgent
 from app.services.explain_agent import ExplainabilityAgent
@@ -31,6 +31,7 @@ _session_manager = get_session_manager()
 
 class ProcessRequest(BaseModel):
     file_path: str
+    session_id: Optional[str] = None
 
 
 class NLQRequest(BaseModel):
@@ -77,57 +78,94 @@ async def upload_csv(file: UploadFile = File(...)):
 
 
 @router.post("/process")
-async def process_data(request: ProcessRequest, session_id: Optional[str] = None):
+async def process_data(request: ProcessRequest):
     """Run full Insight Orchestra workflow with real-time agent progress events."""
     df = get_df(request.file_path)
     workflow = InsightOrchestraWorkflow()
-    sid = session_id
+    sid = request.session_id
 
-    def _run_janitor():
-        return workflow.cleaner.run(df.to_dict(orient="records"))
+    try:
+        push_event(sid, agent_id="janitor", status="running")
+        t0 = time.monotonic()
+        cleaner_result = await asyncio.to_thread(
+            workflow.cleaner.run, df.to_dict(orient="records")
+        )
+        cleaned_data = cleaner_result["cleaned_data"]
+        r = cleaner_result["report"]
+        push_event(sid, agent_id="janitor", status="done",
+                   output=f"Removed {r.get('duplicates_removed', 0)} dupes, "
+                          f"handled {r.get('total_missing', 0)} missing values.",
+                   duration=int((time.monotonic() - t0) * 1000))
 
-    push_event(sid, agent_id="janitor", status="running")
-    t0 = time.monotonic()
-    cleaner_result = await asyncio.to_thread(_run_janitor)
-    cleaned_data = cleaner_result["cleaned_data"]
-    r = cleaner_result["report"]
-    push_event(sid, agent_id="janitor", status="done",
-               output=f"Removed {r.get('duplicates_removed',0)} dupes, imputed {r.get('total_missing',0)} missing values.",
-               duration=int((time.monotonic() - t0) * 1000))
+        push_event(sid, agent_id="hypothesis", status="running")
+        t0 = time.monotonic()
+        hypothesis_result = await asyncio.to_thread(workflow.hypothesis.run, cleaned_data)
+        hypotheses = hypothesis_result["hypotheses"]
+        stats_summary = HypothesisBotAgent._build_stats_summary(pd.DataFrame(cleaned_data))
+        push_event(sid, agent_id="hypothesis", status="done",
+                   output=f"Found {len(hypotheses)} insights.",
+                   duration=int((time.monotonic() - t0) * 1000))
 
-    push_event(sid, agent_id="hypothesis", status="running")
-    t0 = time.monotonic()
-    hypothesis_result = await asyncio.to_thread(workflow.hypothesis.run, cleaned_data)
-    hypotheses = hypothesis_result["hypotheses"]
-    push_event(sid, agent_id="hypothesis", status="done",
-               output=f"Generated {len(hypotheses)} hypotheses.",
-               duration=int((time.monotonic() - t0) * 1000))
+        push_event(sid, agent_id="debate", status="running")
+        t0 = time.monotonic()
+        debate_result = await asyncio.to_thread(
+            workflow.debate.run, hypotheses, stats_summary
+        )
+        consensus = debate_result["summary"].get("consensus")
+        top = consensus.get("hypothesis", "")[:80] if consensus else "—"
+        push_event(sid, agent_id="debate", status="done",
+                   output=f"Top insight: {top}…" if len(top) == 80 else f"Top insight: {top}",
+                   duration=int((time.monotonic() - t0) * 1000))
 
-    push_event(sid, agent_id="debate", status="running")
-    t0 = time.monotonic()
-    debate_result = await asyncio.to_thread(workflow.debate.run, hypotheses)
-    consensus = debate_result["summary"].get("consensus")
-    push_event(sid, agent_id="debate", status="done",
-               output="Top hypothesis scored. Consensus reached.",
-               duration=int((time.monotonic() - t0) * 1000))
+        push_event(sid, agent_id="viz", status="running")
+        t0 = time.monotonic()
+        viz_result = await asyncio.to_thread(
+            workflow.viz.run, cleaned_data, consensus, hypotheses=hypotheses
+        )
+        num_plots = len(viz_result.get("chart_info", {}).get("plots", []))
+        push_event(sid, agent_id="viz", status="done",
+                   output=f"Generated {num_plots} chart(s).",
+                   duration=int((time.monotonic() - t0) * 1000))
 
-    push_event(sid, agent_id="viz", status="running")
-    t0 = time.monotonic()
-    viz_result = await asyncio.to_thread(
-        workflow.viz.run, cleaned_data, consensus, hypotheses=hypotheses
-    )
-    num_plots = len(viz_result.get("chart_info", {}).get("plots", []))
-    push_event(sid, agent_id="viz", status="done",
-               output=f"Generated {num_plots} chart(s).",
-               duration=int((time.monotonic() - t0) * 1000))
+        # Generate narrative summary + suggested questions
+        workflow_results = {
+            "cleaner": cleaner_result,
+            "hypothesis": hypothesis_result,
+            "debate": debate_result,
+            "viz": viz_result,
+            "stats": stats_summary,
+        }
+        summarizer = InsightSummarizerAgent(llm_service=workflow.llm)
+        summary_result = await asyncio.to_thread(summarizer.run, workflow_results)
+    finally:
+        # Always close the progress stream, even if an agent raised.
+        push_sentinel(sid)
 
-    push_sentinel(sid)
+    # Store analysis context in session so NLQ queries can reference it
+    if sid:
+        _session_manager.append(sid, {
+            "role": "analysis",
+            "narrative": summary_result.get("narrative", ""),
+            "top_insight": consensus.get("hypothesis", "") if consensus else "",
+            "hypotheses": hypotheses[:5],
+        })
+
+    # Small sample of the cleaned data so the UI can show a preview table.
+    import json as _json
+    preview_df = pd.DataFrame(cleaned_data)
+    preview = {
+        "columns": preview_df.columns.tolist(),
+        "rows": _json.loads(preview_df.head(20).to_json(orient="records")),
+    }
 
     return {
-        "cleaner":    cleaner_result,
-        "hypothesis": hypothesis_result,
-        "debate":     debate_result,
-        "viz":        viz_result,
+        "cleaner":             cleaner_result,
+        "hypothesis":          hypothesis_result,
+        "debate":              debate_result,
+        "viz":                 viz_result,
+        "narrative":           summary_result.get("narrative", ""),
+        "suggested_questions": summary_result.get("suggested_questions", []),
+        "preview":             preview,
     }
 
 
@@ -137,63 +175,64 @@ async def natural_language_query(request: NLQRequest):
     sid = request.session_id
     df = get_df(request.file_path)
 
-    # --- Phase 1: Data Janitor ---
-    push_event(sid, agent_id="janitor", status="running")
-    t0 = time.monotonic()
-    janitor = DataJanitorAgent(name="nlq_cleaner")
-    cleaned_result = await asyncio.to_thread(
-        janitor.run, df.to_dict(orient="records")
-    )
-    df = pd.DataFrame(cleaned_result["cleaned_data"])
-    report = cleaned_result["report"]
-    janitor_summary = (
-        f"Removed {report.get('duplicates_removed', 0)} duplicates, "
-        f"imputed {report.get('total_missing', 0)} missing values."
-    )
-    push_event(
-        sid, agent_id="janitor", status="done",
-        output=janitor_summary,
-        duration=int((time.monotonic() - t0) * 1000),
-    )
-
-    # Get session context if provided
-    context = None
-    if sid:
-        context = _session_manager.get(sid)
-
-    # --- Phase 2: NLQ Agent ---
-    push_event(sid, agent_id="nlq", status="running")
-    t0 = time.monotonic()
-    agent = NaturalLanguageQueryAgent()
-    response = await asyncio.to_thread(agent.run, df, request.question, context, sid)
-    if response.execution_success:
-        push_event(
-            sid,
-            agent_id="nlq",
-            status="done",
-            output="Generated and executed query successfully.",
-            duration=int((time.monotonic() - t0) * 1000),
+    try:
+        # --- Phase 1: Data Janitor ---
+        push_event(sid, agent_id="janitor", status="running")
+        t0 = time.monotonic()
+        janitor = DataJanitorAgent(name="nlq_cleaner")
+        cleaned_result = await asyncio.to_thread(
+            janitor.run, df.to_dict(orient="records")
         )
-    else:
+        df = pd.DataFrame(cleaned_result["cleaned_data"])
+        report = cleaned_result["report"]
+        janitor_summary = (
+            f"Removed {report.get('duplicates_removed', 0)} duplicates, "
+            f"imputed {report.get('total_missing', 0)} missing values."
+        )
         push_event(
-            sid,
-            agent_id="nlq",
-            status="error",
-            output=response.error or "Query execution failed.",
+            sid, agent_id="janitor", status="done",
+            output=janitor_summary,
             duration=int((time.monotonic() - t0) * 1000),
         )
 
-    # --- Phase 3: Viz Whiz (emit only when a plot was produced) ---
-    if response.plot_json:
-        push_event(sid, agent_id="viz", status="running")
-        push_event(
-            sid, agent_id="viz", status="done",
-            output="Chart generated successfully.",
-            duration=0,
-        )
+        # Get session context if provided
+        context = None
+        if sid:
+            context = _session_manager.get(sid)
 
-    # Signal end-of-stream
-    push_sentinel(sid)
+        # --- Phase 2: NLQ Agent ---
+        push_event(sid, agent_id="nlq", status="running")
+        t0 = time.monotonic()
+        agent = NaturalLanguageQueryAgent()
+        response = await asyncio.to_thread(agent.run, df, request.question, context, sid)
+        if response.execution_success:
+            push_event(
+                sid,
+                agent_id="nlq",
+                status="done",
+                output="Generated and executed query successfully.",
+                duration=int((time.monotonic() - t0) * 1000),
+            )
+        else:
+            push_event(
+                sid,
+                agent_id="nlq",
+                status="error",
+                output=response.error or "Query execution failed.",
+                duration=int((time.monotonic() - t0) * 1000),
+            )
+
+        # --- Phase 3: Viz Whiz (emit only when a plot was produced) ---
+        if response.plot_json:
+            push_event(sid, agent_id="viz", status="running")
+            push_event(
+                sid, agent_id="viz", status="done",
+                output="Chart generated successfully.",
+                duration=0,
+            )
+    finally:
+        # Always close the progress stream, even if an agent raised.
+        push_sentinel(sid)
 
     # Store in session
     if sid:
@@ -276,6 +315,46 @@ async def bigquery_fetch(request: BigQueryRequest):
         raise HTTPException(status_code=500, detail=f"BigQuery error: {str(e)}")
 
 
+class ConfigUpdate(BaseModel):
+    provider: Optional[str] = None
+    model: Optional[str] = None
+
+
+@router.get("/config")
+async def get_config():
+    """Current LLM provider/model and what's switchable."""
+    from app import runtime_config
+    keymap = {
+        "openai": bool(settings.openai_api_key and "your-" not in settings.openai_api_key),
+        "anthropic": bool(settings.anthropic_api_key and settings.anthropic_api_key != "sk-ant-..."),
+        "deepseek": bool(settings.deepseek_api_key and settings.deepseek_api_key != "sk-..."),
+        "ollama": True,
+    }
+    return {
+        **runtime_config.current(),
+        "available": runtime_config.PROVIDERS,
+        "ready": keymap,
+    }
+
+
+@router.post("/config")
+async def update_config(update: ConfigUpdate):
+    """Switch provider/model at runtime (no restart needed)."""
+    from app import runtime_config
+    if update.provider and update.provider not in runtime_config.PROVIDERS:
+        raise HTTPException(status_code=400, detail=f"Unknown provider '{update.provider}'.")
+    prov = update.provider or runtime_config.get_provider()
+    keymap = {
+        "openai": settings.openai_api_key,
+        "anthropic": settings.anthropic_api_key,
+        "deepseek": settings.deepseek_api_key,
+    }
+    if prov in keymap and (not keymap[prov] or keymap[prov] in ("sk-...", "sk-ant-...", "your-openai-api-key-here")):
+        raise HTTPException(status_code=400, detail=f"No API key configured for '{prov}' on the server.")
+    runtime_config.set_override(update.provider, update.model)
+    return runtime_config.current()
+
+
 @router.get("/sessions/{session_id}")
 async def get_session(session_id: str):
     """Get session context."""
@@ -344,22 +423,30 @@ async def stream_agent_logs(session_id: str):
     Stream real agent progress events for the UI.
 
     The queue is registered here (before the /nlq or /process call fires)
-    so no events are dropped.  Producers call push_event(); we drain the
-    queue until a None sentinel arrives or 60 s of silence passes.
+    so no events are dropped.  Producers call push_event() and always emit a
+    None sentinel (even on error) so we close promptly; a heartbeat keeps the
+    connection alive through long CPU inference where no events flow, and an
+    overall cap guards against a producer that dies without a sentinel.
     """
     import json
     queue = get_queue(session_id)
+    # Bound total stream life to the LLM timeout plus margin so a crashed
+    # producer can't leak the connection indefinitely.
+    deadline = time.monotonic() + settings.request_timeout + 30
 
     async def event_generator():
         try:
             while True:
-                try:
-                    event = await asyncio.wait_for(queue.get(), timeout=60.0)
-                except asyncio.TimeoutError:
-                    # No events for 60 s — close gracefully
+                if time.monotonic() >= deadline:
                     break
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=15.0)
+                except asyncio.TimeoutError:
+                    # No events yet — keep the connection alive and keep waiting.
+                    yield {"event": "ping", "data": "{}"}
+                    continue
 
-                if event is None:   # sentinel: pipeline finished
+                if event is None:   # sentinel: pipeline finished (or errored)
                     break
 
                 yield {"data": json.dumps(event)}
