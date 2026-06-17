@@ -30,7 +30,7 @@ export function CodeBlock({ code, language = "python" }: CodeBlockProps) {
     };
 
     return (
-        <div className="rounded-xl border border-gray-200 overflow-hidden my-3 shadow-sm w-full">
+        <div className="w-full overflow-hidden rounded-xl border border-border">
             {/* Toolbar */}
             <div className="flex items-center justify-between px-4 py-2 bg-gray-900">
                 <div className="flex items-center gap-2">

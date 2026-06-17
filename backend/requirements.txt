@@ -1,5 +1,6 @@
 fastapi
 uvicorn
+sse-starlette
 pandas
 python-multipart
 pydantic
@@ -15,5 +16,6 @@ psycopg2-binary
 pymysql
 jinja2
 numpy
+statsmodels
 redis
 pydantic-settings

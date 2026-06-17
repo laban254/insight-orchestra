@@ -395,11 +395,15 @@ Code: result = df[df['price'] > 100]
         
         elif result is None:
             return "Query executed but no result was returned."
-        elif "matplotlib" in type(result).__module__.lower():
-            return "Chart generated successfully."
-        
-        else:
-            return str(result)
+
+        module = (type(result).__module__ or "").lower()
+        if "matplotlib" in module:
+            return "Here's the chart for your question — see the Canvas."
+        # Plotly figures stringify into a huge binary blob; never surface that.
+        if "plotly" in module or hasattr(result, "to_plotly_json"):
+            return "Here's the chart for your question — see the Canvas."
+
+        return str(result)
 
     def _build_fallback_plot(self, df: pd.DataFrame, result_obj: Any):
         """Build a Plotly chart when chart mode returns a non-Plotly object."""

@@ -1,15 +1,104 @@
 @import "tailwindcss";
 
+/* Toggle dark mode via a `.dark` class on <html> (set by ThemeProvider). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ───────────────────────────────────────────────────────────────
+   Design tokens — "Bold data-viz" palette.
+   Light + dark values live here; utilities reference them via @theme.
+   ─────────────────────────────────────────────────────────────── */
 :root {
-  --background: #f9fafb;
-  --foreground: #171717;
+  /* Surfaces */
+  --bg:          #f5f7fb;
+  --surface:     #ffffff;
+  --surface-2:   #eef1f7;
+  --surface-3:   #e4e9f2;
+  --border:      #d8dfea;
+  --border-soft: #e7ecf4;
+
+  /* Text */
+  --fg:          #0b1220;
+  --muted:       #4a566b;
+  --faint:       #8b97ac;
+
+  /* Brand / accents */
+  --accent:        #0891b2;  /* cyan-600 — primary, AA on white */
+  --accent-fg:     #ffffff;
+  --accent-soft:   #cffafe;
+  --accent-2:      #c026d3;  /* magenta — secondary highlight */
+  --accent-2-soft: #fae8ff;
+
+  /* Semantic */
+  --success:  #059669;
+  --warning:  #d97706;
+  --danger:   #e11d48;
+  --info:     #2563eb;
+
+  /* Effects */
+  --glow:    0 0 0 0 transparent;
+  --ring:    color-mix(in oklab, var(--accent) 40%, transparent);
+  --shadow:  0 1px 2px rgb(11 18 32 / 0.06), 0 4px 16px rgb(11 18 32 / 0.05);
+
+  /* Plotly chart colorway (consumed in ChartRenderer) */
+  --chart-grid: rgba(11, 18, 32, 0.08);
 }
 
+.dark {
+  --bg:          #070b14;
+  --surface:     #0f1626;
+  --surface-2:   #161f33;
+  --surface-3:   #1d2840;
+  --border:      #25314c;
+  --border-soft: #1a2236;
+
+  --fg:          #e8eefc;
+  --muted:       #9aa7c2;
+  --faint:       #5e6c89;
+
+  --accent:        #22d3ee;  /* electric cyan */
+  --accent-fg:     #04141a;
+  --accent-soft:   #0e3a44;
+  --accent-2:      #e879f9;  /* neon magenta */
+  --accent-2-soft: #3a1145;
+
+  --success:  #34d399;
+  --warning:  #fbbf24;
+  --danger:   #fb7185;
+  --info:     #60a5fa;
+
+  --ring:    color-mix(in oklab, var(--accent) 55%, transparent);
+  --shadow:  0 1px 2px rgb(0 0 0 / 0.4), 0 8px 30px rgb(0 0 0 / 0.35);
+  --glow:    0 0 24px -6px color-mix(in oklab, var(--accent) 55%, transparent);
+
+  --chart-grid: rgba(232, 238, 252, 0.08);
+}
+
+/* Map tokens → Tailwind utilities (bg-surface, text-muted, border-border, …) */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg:          var(--bg);
+  --color-surface:     var(--surface);
+  --color-surface-2:   var(--surface-2);
+  --color-surface-3:   var(--surface-3);
+  --color-border:      var(--border);
+  --color-border-soft: var(--border-soft);
+
+  --color-fg:    var(--fg);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+
+  --color-accent:        var(--accent);
+  --color-accent-fg:     var(--accent-fg);
+  --color-accent-soft:   var(--accent-soft);
+  --color-accent-2:      var(--accent-2);
+  --color-accent-2-soft: var(--accent-2-soft);
+
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger:  var(--danger);
+  --color-info:    var(--info);
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, "SF Mono", monospace;
 }
 
 html,
@@ -18,7 +107,59 @@ body {
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Smooth color transitions when the theme flips */
+html.theme-ready,
+html.theme-ready * {
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+/* Themed scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-3) transparent;
+}
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb {
+  background: var(--surface-3);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--border); }
+
+/* Utility: subtle accent glow for hero/active elements */
+.glow-accent { box-shadow: var(--glow); }
+
+@keyframes shimmer {
+  100% { transform: translateX(100%); }
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(12px) scale(0.985); }
+  to   { opacity: 1; transform: none; }
+}
+.animate-rise { animation: rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.animate-fade { animation: fade-in 0.3s ease both; }
+.shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklab, var(--fg) 6%, transparent),
+    transparent
+  );
+  animation: shimmer 1.6s infinite;
 }

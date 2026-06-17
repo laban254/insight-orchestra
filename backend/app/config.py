@@ -10,7 +10,7 @@ from pydantic import Field
 
 
 class Settings(BaseSettings):
-    # LLM provider selection: "openai" | "anthropic" | "ollama"
+    # LLM provider selection: "openai" | "anthropic" | "deepseek" | "ollama"
     llm_provider: str = Field("openai", alias="LLM_PROVIDER")
 
     # OpenAI
@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     # Anthropic
     anthropic_api_key: str = Field("", alias="ANTHROPIC_API_KEY")
     anthropic_model: str = Field("claude-3-5-haiku-20241022", alias="ANTHROPIC_MODEL")
+
+    # DeepSeek (OpenAI-compatible API)
+    deepseek_api_key: str = Field("", alias="DEEPSEEK_API_KEY")
+    deepseek_model: str = Field("deepseek-chat", alias="DEEPSEEK_MODEL")
+    deepseek_base_url: str = Field("https://api.deepseek.com", alias="DEEPSEEK_BASE_URL")
 
     # Ollama
     ollama_model: str = Field("qwen2.5:0.5b", alias="OLLAMA_MODEL")
