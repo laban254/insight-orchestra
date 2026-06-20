@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Database, FileUp, Waypoints, PanelLeft, Download, Plus, Clock, Moon, Command } from "lucide-react";
+import { Database, FileUp, Waypoints, PanelLeft, Download, Plus, Clock, Moon, Command, Share2 } from "lucide-react";
 import { useTheme } from "@/lib/theme";
 import { useToast } from "@/lib/toast";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { ModelSwitcher } from "@/components/ui/ModelSwitcher";
 import { CostMeter } from "@/components/ui/CostMeter";
+import { ExportMenu } from "@/components/ui/ExportMenu";
 import { CommandPalette, Command as Cmd } from "@/components/ui/CommandPalette";
 import { FileUpload } from "@/components/upload/FileUpload";
 import { DatabaseConnect } from "@/components/upload/DatabaseConnect";
@@ -167,11 +168,33 @@ export default function Home() {
         toast("Report downloaded", "success");
     }, [datasetInfo, toast]);
 
+    const handleShare = useCallback(async () => {
+        const st = currentState.current;
+        if (!st?.analysisResult || !workspaceId) {
+            toast("Run an analysis first", "info");
+            return;
+        }
+        try {
+            const payload = {
+                datasetName: datasetInfo?.name ?? "Dataset",
+                analysisResult: st.analysisResult,
+                results: st.results,
+            };
+            const { token } = await api.createShareLink(workspaceId, payload);
+            const url = `${window.location.origin}/shared/${token}`;
+            await navigator.clipboard.writeText(url);
+            toast("Share link copied to clipboard", "success");
+        } catch {
+            toast("Could not create share link", "error");
+        }
+    }, [datasetInfo, workspaceId, toast]);
+
     // Command palette actions
     const commands: Cmd[] = [
         { id: "new", label: "New analysis", group: "actions", icon: Plus, run: handleNew },
         { id: "history", label: "Open history", group: "actions", icon: Clock, run: () => setHistoryOpen(true) },
         { id: "export", label: "Export report", group: "actions", icon: Download, run: handleExport },
+        { id: "share", label: "Copy share link", group: "actions", icon: Share2, run: handleShare },
         { id: "theme", label: "Toggle dark / light", group: "actions", icon: Moon, run: theme.toggle },
         ...Object.entries(availableDatasets ?? {}).map(([id, ds]) => ({
             id: `ds-${id}`,
@@ -222,12 +245,13 @@ export default function Home() {
                             <CostMeter tokens={cost.tokens} cost={cost.cost} />
                             <ModelSwitcher />
                             <button
-                                onClick={handleExport}
+                                onClick={handleShare}
                                 className="grid h-9 w-9 place-items-center rounded-lg border border-border bg-surface text-muted transition-colors hover:text-fg"
-                                title="Export report"
+                                title="Share a read-only link"
                             >
-                                <Download size={16} />
+                                <Share2 size={16} />
                             </button>
+                            <ExportMenu sessionId={workspaceId} onReport={handleExport} />
                             <DatasetInfoPanel
                                 info={datasetInfo}
                                 onReset={handleNew}

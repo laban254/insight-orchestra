@@ -1,14 +1,18 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.endpoints import router as api_router
+from app.config import settings
 
 app = FastAPI()
 
-# Allow all origins for development; restrict in production
+# Explicit allowed origins (set ALLOWED_ORIGINS, comma-separated). A wildcard
+# can't be combined with credentials, so only enable credentials when scoped.
+_origins = [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
+_wildcard = "*" in _origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_origins or ["*"],
+    allow_credentials=not _wildcard,
     allow_methods=["*"],
     allow_headers=["*"],
 )
