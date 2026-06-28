@@ -117,9 +117,9 @@ class TestNaturalLanguageQueryAgent:
         mock_sandbox_result.success = True
         mock_sandbox_result.result = MagicMock()
         mock_sandbox_result.result.to_dict.return_value = {
-            'Engineering': 80000,
-            'Sales': 65000,
-            'Marketing': 70000,
+            "Engineering": 80000,
+            "Sales": 65000,
+            "Marketing": 70000,
         }
         mock_sandbox_result.output = ""
         mock_sandbox_result.error = ""
@@ -134,9 +134,7 @@ class TestNaturalLanguageQueryAgent:
 
     def test_run_with_context(self, agent, sample_dataframe, mock_llm_service):
         """Test running a query with conversation context."""
-        context = [
-            {"question": "What is the average age?", "answer": "29.5", "code": "..."}
-        ]
+        context = [{"question": "What is the average age?", "answer": "29.5", "code": "..."}]
 
         agent.run(sample_dataframe, "What about by department?", context=context)
 
@@ -173,12 +171,13 @@ class TestNaturalLanguageQueryAgent:
 
     def test_run_with_plotly_code(self, agent, sample_dataframe, mock_llm_service, mock_sandbox):
         """Test query that generates a Plotly chart."""
-        mock_fig = MagicMock()
-        mock_fig.to_json.return_value = '{"type": "bar"}'
+        import plotly.graph_objects as go
+
+        real_fig = go.Figure(data=[go.Bar(x=["A", "B"], y=[1, 2])])
 
         mock_sandbox.execute_with_retry.return_value = Mock(
             success=True,
-            result=mock_fig,
+            result=real_fig,
             output="",
             error="",
             execution_time_ms=100.0,
@@ -186,7 +185,8 @@ class TestNaturalLanguageQueryAgent:
 
         response = agent.run(sample_dataframe, "Show me a bar chart of salaries")
 
-        assert response.plot_json == '{"type": "bar"}'
+        assert response.plot_json is not None
+        assert '"type":"bar"' in response.plot_json.replace(" ", "")
 
     def test_run_with_fallback_model(self, agent, sample_dataframe, mock_llm_service):
         """Test that complex queries use fallback model."""
@@ -203,7 +203,7 @@ class TestNaturalLanguageQueryAgent:
         """Test building answer for DataFrame result."""
         import pandas as pd
 
-        df = pd.DataFrame({'a': [1, 2, 3]})
+        df = pd.DataFrame({"a": [1, 2, 3]})
         answer = agent._build_answer(df, "Show data")
 
         assert "3 rows" in answer
