@@ -29,6 +29,7 @@ def test_sqlite_connector():
 
     connector.disconnect()
 
+
 def test_duckdb_connector():
     connector = DuckDBConnector()
     connector.connect(":memory:")
@@ -46,7 +47,8 @@ def test_duckdb_connector():
 
     connector.disconnect()
 
-@patch('psycopg2.connect')
+
+@patch("psycopg2.connect")
 def test_postgresql_connector(mock_connect):
     mock_conn = MagicMock()
     mock_cursor = MagicMock()
@@ -67,7 +69,8 @@ def test_postgresql_connector(mock_connect):
     mock_cursor.close.assert_called_once()
     mock_conn.close.assert_called_once()
 
-@patch('pymysql.connect')
+
+@patch("pymysql.connect")
 def test_mysql_connector(mock_connect):
     mock_conn = MagicMock()
     mock_cursor = MagicMock()
@@ -76,7 +79,9 @@ def test_mysql_connector(mock_connect):
 
     connector = MySQLConnector()
     connector.connect("mysql://user:pass@localhost:3306/db")
-    mock_connect.assert_called_with(host='localhost', user='user', password='pass', database='db', port=3306)
+    mock_connect.assert_called_with(
+        host="localhost", user="user", password="pass", database="db", port=3306
+    )
 
     mock_cursor.execute.side_effect = None
     assert connector.test_connection() is True

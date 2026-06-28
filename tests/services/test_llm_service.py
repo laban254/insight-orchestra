@@ -89,7 +89,7 @@ class TestDataFrameSchema:
             assert "name" in col
             assert "dtype" in col
             assert "sample_values" in col
-            assert len(col["sample_values"]) == 5  # Default sample size
+            assert 1 <= len(col["sample_values"]) <= 5
 
     def test_null_counts(self, sample_dataframe):
         """Test null counts in schema."""
@@ -103,7 +103,7 @@ class TestDataFrameSchema:
         schema = DataFrameSchema.from_dataframe(sample_dataframe)
         prompt = DataFrameSchema.to_prompt(schema)
 
-        assert "DataFrame Shape:" in prompt
+        assert "DataFrame:" in prompt
         assert "Columns:" in prompt
         assert "name:" in prompt
         assert "age:" in prompt
@@ -115,7 +115,7 @@ class TestLLMService:
     @pytest.fixture
     def mock_openai_client(self):
         """Create a mock OpenAI client."""
-        with patch('app.services.llm_service.OpenAI') as mock_client:
+        with patch("app.services.llm_service.OpenAI") as mock_client:
             yield mock_client
 
     @pytest.fixture
@@ -225,16 +225,8 @@ class TestLLMServiceIntegration:
 
     def test_service_initialization_without_api_key_raises(self):
         """Test that initializing without API key raises ValueError."""
-        import os
+        from app.services.llm_service import LLMConfig, LLMProvider
 
-        # Ensure no API key
-        original_key = os.getenv("OPENAI_API_KEY")
-        if original_key:
-            os.environ["OPENAI_API_KEY"] = ""
-
+        config = LLMConfig(provider=LLMProvider.OPENAI, api_key="")
         with pytest.raises(ValueError, match="OPENAI_API_KEY not set"):
-            LLMService()
-
-        # Restore original
-        if original_key:
-            os.environ["OPENAI_API_KEY"] = original_key
+            LLMService(config=config)

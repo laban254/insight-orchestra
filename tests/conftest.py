@@ -9,18 +9,20 @@ import pandas as pd
 import pytest
 
 # Add backend to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 
 
 @pytest.fixture
 def sample_dataframe():
     """Create a sample DataFrame for testing."""
-    return pd.DataFrame({
-        'name': ['Alice', 'Bob', 'Charlie', 'Diana'],
-        'age': [25, 30, 35, 28],
-        'department': ['Engineering', 'Sales', 'Engineering', 'Marketing'],
-        'salary': [75000, 65000, 85000, 70000],
-    })
+    return pd.DataFrame(
+        {
+            "name": ["Alice", "Bob", "Charlie", "Diana"],
+            "age": [25, 30, 35, 28],
+            "department": ["Engineering", "Sales", "Engineering", "Marketing"],
+            "salary": [75000, 65000, 85000, 70000],
+        }
+    )
 
 
 @pytest.fixture

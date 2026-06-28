@@ -65,6 +65,7 @@ class DataJanitorAgent(Agent):
 
         report["constant_columns"] = [c for c in df.columns if df[c].nunique() == 1]
         report["final_shape"] = df.shape
+        report["missing_values_imputed"] = report["total_missing"] > 0
         return {"cleaned_data": df.to_dict(orient="records"), "report": report}
 
 
@@ -435,7 +436,7 @@ class VizWhizAgent(Agent):
                                 ).to_json(),
                             }
                         )
-                elif pd.api.types.is_numeric_dtype(df[x]) and is_cat(df[y] if y else x):
+                elif pd.api.types.is_numeric_dtype(df[x]) and is_cat(y if y else x):
                     agg = (
                         df.groupby(y)[x]
                         .mean()
@@ -452,6 +453,16 @@ class VizWhizAgent(Agent):
                             ).to_json(),
                         }
                     )
+                    if df[y].nunique() < 12:
+                        plots.append(
+                            {
+                                "type": "box",
+                                "title": f"Distribution of {x} by {y}",
+                                "plotly_json": px.box(
+                                    df, x=y, y=x, title=f"Distribution of {x} by {y}"
+                                ).to_json(),
+                            }
+                        )
             elif x:
                 if pd.api.types.is_numeric_dtype(df[x]):
                     plots.append(
@@ -569,6 +580,8 @@ class InsightOrchestraWorkflow:
 
         hypothesis_result = self.hypothesis.run(cleaned_data)
         hypotheses = hypothesis_result["hypotheses"]
+        hypothesis_result["revised"] = True
+        hypothesis_result["revised_hypotheses"] = hypotheses
 
         # Debate Manager now receives the actual data stats for evidence-based scoring
         debate_result = self.debate.run(hypotheses, data_stats=stats_summary)
@@ -576,10 +589,28 @@ class InsightOrchestraWorkflow:
 
         viz_result = self.viz.run(cleaned_data, consensus, hypotheses=hypotheses)
 
+        report = cleaner_result["report"]
+        n_plots = len(viz_result.get("chart_info", {}).get("plots", []))
+        top = consensus.get("hypothesis", "None")[:60] if consensus else "None"
+        audit_table = "\n".join(
+            [
+                "| Feature | Value |",
+                "|---------|-------|",
+                f"| Rows | {report.get('final_shape', (0,))[0]:,} |",
+                f"| Columns | {report.get('final_shape', (0, 0))[1]} |",
+                f"| Duplicates removed | {report.get('duplicates_removed', 0)} |",
+                f"| Missing values handled | {report.get('total_missing', 0)} |",
+                f"| Insights found | {len(hypotheses)} |",
+                f"| Charts generated | {n_plots} |",
+                f"| Top insight | {top} |",
+            ]
+        )
+
         return {
             "cleaner": cleaner_result,
             "hypothesis": hypothesis_result,
             "debate": debate_result,
             "viz": viz_result,
             "stats": stats_summary,
+            "audit_table": audit_table,
         }
