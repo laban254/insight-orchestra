@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     redis_url: str = Field("redis://localhost:6379", alias="REDIS_URL")
     use_redis: bool = Field(True, alias="USE_REDIS")
 
+    # CORS: comma-separated allowed origins (use "*" to allow all, dev only)
+    allowed_origins: str = Field(
+        "http://localhost:8501,http://localhost:3000", alias="ALLOWED_ORIGINS"
+    )
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

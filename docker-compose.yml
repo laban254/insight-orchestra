@@ -14,9 +14,15 @@ services:
       - ./backend/.env
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
+      - USE_REDIS=true
+      - REDIS_URL=redis://redis:6379
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:8501,http://localhost:3000,http://127.0.0.1:8501,http://127.0.0.1:3000}
     volumes:
       - ./backend/uploads:/app/uploads
       - ./backend/uploads:/home/appuser/uploads
+    depends_on:
+      redis:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -48,9 +54,22 @@ services:
       - ollama_data:/root/.ollama
     logging: *default-logging
 
+  redis:
+    image: redis:7-alpine
+    logging: *default-logging
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   uploads:
   ollama_data:
+  redis_data:
 
 networks:
   default:
