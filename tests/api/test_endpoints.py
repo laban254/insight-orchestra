@@ -5,15 +5,14 @@ Unit tests for API endpoint handlers (function-level).
 import os
 import tempfile
 from io import BytesIO
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
-from fastapi import HTTPException
-from starlette.datastructures import UploadFile
-
 from app.api import endpoints
 from app.api.endpoints import BigQueryRequest, NLQRequest, ProcessRequest
 from app.main import health_check
+from fastapi import HTTPException
+from starlette.datastructures import UploadFile
 
 
 @pytest.fixture
@@ -43,14 +42,16 @@ class TestEndpoints:
             await endpoints.upload_csv(upload)
         assert exc.value.status_code == 400
 
-    def test_process_endpoint_requires_file(self):
+    @pytest.mark.asyncio
+    async def test_process_endpoint_requires_file(self):
         with pytest.raises(HTTPException) as exc:
-            endpoints.process_data(ProcessRequest(file_path="/nonexistent/file.csv"))
+            await endpoints.process_data(ProcessRequest(file_path="/nonexistent/file.csv"))
         assert exc.value.status_code == 404
 
-    def test_nlq_endpoint_requires_file(self):
+    @pytest.mark.asyncio
+    async def test_nlq_endpoint_requires_file(self):
         with pytest.raises(HTTPException) as exc:
-            endpoints.natural_language_query(
+            await endpoints.natural_language_query(
                 NLQRequest(file_path="/nonexistent/file.csv", question="What is the average age?")
             )
         assert exc.value.status_code == 404
@@ -87,8 +88,9 @@ class TestEndpointsIntegration:
         if os.path.exists(temp_path):
             os.unlink(temp_path)
 
+    @pytest.mark.asyncio
     @patch("app.api.endpoints.InsightOrchestraWorkflow")
-    def test_process_workflow_called(self, mock_workflow, temp_csv):
+    async def test_process_workflow_called(self, mock_workflow, temp_csv):
         mock_instance = MagicMock()
         mock_instance.cleaner.run.return_value = {
             "cleaned_data": [{"x": 1}],
@@ -102,15 +104,16 @@ class TestEndpointsIntegration:
         mock_instance.viz.run.return_value = {"chart_info": {"plots": []}}
         mock_workflow.return_value = mock_instance
 
-        response = endpoints.process_data(ProcessRequest(file_path=temp_csv))
+        response = await endpoints.process_data(ProcessRequest(file_path=temp_csv))
         assert "cleaner" in response
         mock_instance.cleaner.run.assert_called_once()
         mock_instance.hypothesis.run.assert_called_once()
         mock_instance.debate.run.assert_called_once()
         mock_instance.viz.run.assert_called_once()
 
+    @pytest.mark.asyncio
     @patch("app.api.endpoints.NaturalLanguageQueryAgent")
-    def test_nlq_agent_called(self, mock_agent_class, temp_csv):
+    async def test_nlq_agent_called(self, mock_agent_class, temp_csv):
         mock_instance = MagicMock()
         mock_instance.run.return_value = Mock(
             answer="Test answer",
@@ -124,7 +127,7 @@ class TestEndpointsIntegration:
         )
         mock_agent_class.return_value = mock_instance
 
-        response = endpoints.natural_language_query(
+        response = await endpoints.natural_language_query(
             NLQRequest(file_path=temp_csv, question="What is the average age?")
         )
         assert response["answer"] == "Test answer"
@@ -141,14 +144,15 @@ class TestEndpointsErrorHandling:
                 await endpoints.upload_csv(upload)
         assert exc.value.status_code == 400
 
-    def test_process_handles_csv_read_error(self):
+    @pytest.mark.asyncio
+    async def test_process_handles_csv_read_error(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
             f.write("name,age\nAlice,25")
             temp_path = f.name
         try:
             with patch("app.api.endpoints.pd.read_csv", side_effect=Exception("read failed")):
                 with pytest.raises(HTTPException) as exc:
-                    endpoints.process_data(ProcessRequest(file_path=temp_path))
+                    await endpoints.process_data(ProcessRequest(file_path=temp_path))
             assert exc.value.status_code == 400
         finally:
             os.unlink(temp_path)

@@ -2,9 +2,9 @@
 Unit tests for Sandbox Executor.
 """
 
-import pytest
 import pandas as pd
-from app.services.sandbox_executor import SandboxExecutor, ExecutionResult
+import pytest
+from app.services.sandbox_executor import SandboxExecutor
 
 
 class TestSandboxExecutor:

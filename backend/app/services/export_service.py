@@ -65,7 +65,7 @@ class ExportService:
         """Generate self-contained HTML report"""
         env = Environment(loader=BaseLoader())
         template = env.from_string(HTML_TEMPLATE)
-        return template.render(**session_data)
+        return str(template.render(**session_data))
 
     def to_markdown(self, session_data: dict) -> str:
         """Generate markdown report for Git storage"""

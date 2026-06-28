@@ -1,11 +1,11 @@
 
-import unittest
-from unittest.mock import MagicMock, patch
-import sys
 import os
+import sys
 
 # 1. Mock all external dependencies BEFORE anything else
 import types
+import unittest
+from unittest.mock import MagicMock, patch
 
 # google.adk
 mock_adk = types.ModuleType("google.adk")
@@ -29,14 +29,14 @@ sys.modules['requests'] = MagicMock()
 sys.modules['RestrictedPython'] = MagicMock()
 sys.modules['RestrictedPython.Guards'] = MagicMock()
 
-import json
 
 # Add backend to path
 sys.path.append(os.path.join(os.getcwd(), 'backend'))
 
 # 2. Now import the agents
-from app.services.adk_agents import HypothesisBotAgent, DebateManagerAgent
-from app.services.llm_service import LLMService
+from app.services.adk_agents import DebateManagerAgent, HypothesisBotAgent  # noqa: E402
+from app.services.llm_service import LLMService  # noqa: E402
+
 
 class TestAgentUpgrades(unittest.TestCase):
     def setUp(self):

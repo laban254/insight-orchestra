@@ -174,7 +174,7 @@ def get_demo_dataset(dataset_name: str = "sales") -> tuple:
         dataset_name = "sales"
 
     config = DEMO_DATASETS[dataset_name]
-    df = config["loader"]()
+    df = config["loader"]()  # type: ignore[operator]
 
     metadata = {
         "name": config["name"],

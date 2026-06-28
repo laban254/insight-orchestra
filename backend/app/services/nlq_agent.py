@@ -253,13 +253,13 @@ Code: result = df[df['price'] > 100]
                 return token
             tl = token.lower()
             if tl in col_lower:
-                return col_lower[tl]
+                return str(col_lower[tl])
             for col in columns:
-                if tl in col.lower() or col.lower() in tl:
-                    return col
+                if tl in str(col).lower() or str(col).lower() in tl:
+                    return str(col)
             close = difflib.get_close_matches(tl, col_lower.keys(), n=1, cutoff=0.75)
             if close:
-                return col_lower[close[0]]
+                return str(col_lower[close[0]])
             return token
 
         def _replace(match: re.Match) -> str:

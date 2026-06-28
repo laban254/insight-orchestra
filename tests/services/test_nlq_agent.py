@@ -2,8 +2,9 @@
 Unit tests for NLQ Agent.
 """
 
+from unittest.mock import MagicMock, Mock
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
 from app.services.nlq_agent import NaturalLanguageQueryAgent, NLQResponse
 
 
@@ -137,7 +138,7 @@ class TestNaturalLanguageQueryAgent:
             {"question": "What is the average age?", "answer": "29.5", "code": "..."}
         ]
 
-        response = agent.run(sample_dataframe, "What about by department?", context=context)
+        agent.run(sample_dataframe, "What about by department?", context=context)
 
         mock_llm_service.complete_json.assert_called_once()
         call_args = mock_llm_service.complete_json.call_args
@@ -192,7 +193,7 @@ class TestNaturalLanguageQueryAgent:
         # Long question should trigger fallback
         long_question = "Compare and contrast the average salary by department and also analyze trends over time and identify outliers and patterns in the data"
 
-        response = agent.run(sample_dataframe, long_question)
+        agent.run(sample_dataframe, long_question)
 
         call_args = mock_llm_service.complete_json.call_args
         # use_fallback should be True for long questions

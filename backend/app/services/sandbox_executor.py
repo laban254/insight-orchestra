@@ -321,9 +321,9 @@ class SandboxExecutor:
         self, code: str, df=None, max_retries: int = 2, **kwargs
     ) -> ExecutionResult:
         """Execute code with retry on failure."""
-        last_result = None
+        last_result: ExecutionResult = self.execute(code, df, **kwargs)
         for attempt in range(max_retries + 1):
-            last_result = self.execute(code, df, **kwargs)
+            last_result = self.execute(code, df, **kwargs)  # noqa: PLR1704
             if last_result.success:
                 logger.info(f"Code executed successfully on attempt {attempt + 1}")
                 return last_result

@@ -23,7 +23,7 @@ async def connect_database(req: ConnectRequest):
     if req.type not in CONNECTOR_MAP:
         raise HTTPException(400, f"Unsupported connector: {req.type}")
 
-    connector = CONNECTOR_MAP[req.type]()
+    connector = CONNECTOR_MAP[req.type]()  # type: ignore[abstract]
     try:
         connector.connect(req.connection_string)
     except Exception as e:
