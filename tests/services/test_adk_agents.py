@@ -2,14 +2,15 @@
 Unit tests for ADK Agents.
 """
 
-import pytest
+import numpy as np
 import pandas as pd
+import pytest
 from app.services.adk_agents import (
     DataJanitorAgent,
-    HypothesisBotAgent,
     DebateManagerAgent,
-    VizWhizAgent,
+    HypothesisBotAgent,
     InsightOrchestraWorkflow,
+    VizWhizAgent,
 )
 
 
@@ -25,10 +26,10 @@ class TestDataJanitorAgent:
     def dirty_data(self):
         """Create a DataFrame with various issues."""
         return pd.DataFrame({
-            'name': ['Alice', 'Bob', 'Alice', None, 'Eve'],
-            'age': [25, 30, 25, 28, None],
+            'name': ['Alice', 'Bob', 'Alice', np.nan, 'Eve'],
+            'age': [25.0, 30.0, 25.0, 28.0, np.nan],
             'department': ['Sales', 'Sales', 'Sales', 'Sales', 'Engineering'],
-            'constant': ['x', 'x', 'x', 'x', 'x'],  # Constant column
+            'constant': ['x', 'x', 'x', 'x', 'x'],
         })
 
     def test_detect_duplicates(self, agent, dirty_data):

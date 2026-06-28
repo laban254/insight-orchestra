@@ -2,10 +2,11 @@
 Pytest configuration and fixtures for Insight Orchestra tests.
 """
 
-import pytest
-import pandas as pd
 import os
 import sys
+
+import pandas as pd
+import pytest
 
 # Add backend to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))

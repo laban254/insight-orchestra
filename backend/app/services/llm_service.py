@@ -3,7 +3,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 import requests
@@ -21,7 +21,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-class LLMProvider(str, Enum):
+class LLMProvider(StrEnum):
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
     DEEPSEEK = "deepseek"
@@ -174,7 +174,7 @@ class LLMService:
         return cost
 
     def _exponential_backoff(self, attempt: int) -> float:
-        return min(2**attempt + (attempt * 0.1), 60)
+        return float(min(2**attempt + (attempt * 0.1), 60))
 
     # ------------------------------------------------------------------
     # Provider-specific callers
@@ -335,7 +335,7 @@ class LLMService:
         content = content.strip()
 
         try:
-            return json.loads(content)
+            return json.loads(content)  # type: ignore[no-any-return]
         except json.JSONDecodeError:
             # Last-ditch: if the entire response looks like Python code, wrap it
             stripped = content.strip()

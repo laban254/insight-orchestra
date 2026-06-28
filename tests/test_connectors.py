@@ -1,10 +1,11 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
-import pandas as pd
-from unittest.mock import patch, MagicMock
-from app.connectors.sqlite import SQLiteConnector
 from app.connectors.duckdb import DuckDBConnector
-from app.connectors.postgresql import PostgreSQLConnector
 from app.connectors.mysql import MySQLConnector
+from app.connectors.postgresql import PostgreSQLConnector
+from app.connectors.sqlite import SQLiteConnector
+
 
 def test_sqlite_connector():
     connector = SQLiteConnector()

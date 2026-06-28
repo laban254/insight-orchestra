@@ -57,12 +57,14 @@ def _enqueue(session_id: str, value: Any) -> None:
 
 
 def push_event(
-    session_id: str,
+    session_id: str | None,
     agent_id: str,
     status: str,
     output: str | None = None,
     duration: int | None = None,
 ) -> None:
+    if session_id is None:
+        return
     """Push a real agent progress event into the session queue."""
     event: dict[str, Any] = {"agent_id": agent_id, "status": status}
     if output is not None:
@@ -72,6 +74,8 @@ def push_event(
     _enqueue(session_id, event)
 
 
-def push_sentinel(session_id: str) -> None:
+def push_sentinel(session_id: str | None) -> None:
+    if session_id is None:
+        return
     """Push None sentinel so the SSE generator knows to close the stream."""
     _enqueue(session_id, None)

@@ -2,9 +2,10 @@
 Unit tests for LLM Service.
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
-from app.services.llm_service import LLMService, LLMConfig, LLMResponse, DataFrameSchema
+from app.services.llm_service import DataFrameSchema, LLMConfig, LLMResponse, LLMService
 
 
 class TestLLMConfig:

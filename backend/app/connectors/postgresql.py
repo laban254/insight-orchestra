@@ -43,7 +43,7 @@ class PostgreSQLConnector(BaseConnector):
         self.cursor.execute(query)
         rows = self.cursor.fetchall()
 
-        schema = {}
+        schema: dict[str, list[dict[str, str]]] = {}
         for table, column, dtype in rows:
             if table not in schema:
                 schema[table] = []

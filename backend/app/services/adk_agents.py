@@ -234,7 +234,7 @@ class DebateManagerAgent(Agent):
                     "business_argument": "Ranked by position — LLM unavailable.",
                 }
             )
-        scored.sort(key=lambda x: x["confidence"] * x["business_value"], reverse=True)
+        scored.sort(key=lambda x: float(x["confidence"]) * float(x["business_value"]), reverse=True)  # type: ignore[arg-type]
         return {
             "scored_hypotheses": scored,
             "summary": {
@@ -257,7 +257,7 @@ class DebateManagerAgent(Agent):
                 "scored_hypotheses": [],
                 "summary": {"num_hypotheses": 0, "consensus": None, "arguments": []},
             }
-        if self.llm is None:
+        if self.llm is None:  # type: ignore[attr-defined]
             return self._fallback_scoring(hypotheses)
 
         system_prompt = """You are a data science auditor evaluating hypotheses against actual data evidence.
@@ -285,7 +285,7 @@ OUTPUT (JSON only):
         user_prompt = f"{data_context}Hypotheses to score:\n{json.dumps(hypotheses, indent=2)}"
 
         try:
-            response = self.llm.complete_json(system_prompt, user_prompt)
+            response = self.llm.complete_json(system_prompt, user_prompt)  # type: ignore[attr-defined]
             scored = response.get("scored_hypotheses", [])
             scored.sort(
                 key=lambda x: x.get("confidence", 0) * x.get("business_value", 0), reverse=True
