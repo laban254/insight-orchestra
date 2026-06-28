@@ -1,8 +1,8 @@
 from .base import BaseConnector
+from .duckdb import DuckDBConnector
+from .mysql import MySQLConnector
 from .postgresql import PostgreSQLConnector
 from .sqlite import SQLiteConnector
-from .mysql import MySQLConnector
-from .duckdb import DuckDBConnector
 
 __all__ = [
     "BaseConnector",

@@ -1,11 +1,14 @@
-from google.adk import Agent
-import pandas as pd
 import json
-from typing import Optional, List, Dict, Any
-from app.services.llm_service import LLMService, DataFrameSchema
+from typing import Any
+
+import pandas as pd
+from google.adk import Agent
+
+from app.services.llm_service import DataFrameSchema, LLMService
 
 try:
     import statsmodels.api  # noqa: F401 — enables OLS trendlines in plotly express
+
     _HAS_STATSMODELS = True
 except Exception:
     _HAS_STATSMODELS = False
@@ -34,7 +37,9 @@ class DataJanitorAgent(Agent):
         for col, missing in missing_summary.items():
             pct = 100 * missing / max(len(df), 1)
             if pct > 30:
-                bias_flags.append(f"Column '{col}' missing {pct:.1f}% of rows — results may be biased.")
+                bias_flags.append(
+                    f"Column '{col}' missing {pct:.1f}% of rows — results may be biased."
+                )
         if bias_flags:
             report["bias_flags"] = bias_flags
 
@@ -64,7 +69,7 @@ class DataJanitorAgent(Agent):
 
 
 class HypothesisBotAgent(Agent):
-    def __init__(self, name: str, llm_service: Optional[LLMService] = None):
+    def __init__(self, name: str, llm_service: LLMService | None = None):
         super().__init__(name=name)
         llm = llm_service
         if llm is None:
@@ -74,12 +79,18 @@ class HypothesisBotAgent(Agent):
                 llm = None
         object.__setattr__(self, "llm", llm)
 
-    def _generate_fallback_hypotheses(self, df: pd.DataFrame) -> Dict[str, Any]:
+    def _generate_fallback_hypotheses(self, df: pd.DataFrame) -> dict[str, Any]:
         id_like = {"id", "index", "rowid", "passengerid"}
-        numeric_cols = [c for c in df.select_dtypes(include="number").columns if c.lower() not in id_like]
-        categorical_cols = [c for c in df.select_dtypes(include=["object", "string", "category"]).columns if c.lower() not in id_like]
+        numeric_cols = [
+            c for c in df.select_dtypes(include="number").columns if c.lower() not in id_like
+        ]
+        categorical_cols = [
+            c
+            for c in df.select_dtypes(include=["object", "string", "category"]).columns
+            if c.lower() not in id_like
+        ]
 
-        hypotheses: List[str] = []
+        hypotheses: list[str] = []
         for cat in categorical_cols:
             for num in numeric_cols:
                 top = df.groupby(cat)[num].mean().sort_values(ascending=False)
@@ -91,7 +102,7 @@ class HypothesisBotAgent(Agent):
                         f"({diff_pct:.0f}% above '{worst}') — worth investigating whether this gap is structural."
                     )
         for i, a in enumerate(numeric_cols):
-            for b in numeric_cols[i + 1:]:
+            for b in numeric_cols[i + 1 :]:
                 try:
                     r = df[[a, b]].corr().iloc[0, 1]
                     if abs(r) > 0.3:
@@ -103,9 +114,11 @@ class HypothesisBotAgent(Agent):
                 except Exception:
                     pass
 
-        deduped: List[str] = list(dict.fromkeys(hypotheses))[:8]
+        deduped: list[str] = list(dict.fromkeys(hypotheses))[:8]
         if not deduped:
-            deduped = ["No strong patterns detected in the available columns — try asking specific questions."]
+            deduped = [
+                "No strong patterns detected in the available columns — try asking specific questions."
+            ]
         return {
             "hypotheses": deduped,
             "summary": {
@@ -134,7 +147,7 @@ class HypothesisBotAgent(Agent):
                 )
                 if not pairs.empty:
                     lines.append("\nStrong correlations (|r| > 0.3):")
-                    for (a, b), v in pairs.items():
+                    for (a, b), _v in pairs.items():
                         raw_r = numeric.corr().loc[a, b]
                         direction = "positive" if raw_r > 0 else "negative"
                         lines.append(f"  {a} ↔ {b}: r={raw_r:.2f} ({direction})")
@@ -197,7 +210,7 @@ OUTPUT (JSON only):
 
 
 class DebateManagerAgent(Agent):
-    def __init__(self, name: str, llm_service: Optional[LLMService] = None):
+    def __init__(self, name: str, llm_service: LLMService | None = None):
         super().__init__(name=name)
         llm = llm_service
         if llm is None:
@@ -207,31 +220,43 @@ class DebateManagerAgent(Agent):
                 llm = None
         object.__setattr__(self, "llm", llm)
 
-    def _fallback_scoring(self, hypotheses: List[str]) -> Dict[str, Any]:
+    def _fallback_scoring(self, hypotheses: list[str]) -> dict[str, Any]:
         scored = []
         for i, h in enumerate(hypotheses):
             confidence = max(0.1, min(1.0, 0.85 - i * 0.05))
             business = max(0.1, min(1.0, 0.80 - i * 0.04))
-            scored.append({
-                "hypothesis": h,
-                "confidence": round(confidence, 2),
-                "business_value": round(business, 2),
-                "statistical_argument": "Ranked by position — LLM unavailable.",
-                "business_argument": "Ranked by position — LLM unavailable.",
-            })
+            scored.append(
+                {
+                    "hypothesis": h,
+                    "confidence": round(confidence, 2),
+                    "business_value": round(business, 2),
+                    "statistical_argument": "Ranked by position — LLM unavailable.",
+                    "business_argument": "Ranked by position — LLM unavailable.",
+                }
+            )
         scored.sort(key=lambda x: x["confidence"] * x["business_value"], reverse=True)
         return {
             "scored_hypotheses": scored,
             "summary": {
                 "num_hypotheses": len(hypotheses),
                 "consensus": scored[0] if scored else None,
-                "arguments": [{"hypothesis": s["hypothesis"], "statistical": s["statistical_argument"], "business": s["business_argument"]} for s in scored],
+                "arguments": [
+                    {
+                        "hypothesis": s["hypothesis"],
+                        "statistical": s["statistical_argument"],
+                        "business": s["business_argument"],
+                    }
+                    for s in scored
+                ],
             },
         }
 
-    def run(self, hypotheses, data_stats: Optional[str] = None, **kwargs):
+    def run(self, hypotheses, data_stats: str | None = None, **kwargs):
         if not hypotheses:
-            return {"scored_hypotheses": [], "summary": {"num_hypotheses": 0, "consensus": None, "arguments": []}}
+            return {
+                "scored_hypotheses": [],
+                "summary": {"num_hypotheses": 0, "consensus": None, "arguments": []},
+            }
         if self.llm is None:
             return self._fallback_scoring(hypotheses)
 
@@ -262,13 +287,22 @@ OUTPUT (JSON only):
         try:
             response = self.llm.complete_json(system_prompt, user_prompt)
             scored = response.get("scored_hypotheses", [])
-            scored.sort(key=lambda x: x.get("confidence", 0) * x.get("business_value", 0), reverse=True)
+            scored.sort(
+                key=lambda x: x.get("confidence", 0) * x.get("business_value", 0), reverse=True
+            )
             return {
                 "scored_hypotheses": scored,
                 "summary": {
                     "num_hypotheses": len(hypotheses),
                     "consensus": scored[0] if scored else None,
-                    "arguments": [{"hypothesis": s["hypothesis"], "statistical": s.get("statistical_argument", ""), "business": s.get("business_argument", "")} for s in scored],
+                    "arguments": [
+                        {
+                            "hypothesis": s["hypothesis"],
+                            "statistical": s.get("statistical_argument", ""),
+                            "business": s.get("business_argument", ""),
+                        }
+                        for s in scored
+                    ],
                 },
             }
         except Exception:
@@ -276,7 +310,7 @@ OUTPUT (JSON only):
 
 
 class VizWhizAgent(Agent):
-    def __init__(self, name: str, llm_service: Optional[LLMService] = None):
+    def __init__(self, name: str, llm_service: LLMService | None = None):
         super().__init__(name=name)
         llm = llm_service
         if llm is None:
@@ -296,7 +330,7 @@ class VizWhizAgent(Agent):
         user = (
             f'Hypothesis: "{hypothesis}"\n'
             f"Available columns: {cols}\n\n"
-            f'Which 1-2 columns best illustrate this insight?\n'
+            f"Which 1-2 columns best illustrate this insight?\n"
             f'Reply: {{"x": "col_name", "y": "col_name_or_null"}}'
         )
         try:
@@ -311,8 +345,10 @@ class VizWhizAgent(Agent):
             return None, None
 
     def run(self, cleaned_data, consensus, **kwargs):
-        import plotly.express as px
         import re
+
+        import plotly.express as px
+
         df = pd.DataFrame(cleaned_data)
         hypotheses = kwargs.get("hypotheses", [])
 
@@ -338,46 +374,107 @@ class VizWhizAgent(Agent):
             plots = []
 
             def is_cat(c):
-                return (pd.api.types.is_object_dtype(df[c])
-                        or pd.api.types.is_string_dtype(df[c])
-                        or isinstance(df[c].dtype, pd.CategoricalDtype))
+                return (
+                    pd.api.types.is_object_dtype(df[c])
+                    or pd.api.types.is_string_dtype(df[c])
+                    or isinstance(df[c].dtype, pd.CategoricalDtype)
+                )
 
             if x and y:
                 if pd.api.types.is_numeric_dtype(df[x]) and pd.api.types.is_numeric_dtype(df[y]):
                     r = abs(df[[x, y]].corr().iloc[0, 1])
                     if r > 0.2:
                         # OLS trendline needs statsmodels; degrade gracefully if absent.
-                        plots.append({"type": "scatter", "title": f"{x} vs {y}",
-                                      "plotly_json": px.scatter(df, x=x, y=y,
-                                                                 trendline="ols" if _HAS_STATSMODELS else None,
-                                                                 title=f"{x} vs {y}").to_json()})
+                        plots.append(
+                            {
+                                "type": "scatter",
+                                "title": f"{x} vs {y}",
+                                "plotly_json": px.scatter(
+                                    df,
+                                    x=x,
+                                    y=y,
+                                    trendline="ols" if _HAS_STATSMODELS else None,
+                                    title=f"{x} vs {y}",
+                                ).to_json(),
+                            }
+                        )
                     else:
-                        plots.append({"type": "density_heatmap", "title": f"Density: {x} vs {y}",
-                                      "plotly_json": px.density_heatmap(df, x=x, y=y,
-                                                                         title=f"Density: {x} vs {y}").to_json()})
+                        plots.append(
+                            {
+                                "type": "density_heatmap",
+                                "title": f"Density: {x} vs {y}",
+                                "plotly_json": px.density_heatmap(
+                                    df, x=x, y=y, title=f"Density: {x} vs {y}"
+                                ).to_json(),
+                            }
+                        )
                 elif is_cat(x) and pd.api.types.is_numeric_dtype(df[y]):
-                    agg = df.groupby(x)[y].mean().reset_index().sort_values(y, ascending=False).head(15)
-                    plots.append({"type": "bar", "title": f"Average {y} by {x}",
-                                  "plotly_json": px.bar(agg, x=x, y=y,
-                                                        title=f"Average {y} by {x}").to_json()})
+                    agg = (
+                        df.groupby(x)[y]
+                        .mean()
+                        .reset_index()
+                        .sort_values(y, ascending=False)
+                        .head(15)
+                    )
+                    plots.append(
+                        {
+                            "type": "bar",
+                            "title": f"Average {y} by {x}",
+                            "plotly_json": px.bar(
+                                agg, x=x, y=y, title=f"Average {y} by {x}"
+                            ).to_json(),
+                        }
+                    )
                     if df[x].nunique() < 12:
-                        plots.append({"type": "box", "title": f"Distribution of {y} by {x}",
-                                      "plotly_json": px.box(df, x=x, y=y,
-                                                            title=f"Distribution of {y} by {x}").to_json()})
+                        plots.append(
+                            {
+                                "type": "box",
+                                "title": f"Distribution of {y} by {x}",
+                                "plotly_json": px.box(
+                                    df, x=x, y=y, title=f"Distribution of {y} by {x}"
+                                ).to_json(),
+                            }
+                        )
                 elif pd.api.types.is_numeric_dtype(df[x]) and is_cat(df[y] if y else x):
-                    agg = df.groupby(y)[x].mean().reset_index().sort_values(x, ascending=False).head(15)
-                    plots.append({"type": "bar", "title": f"Average {x} by {y}",
-                                  "plotly_json": px.bar(agg, x=y, y=x,
-                                                        title=f"Average {x} by {y}").to_json()})
+                    agg = (
+                        df.groupby(y)[x]
+                        .mean()
+                        .reset_index()
+                        .sort_values(x, ascending=False)
+                        .head(15)
+                    )
+                    plots.append(
+                        {
+                            "type": "bar",
+                            "title": f"Average {x} by {y}",
+                            "plotly_json": px.bar(
+                                agg, x=y, y=x, title=f"Average {x} by {y}"
+                            ).to_json(),
+                        }
+                    )
             elif x:
                 if pd.api.types.is_numeric_dtype(df[x]):
-                    plots.append({"type": "histogram", "title": f"Distribution of {x}",
-                                  "plotly_json": px.histogram(df, x=x, title=f"Distribution of {x}").to_json()})
+                    plots.append(
+                        {
+                            "type": "histogram",
+                            "title": f"Distribution of {x}",
+                            "plotly_json": px.histogram(
+                                df, x=x, title=f"Distribution of {x}"
+                            ).to_json(),
+                        }
+                    )
                 else:
                     vc = df[x].value_counts().head(15).reset_index()
                     vc.columns = [x, "count"]
-                    plots.append({"type": "bar", "title": f"Count by {x}",
-                                  "plotly_json": px.bar(vc, x=x, y="count", title=f"Count by {x}").to_json()})
+                    plots.append(
+                        {
+                            "type": "bar",
+                            "title": f"Count by {x}",
+                            "plotly_json": px.bar(
+                                vc, x=x, y="count", title=f"Count by {x}"
+                            ).to_json(),
+                        }
+                    )
             return plots
 
         possible_plots = []
@@ -414,8 +511,14 @@ class VizWhizAgent(Agent):
         # 4. Structured fallback: best categorical × numeric pair
         _MAX = 6
         if not possible_plots:
-            numeric_cols = [c for c in df.select_dtypes(include="number").columns if is_valid_col(c)]
-            cat_cols = [c for c in df.select_dtypes(include=["object", "string", "category"]).columns if is_valid_col(c)]
+            numeric_cols = [
+                c for c in df.select_dtypes(include="number").columns if is_valid_col(c)
+            ]
+            cat_cols = [
+                c
+                for c in df.select_dtypes(include=["object", "string", "category"]).columns
+                if is_valid_col(c)
+            ]
             for cat in cat_cols[:3]:
                 for num in numeric_cols[:3]:
                     possible_plots.extend(choose_plot_types(cat, num))
@@ -443,7 +546,7 @@ class VizWhizAgent(Agent):
 
 
 class InsightOrchestraWorkflow:
-    def __init__(self, llm_service: Optional[LLMService] = None):
+    def __init__(self, llm_service: LLMService | None = None):
         llm = llm_service
         if llm is None:
             try:
@@ -451,32 +554,32 @@ class InsightOrchestraWorkflow:
             except Exception:
                 llm = None
         self.llm = llm
-        self.cleaner   = DataJanitorAgent(name="DataJanitorAgent")
+        self.cleaner = DataJanitorAgent(name="DataJanitorAgent")
         self.hypothesis = HypothesisBotAgent(name="HypothesisBotAgent", llm_service=llm)
-        self.debate    = DebateManagerAgent(name="DebateManagerAgent", llm_service=llm)
-        self.viz       = VizWhizAgent(name="VizWhizAgent", llm_service=llm)
+        self.debate = DebateManagerAgent(name="DebateManagerAgent", llm_service=llm)
+        self.viz = VizWhizAgent(name="VizWhizAgent", llm_service=llm)
 
     def run(self, data):
         cleaner_result = self.cleaner.run(data)
-        cleaned_data   = cleaner_result["cleaned_data"]
-        df             = pd.DataFrame(cleaned_data)
+        cleaned_data = cleaner_result["cleaned_data"]
+        df = pd.DataFrame(cleaned_data)
 
         # Build stats once — shared by Hypothesis Bot and Debate Manager
         stats_summary = HypothesisBotAgent._build_stats_summary(df)
 
         hypothesis_result = self.hypothesis.run(cleaned_data)
-        hypotheses        = hypothesis_result["hypotheses"]
+        hypotheses = hypothesis_result["hypotheses"]
 
         # Debate Manager now receives the actual data stats for evidence-based scoring
         debate_result = self.debate.run(hypotheses, data_stats=stats_summary)
-        consensus     = debate_result["summary"].get("consensus")
+        consensus = debate_result["summary"].get("consensus")
 
         viz_result = self.viz.run(cleaned_data, consensus, hypotheses=hypotheses)
 
         return {
-            "cleaner":    cleaner_result,
+            "cleaner": cleaner_result,
             "hypothesis": hypothesis_result,
-            "debate":     debate_result,
-            "viz":        viz_result,
-            "stats":      stats_summary,
+            "debate": debate_result,
+            "viz": viz_result,
+            "stats": stats_summary,
         }

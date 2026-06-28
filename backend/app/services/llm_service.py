@@ -1,17 +1,19 @@
 import json
-import time
-import threading
 import logging
-import requests
-from typing import Optional, Dict, Any, List
+import threading
+import time
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
+
+import requests
 from openai import OpenAI
 
 from app.config import settings
 
 try:
     import anthropic as _anthropic_sdk
+
     _ANTHROPIC_AVAILABLE = True
 except ImportError:
     _ANTHROPIC_AVAILABLE = False
@@ -20,10 +22,10 @@ logger = logging.getLogger(__name__)
 
 
 class LLMProvider(str, Enum):
-    OPENAI    = "openai"
+    OPENAI = "openai"
     ANTHROPIC = "anthropic"
-    DEEPSEEK  = "deepseek"
-    OLLAMA    = "ollama"
+    DEEPSEEK = "deepseek"
+    OLLAMA = "ollama"
 
 
 @dataclass
@@ -44,7 +46,7 @@ class LLMResponse:
     model: str
     tokens_used: int = 0
     cost_usd: float = 0.0
-    raw_response: Dict[str, Any] = field(default_factory=dict)
+    raw_response: dict[str, Any] = field(default_factory=dict)
 
 
 class LLMService:
@@ -58,7 +60,7 @@ class LLMService:
         "deepseek-reasoner": {"input": 0.55, "output": 2.19},
     }
 
-    def __init__(self, config: Optional[LLMConfig] = None):
+    def __init__(self, config: LLMConfig | None = None):
         if config is None:
             from app import runtime_config
 
@@ -141,9 +143,7 @@ class LLMService:
                             raise ImportError(
                                 "anthropic package not installed. Run: pip install anthropic"
                             )
-                        self._client = _anthropic_sdk.Anthropic(
-                            api_key=self.config.api_key
-                        )
+                        self._client = _anthropic_sdk.Anthropic(api_key=self.config.api_key)
         return self._client
 
     # ------------------------------------------------------------------
@@ -166,23 +166,26 @@ class LLMService:
         logger.info(
             '{"event":"llm_call","model":"%s","prompt_tokens":%d,'
             '"completion_tokens":%d,"cost_usd":%.6f}',
-            model, prompt_tokens, completion_tokens, cost,
+            model,
+            prompt_tokens,
+            completion_tokens,
+            cost,
         )
         return cost
 
     def _exponential_backoff(self, attempt: int) -> float:
-        return min(2 ** attempt + (attempt * 0.1), 60)
+        return min(2**attempt + (attempt * 0.1), 60)
 
     # ------------------------------------------------------------------
     # Provider-specific callers
     # ------------------------------------------------------------------
 
-    def _call_ollama(self, messages: List[Dict[str, str]], model: str) -> LLMResponse:
+    def _call_ollama(self, messages: list[dict[str, str]], model: str) -> LLMResponse:
         needs_json = any(
             m.get("role") == "system" and "valid json" in m.get("content", "").lower()
             for m in messages
         )
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "model": model,
             "messages": messages,
             "stream": False,
@@ -208,7 +211,7 @@ class LLMService:
             raw_response=data,
         )
 
-    def _call_openai(self, messages: List[Dict[str, str]], model: str) -> LLMResponse:
+    def _call_openai(self, messages: list[dict[str, str]], model: str) -> LLMResponse:
         needs_json = any(
             m.get("role") == "system" and "valid json" in m.get("content", "").lower()
             for m in messages
@@ -234,10 +237,8 @@ class LLMService:
             raw_response=response.model_dump(),
         )
 
-    def _call_anthropic(self, messages: List[Dict[str, str]], model: str) -> LLMResponse:
-        system_content = next(
-            (m["content"] for m in messages if m["role"] == "system"), ""
-        )
+    def _call_anthropic(self, messages: list[dict[str, str]], model: str) -> LLMResponse:
+        system_content = next((m["content"] for m in messages if m["role"] == "system"), "")
         user_messages = [m for m in messages if m["role"] != "system"]
         response = self.client.messages.create(
             model=model,
@@ -246,9 +247,7 @@ class LLMService:
             messages=user_messages,
             temperature=self.config.temperature,
         )
-        cost = self._record_usage(
-            model, response.usage.input_tokens, response.usage.output_tokens
-        )
+        cost = self._record_usage(model, response.usage.input_tokens, response.usage.output_tokens)
         return LLMResponse(
             content=response.content[0].text,
             model=model,
@@ -257,8 +256,8 @@ class LLMService:
             raw_response={"id": response.id, "model": response.model},
         )
 
-    def _call_llm(self, messages: List[Dict[str, str]], model: str) -> LLMResponse:
-        last_error: Optional[Exception] = None
+    def _call_llm(self, messages: list[dict[str, str]], model: str) -> LLMResponse:
+        last_error: Exception | None = None
         for attempt in range(self.config.max_retries + 1):
             try:
                 if self.config.provider == LLMProvider.OLLAMA:
@@ -284,8 +283,9 @@ class LLMService:
     # Public API
     # ------------------------------------------------------------------
 
-    def complete(self, system_prompt: str, user_prompt: str,
-                 use_fallback: bool = False) -> LLMResponse:
+    def complete(
+        self, system_prompt: str, user_prompt: str, use_fallback: bool = False
+    ) -> LLMResponse:
         model = (
             self.config.fallback_model
             if use_fallback and self.config.provider == LLMProvider.OPENAI
@@ -297,8 +297,9 @@ class LLMService:
         ]
         return self._call_llm(messages, model)
 
-    def complete_json(self, system_prompt: str, user_prompt: str,
-                      use_fallback: bool = False) -> Dict[str, Any]:
+    def complete_json(
+        self, system_prompt: str, user_prompt: str, use_fallback: bool = False
+    ) -> dict[str, Any]:
         json_system = (
             f"{system_prompt}\n\n"
             "IMPORTANT: You must respond with valid JSON only. "
@@ -319,8 +320,7 @@ class LLMService:
             inner = inner.strip()
             # Remove import lines so the extracted code is ready for the sandbox
             code_lines = [
-                ln for ln in inner.splitlines()
-                if not ln.strip().startswith(("import ", "from "))
+                ln for ln in inner.splitlines() if not ln.strip().startswith(("import ", "from "))
             ]
             return {
                 "reasoning": "extracted from markdown code block",
@@ -341,7 +341,8 @@ class LLMService:
             stripped = content.strip()
             if stripped and not stripped.startswith("{"):
                 code_lines = [
-                    ln for ln in stripped.splitlines()
+                    ln
+                    for ln in stripped.splitlines()
                     if not ln.strip().startswith(("import ", "from "))
                 ]
                 code = "\n".join(code_lines).strip()
@@ -356,12 +357,10 @@ class LLMService:
                         "needs_clarification": False,
                         "clarification_question": None,
                     }
-            logger.error(
-                f"JSON parse failed. Raw ({len(content)} chars): {content[:200]!r}"
-            )
-            raise ValueError(f"Invalid JSON from LLM")
+            logger.error(f"JSON parse failed. Raw ({len(content)} chars): {content[:200]!r}")
+            raise ValueError("Invalid JSON from LLM") from None
 
-    def get_cost_summary(self) -> Dict[str, Any]:
+    def get_cost_summary(self) -> dict[str, Any]:
         return {
             "total_cost_usd": round(self.total_cost, 4),
             "total_tokens": self.total_tokens,
@@ -370,11 +369,11 @@ class LLMService:
 
 class DataFrameSchema:
     @staticmethod
-    def from_dataframe(df, max_columns: int = 50) -> Dict[str, Any]:
+    def from_dataframe(df, max_columns: int = 50) -> dict[str, Any]:
         """Build a schema dict from a DataFrame, capped at max_columns."""
         cols = list(df.columns[:max_columns])
         omitted = max(0, len(df.columns) - max_columns)
-        schema: Dict[str, Any] = {
+        schema: dict[str, Any] = {
             "columns": [],
             "shape": list(df.shape),
             "null_counts": {},
@@ -382,22 +381,23 @@ class DataFrameSchema:
         }
         for col in cols:
             samples = df[col].dropna().head(3).tolist()
-            schema["columns"].append({
-                "name": col,
-                "dtype": str(df[col].dtype),
-                "sample_values": samples,
-            })
+            schema["columns"].append(
+                {
+                    "name": col,
+                    "dtype": str(df[col].dtype),
+                    "sample_values": samples,
+                }
+            )
             schema["null_counts"][col] = int(df[col].isnull().sum())
         return schema
 
     @staticmethod
-    def to_prompt(schema: Dict[str, Any]) -> str:
+    def to_prompt(schema: dict[str, Any]) -> str:
         total_cols = schema["shape"][1]
         shown = len(schema["columns"])
         omitted = schema.get("omitted_columns", 0)
-        header = (
-            f"DataFrame: {schema['shape'][0]} rows × {total_cols} columns"
-            + (f" (showing first {shown}; {omitted} omitted)" if omitted else "")
+        header = f"DataFrame: {schema['shape'][0]} rows × {total_cols} columns" + (
+            f" (showing first {shown}; {omitted} omitted)" if omitted else ""
         )
         lines = [header, "Columns:"]
         for col in schema["columns"]:

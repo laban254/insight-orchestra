@@ -1,0 +1,34 @@
+repos:
+  # ── General hygiene ────────────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+      - id: check-yaml
+      - id: check-json
+      - id: detect-private-key
+
+  # ── Python: ruff (lint + auto-fix + format) ────────────────────────────────
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.13
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+        files: ^backend/
+      - id: ruff-format
+        files: ^backend/
+
+  # ── Frontend: ESLint via Next.js ───────────────────────────────────────────
+  - repo: local
+    hooks:
+      - id: eslint-next
+        name: eslint (next)
+        language: node
+        entry: bash -c "cd frontend && npm run lint -- --max-warnings 0"
+        pass_filenames: false
+        files: ^frontend/.*\.(ts|tsx|js|jsx)$
+        types: [file]

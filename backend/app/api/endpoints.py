@@ -1,22 +1,22 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
-from typing import Optional, List, Dict, Any
-from pydantic import BaseModel
-import pandas as pd
 import asyncio
-import time
-from sse_starlette.sse import EventSourceResponse
-from app.utils.file_utils import save_upload_file, UPLOAD_DIR
-from app.services.adk_agents import InsightOrchestraWorkflow, DataJanitorAgent, HypothesisBotAgent
-from app.services.nlq_agent import NaturalLanguageQueryAgent
-from app.services.summarizer_agent import InsightSummarizerAgent
-from app.services.explain_agent import ExplainabilityAgent
-from app.services.report_agent import ReportGeneratorAgent
-from app.services.llm_service import LLMService
-from app.services.sandbox_executor import SandboxExecutor
-from app.agent_progress import get_queue, close_queue, push_event, push_sentinel
-import os
 import logging
+import os
+import time
+
+import pandas as pd
+from fastapi import APIRouter, File, HTTPException, UploadFile
+from pydantic import BaseModel
+from sse_starlette.sse import EventSourceResponse
+
+from app.agent_progress import close_queue, get_queue, push_event, push_sentinel
 from app.config import settings
+from app.services.adk_agents import DataJanitorAgent, HypothesisBotAgent, InsightOrchestraWorkflow
+from app.services.explain_agent import ExplainabilityAgent
+from app.services.nlq_agent import NaturalLanguageQueryAgent
+from app.services.report_agent import ReportGeneratorAgent
+from app.services.session_manager import get_session_manager
+from app.services.summarizer_agent import InsightSummarizerAgent
+from app.utils.file_utils import UPLOAD_DIR, save_upload_file
 
 logger = logging.getLogger(__name__)
 
@@ -25,19 +25,18 @@ DEMO_MODE = settings.demo_mode
 router = APIRouter()
 
 # Session manager (Redis-backed with in-memory fallback)
-from app.services.session_manager import get_session_manager
-
 _session_manager = get_session_manager()
+
 
 class ProcessRequest(BaseModel):
     file_path: str
-    session_id: Optional[str] = None
+    session_id: str | None = None
 
 
 class NLQRequest(BaseModel):
     file_path: str
     question: str
-    session_id: Optional[str] = None
+    session_id: str | None = None
 
 
 class BigQueryRequest(BaseModel):
@@ -62,7 +61,7 @@ def get_df(file_path: str) -> pd.DataFrame:
     try:
         return pd.read_csv(file_path)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to read CSV: {e}")
+        raise HTTPException(status_code=400, detail=f"Failed to read CSV: {e}") from e
 
 
 @router.post("/upload")
@@ -72,9 +71,9 @@ async def upload_csv(file: UploadFile = File(...)):
         file_path = save_upload_file(file)
         return {"file_path": file_path}
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail="File upload failed.")
+        raise HTTPException(status_code=500, detail="File upload failed.") from e
 
 
 @router.post("/process")
@@ -87,35 +86,43 @@ async def process_data(request: ProcessRequest):
     try:
         push_event(sid, agent_id="janitor", status="running")
         t0 = time.monotonic()
-        cleaner_result = await asyncio.to_thread(
-            workflow.cleaner.run, df.to_dict(orient="records")
-        )
+        cleaner_result = await asyncio.to_thread(workflow.cleaner.run, df.to_dict(orient="records"))
         cleaned_data = cleaner_result["cleaned_data"]
         r = cleaner_result["report"]
-        push_event(sid, agent_id="janitor", status="done",
-                   output=f"Removed {r.get('duplicates_removed', 0)} dupes, "
-                          f"handled {r.get('total_missing', 0)} missing values.",
-                   duration=int((time.monotonic() - t0) * 1000))
+        push_event(
+            sid,
+            agent_id="janitor",
+            status="done",
+            output=f"Removed {r.get('duplicates_removed', 0)} dupes, "
+            f"handled {r.get('total_missing', 0)} missing values.",
+            duration=int((time.monotonic() - t0) * 1000),
+        )
 
         push_event(sid, agent_id="hypothesis", status="running")
         t0 = time.monotonic()
         hypothesis_result = await asyncio.to_thread(workflow.hypothesis.run, cleaned_data)
         hypotheses = hypothesis_result["hypotheses"]
         stats_summary = HypothesisBotAgent._build_stats_summary(pd.DataFrame(cleaned_data))
-        push_event(sid, agent_id="hypothesis", status="done",
-                   output=f"Found {len(hypotheses)} insights.",
-                   duration=int((time.monotonic() - t0) * 1000))
+        push_event(
+            sid,
+            agent_id="hypothesis",
+            status="done",
+            output=f"Found {len(hypotheses)} insights.",
+            duration=int((time.monotonic() - t0) * 1000),
+        )
 
         push_event(sid, agent_id="debate", status="running")
         t0 = time.monotonic()
-        debate_result = await asyncio.to_thread(
-            workflow.debate.run, hypotheses, stats_summary
-        )
+        debate_result = await asyncio.to_thread(workflow.debate.run, hypotheses, stats_summary)
         consensus = debate_result["summary"].get("consensus")
         top = consensus.get("hypothesis", "")[:80] if consensus else "—"
-        push_event(sid, agent_id="debate", status="done",
-                   output=f"Top insight: {top}…" if len(top) == 80 else f"Top insight: {top}",
-                   duration=int((time.monotonic() - t0) * 1000))
+        push_event(
+            sid,
+            agent_id="debate",
+            status="done",
+            output=f"Top insight: {top}…" if len(top) == 80 else f"Top insight: {top}",
+            duration=int((time.monotonic() - t0) * 1000),
+        )
 
         push_event(sid, agent_id="viz", status="running")
         t0 = time.monotonic()
@@ -123,9 +130,13 @@ async def process_data(request: ProcessRequest):
             workflow.viz.run, cleaned_data, consensus, hypotheses=hypotheses
         )
         num_plots = len(viz_result.get("chart_info", {}).get("plots", []))
-        push_event(sid, agent_id="viz", status="done",
-                   output=f"Generated {num_plots} chart(s).",
-                   duration=int((time.monotonic() - t0) * 1000))
+        push_event(
+            sid,
+            agent_id="viz",
+            status="done",
+            output=f"Generated {num_plots} chart(s).",
+            duration=int((time.monotonic() - t0) * 1000),
+        )
 
         # Generate narrative summary + suggested questions
         workflow_results = {
@@ -143,15 +154,19 @@ async def process_data(request: ProcessRequest):
 
     # Store analysis context in session so NLQ queries can reference it
     if sid:
-        _session_manager.append(sid, {
-            "role": "analysis",
-            "narrative": summary_result.get("narrative", ""),
-            "top_insight": consensus.get("hypothesis", "") if consensus else "",
-            "hypotheses": hypotheses[:5],
-        })
+        _session_manager.append(
+            sid,
+            {
+                "role": "analysis",
+                "narrative": summary_result.get("narrative", ""),
+                "top_insight": consensus.get("hypothesis", "") if consensus else "",
+                "hypotheses": hypotheses[:5],
+            },
+        )
 
     # Small sample of the cleaned data so the UI can show a preview table.
     import json as _json
+
     preview_df = pd.DataFrame(cleaned_data)
     preview = {
         "columns": preview_df.columns.tolist(),
@@ -159,13 +174,13 @@ async def process_data(request: ProcessRequest):
     }
 
     return {
-        "cleaner":             cleaner_result,
-        "hypothesis":          hypothesis_result,
-        "debate":              debate_result,
-        "viz":                 viz_result,
-        "narrative":           summary_result.get("narrative", ""),
+        "cleaner": cleaner_result,
+        "hypothesis": hypothesis_result,
+        "debate": debate_result,
+        "viz": viz_result,
+        "narrative": summary_result.get("narrative", ""),
         "suggested_questions": summary_result.get("suggested_questions", []),
-        "preview":             preview,
+        "preview": preview,
     }
 
 
@@ -180,9 +195,7 @@ async def natural_language_query(request: NLQRequest):
         push_event(sid, agent_id="janitor", status="running")
         t0 = time.monotonic()
         janitor = DataJanitorAgent(name="nlq_cleaner")
-        cleaned_result = await asyncio.to_thread(
-            janitor.run, df.to_dict(orient="records")
-        )
+        cleaned_result = await asyncio.to_thread(janitor.run, df.to_dict(orient="records"))
         df = pd.DataFrame(cleaned_result["cleaned_data"])
         report = cleaned_result["report"]
         janitor_summary = (
@@ -190,7 +203,9 @@ async def natural_language_query(request: NLQRequest):
             f"imputed {report.get('total_missing', 0)} missing values."
         )
         push_event(
-            sid, agent_id="janitor", status="done",
+            sid,
+            agent_id="janitor",
+            status="done",
             output=janitor_summary,
             duration=int((time.monotonic() - t0) * 1000),
         )
@@ -226,7 +241,9 @@ async def natural_language_query(request: NLQRequest):
         if response.plot_json:
             push_event(sid, agent_id="viz", status="running")
             push_event(
-                sid, agent_id="viz", status="done",
+                sid,
+                agent_id="viz",
+                status="done",
                 output="Chart generated successfully.",
                 duration=0,
             )
@@ -309,24 +326,27 @@ async def bigquery_fetch(request: BigQueryRequest):
         return {"file_path": temp_path, "columns": df.columns.tolist(), "row_count": len(df)}
     except ValueError as e:
         # Validation errors - return 400
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         # Other errors (BigQuery API errors, etc.)
-        raise HTTPException(status_code=500, detail=f"BigQuery error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"BigQuery error: {str(e)}") from e
 
 
 class ConfigUpdate(BaseModel):
-    provider: Optional[str] = None
-    model: Optional[str] = None
+    provider: str | None = None
+    model: str | None = None
 
 
 @router.get("/config")
 async def get_config():
     """Current LLM provider/model and what's switchable."""
     from app import runtime_config
+
     keymap = {
         "openai": bool(settings.openai_api_key and "your-" not in settings.openai_api_key),
-        "anthropic": bool(settings.anthropic_api_key and settings.anthropic_api_key != "sk-ant-..."),
+        "anthropic": bool(
+            settings.anthropic_api_key and settings.anthropic_api_key != "sk-ant-..."
+        ),
         "deepseek": bool(settings.deepseek_api_key and settings.deepseek_api_key != "sk-..."),
         "ollama": True,
     }
@@ -341,6 +361,7 @@ async def get_config():
 async def update_config(update: ConfigUpdate):
     """Switch provider/model at runtime (no restart needed)."""
     from app import runtime_config
+
     if update.provider and update.provider not in runtime_config.PROVIDERS:
         raise HTTPException(status_code=400, detail=f"Unknown provider '{update.provider}'.")
     prov = update.provider or runtime_config.get_provider()
@@ -349,8 +370,12 @@ async def update_config(update: ConfigUpdate):
         "anthropic": settings.anthropic_api_key,
         "deepseek": settings.deepseek_api_key,
     }
-    if prov in keymap and (not keymap[prov] or keymap[prov] in ("sk-...", "sk-ant-...", "your-openai-api-key-here")):
-        raise HTTPException(status_code=400, detail=f"No API key configured for '{prov}' on the server.")
+    if prov in keymap and (
+        not keymap[prov] or keymap[prov] in ("sk-...", "sk-ant-...", "your-openai-api-key-here")
+    ):
+        raise HTTPException(
+            status_code=400, detail=f"No API key configured for '{prov}' on the server."
+        )
     runtime_config.set_override(update.provider, update.model)
     return runtime_config.current()
 
@@ -414,7 +439,7 @@ async def load_demo_data(dataset_id: str = "sales"):
             "use_cases": metadata["use_cases"],
         }
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to load dataset: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Failed to load dataset: {str(e)}") from e
 
 
 @router.get("/agents/stream/{session_id}")
@@ -429,6 +454,7 @@ async def stream_agent_logs(session_id: str):
     overall cap guards against a producer that dies without a sentinel.
     """
     import json
+
     queue = get_queue(session_id)
     # Bound total stream life to the LLM timeout plus margin so a crashed
     # producer can't leak the connection indefinitely.
@@ -441,12 +467,12 @@ async def stream_agent_logs(session_id: str):
                     break
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=15.0)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     # No events yet — keep the connection alive and keep waiting.
                     yield {"event": "ping", "data": "{}"}
                     continue
 
-                if event is None:   # sentinel: pipeline finished (or errored)
+                if event is None:  # sentinel: pipeline finished (or errored)
                     break
 
                 yield {"data": json.dumps(event)}

@@ -1,16 +1,18 @@
-from fastapi import FastAPI, UploadFile, File, Body
-from fastapi.middleware.cors import CORSMiddleware
-from app.services.adk_agents import InsightOrchestraWorkflow
-from fastapi.staticfiles import StaticFiles
-import pandas as pd
-import uuid
 import os
+import uuid
+
+import pandas as pd
+from fastapi import Body, FastAPI, File, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+
+from app.services.adk_agents import InsightOrchestraWorkflow
+from app.services.explain_agent import ExplainabilityAgent
 
 # --- New agent imports (to be implemented) ---
 from app.services.nlq_agent import NaturalLanguageQueryAgent
-from app.services.summarizer_agent import InsightSummarizerAgent
-from app.services.explain_agent import ExplainabilityAgent
 from app.services.report_agent import ReportGeneratorAgent
+from app.services.summarizer_agent import InsightSummarizerAgent
 
 app = FastAPI()
 
@@ -29,6 +31,7 @@ UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/static", StaticFiles(directory="/tmp"), name="static")
 
+
 @app.post("/upload")
 def upload(file: UploadFile = File(...)):
     file_id = str(uuid.uuid4())
@@ -36,6 +39,7 @@ def upload(file: UploadFile = File(...)):
     with open(file_path, "wb") as f:
         f.write(file.file.read())
     return {"file_path": file_path}
+
 
 @app.post("/process")
 def process(payload: dict):
@@ -46,6 +50,7 @@ def process(payload: dict):
     # Return all agent results, including full chart_info for frontend
     return results
 
+
 @app.post("/nlq")
 def natural_language_query(payload: dict = Body(...)):
     """Answer a natural language question about the uploaded data."""
@@ -55,6 +60,7 @@ def natural_language_query(payload: dict = Body(...)):
     agent = NaturalLanguageQueryAgent()
     return agent.run(df, question)
 
+
 @app.post("/summarize")
 def summarize_insights(payload: dict = Body(...)):
     """Summarize all insights from the workflow."""
@@ -62,12 +68,14 @@ def summarize_insights(payload: dict = Body(...)):
     agent = InsightSummarizerAgent()
     return agent.run(workflow_results)
 
+
 @app.post("/explain")
 def explain_plot(payload: dict = Body(...)):
     """Explain a plot or hypothesis in plain language."""
     plot = payload["plot"]
     agent = ExplainabilityAgent()
     return agent.run(plot)
+
 
 @app.post("/report")
 def generate_report(payload: dict = Body(...)):

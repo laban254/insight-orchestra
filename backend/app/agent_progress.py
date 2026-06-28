@@ -15,12 +15,12 @@ get_queue() / close_queue().
 
 import asyncio
 import logging
-from typing import Optional, Dict, Any
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 # session_id → asyncio.Queue; only populated by get_queue()
-_queues: Dict[str, asyncio.Queue] = {}
+_queues: dict[str, asyncio.Queue] = {}
 
 
 def get_queue(session_id: str) -> asyncio.Queue:
@@ -60,11 +60,11 @@ def push_event(
     session_id: str,
     agent_id: str,
     status: str,
-    output: Optional[str] = None,
-    duration: Optional[int] = None,
+    output: str | None = None,
+    duration: int | None = None,
 ) -> None:
     """Push a real agent progress event into the session queue."""
-    event: Dict[str, Any] = {"agent_id": agent_id, "status": status}
+    event: dict[str, Any] = {"agent_id": agent_id, "status": status}
     if output is not None:
         event["output"] = output
     if duration is not None:

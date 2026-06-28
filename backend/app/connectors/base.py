@@ -1,8 +1,9 @@
 from abc import ABC, abstractmethod
+
 import pandas as pd
 
-class BaseConnector(ABC):
 
+class BaseConnector(ABC):
     @abstractmethod
     def connect(self, connection_string: str) -> None:
         """Establish connection to the database"""

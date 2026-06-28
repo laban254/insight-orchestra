@@ -8,39 +8,54 @@ This agent:
 4. Returns results with visualizations
 """
 
-import re
-import pandas as pd
-import plotly.express as px
 import json
 import logging
-from typing import Dict, Any, Optional, List
+import re
 from dataclasses import dataclass
+from typing import Any
 
-from app.services.llm_service import LLMService, LLMConfig, DataFrameSchema, LLMProvider
-from app.services.sandbox_executor import SandboxExecutor, ExecutionResult
+import pandas as pd
+import plotly.express as px
+
+from app.services.llm_service import DataFrameSchema, LLMProvider, LLMService
+from app.services.sandbox_executor import SandboxExecutor
 
 logger = logging.getLogger(__name__)
 
 # Keywords that indicate the user wants a visualization
 _PLOT_KEYWORDS = {
-    "plot", "chart", "graph", "visualize", "visualise", "draw",
-    "display", "show", "bar", "histogram", "scatter", "pie",
-    "heatmap", "line", "trend", "distribution",
+    "plot",
+    "chart",
+    "graph",
+    "visualize",
+    "visualise",
+    "draw",
+    "display",
+    "show",
+    "bar",
+    "histogram",
+    "scatter",
+    "pie",
+    "heatmap",
+    "line",
+    "trend",
+    "distribution",
 }
 
 
 @dataclass
 class NLQResponse:
     """Response from NLQ Agent."""
+
     answer: str
     code: str
     reasoning: str = ""
-    plot_json: Optional[str] = None
-    data_result: Optional[Any] = None
+    plot_json: str | None = None
+    data_result: Any | None = None
     needs_clarification: bool = False
-    clarification_question: Optional[str] = None
+    clarification_question: str | None = None
     execution_success: bool = False
-    error: Optional[str] = None
+    error: str | None = None
     tokens_used: int = 0
     cost_usd: float = 0.0
 
@@ -48,14 +63,14 @@ class NLQResponse:
 class NaturalLanguageQueryAgent:
     """
     Agent that converts natural language to Python code.
-    
+
     Features:
     - Schema-first prompting
     - Safe code execution
     - Error recovery with retries
     - Plotly visualization generation
     """
-    
+
     # Default system prompt
     SYSTEM_PROMPT = """You are a Python Data Analyst. You have access to a pandas DataFrame called `df`.
 
@@ -118,12 +133,15 @@ Code: result = df[df['price'] > 100]
         '"clarification_question":null}'
     )
 
-    def __init__(self, llm_service: Optional[LLMService] = None,
-                 sandbox: Optional[SandboxExecutor] = None,
-                 max_retries: int = 2):
+    def __init__(
+        self,
+        llm_service: LLMService | None = None,
+        sandbox: SandboxExecutor | None = None,
+        max_retries: int = 2,
+    ):
         """
         Initialize NLQ Agent.
-        
+
         Args:
             llm_service: Optional LLMService instance
             sandbox: Optional SandboxExecutor instance
@@ -132,7 +150,7 @@ Code: result = df[df['price'] > 100]
         self.llm = llm_service or LLMService()
         self.sandbox = sandbox or SandboxExecutor(timeout_seconds=30)
         self.max_retries = max_retries
-    
+
     @staticmethod
     def _is_plot_question(question: str) -> bool:
         """Return True if any word in the question signals a visualization request."""
@@ -147,16 +165,13 @@ Code: result = df[df['price'] > 100]
     def _build_few_shot_examples(self, df: pd.DataFrame) -> str:
         """Generate 1–2 concrete examples using the actual column names."""
         numeric = df.select_dtypes(include="number").columns.tolist()
-        categorical = df.select_dtypes(
-            include=["object", "string", "category"]
-        ).columns.tolist()
+        categorical = df.select_dtypes(include=["object", "string", "category"]).columns.tolist()
 
-        examples: List[str] = []
+        examples: list[str] = []
         if categorical and numeric:
             c, n = categorical[0], numeric[0]
             examples.append(
-                f"# Group and aggregate\n"
-                f"result = df.groupby('{c}')['{n}'].sum().reset_index()"
+                f"# Group and aggregate\nresult = df.groupby('{c}')['{n}'].sum().reset_index()"
             )
             examples.append(
                 f"# Bar chart\n"
@@ -179,10 +194,7 @@ Code: result = df[df['price'] > 100]
         Return the shortest effective system prompt for the active provider.
         Ollama with small models gets the compact version to preserve token budget.
         """
-        is_ollama = (
-            hasattr(self.llm, "config")
-            and self.llm.config.provider == LLMProvider.OLLAMA
-        )
+        is_ollama = hasattr(self.llm, "config") and self.llm.config.provider == LLMProvider.OLLAMA
         if is_ollama:
             return self.COMPACT_SYSTEM_PROMPT
         if is_plot:
@@ -232,6 +244,7 @@ Code: result = df[df['price'] > 100]
           5. No match — leave as-is so sandbox can report the real error.
         """
         import difflib
+
         columns = df.columns.tolist()
         col_lower = {c.lower(): c for c in columns}
 
@@ -274,9 +287,13 @@ Code: result = df[df['price'] > 100]
                 continue
         return code  # nothing worked; return original so sandbox can report it
 
-    def _generate_code(self, df: pd.DataFrame, question: str,
-                       context: Optional[List[Dict]] = None,
-                       session_id: Optional[str] = None) -> Dict[str, Any]:
+    def _generate_code(
+        self,
+        df: pd.DataFrame,
+        question: str,
+        context: list[dict] | None = None,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
         """Generate Python code from a natural language question."""
         is_plot = self._is_plot_question(question)
         few_shot = self._build_few_shot_examples(df)
@@ -296,68 +313,66 @@ Code: result = df[df['price'] > 100]
         )
 
         try:
-            response = self.llm.complete_json(
-                system_prompt, user_prompt, use_fallback=use_fallback
-            )
+            response = self.llm.complete_json(system_prompt, user_prompt, use_fallback=use_fallback)
             return response
         except Exception as e:
             logger.error(f"[session={session_id}] LLM call failed: {e}")
             raise
-    
+
     def _ensure_result_assignment(self, code: str) -> str:
         """
         Ensure generated code assigns to `result` variable.
-        
+
         If code doesn't contain `result =`, wrap the last expression.
         Also removes import statements since modules are pre-loaded.
-        
+
         Args:
             code: Generated Python code
-            
+
         Returns:
             Modified code with guaranteed `result` assignment and no imports
         """
         code = code.strip()
-        
+
         # Remove all import statements and broken data-loading lines
-        lines = code.split('\n')
+        lines = code.split("\n")
         filtered_lines = []
-        
+
         for line in lines:
             stripped = line.strip()
             # Skip import and from statements
-            if stripped.startswith('import ') or stripped.startswith('from '):
+            if stripped.startswith("import ") or stripped.startswith("from "):
                 continue
 
             # Skip lines that try to recreate/load the dataframe from files or placeholder data
             if (
-                'pd.DataFrame(' in stripped
-                or 'pd.read_csv(' in stripped
-                or 'pd.read_excel(' in stripped
-                or 'pd.read_parquet(' in stripped
-                or 'pd.read_json(' in stripped
-                or 'pd.read_table(' in stripped
-                or 'path_to_your_file' in stripped
-                or 'your_file.csv' in stripped
-                or stripped.startswith('df = pd.')
-                or stripped.startswith('df = data')
+                "pd.DataFrame(" in stripped
+                or "pd.read_csv(" in stripped
+                or "pd.read_excel(" in stripped
+                or "pd.read_parquet(" in stripped
+                or "pd.read_json(" in stripped
+                or "pd.read_table(" in stripped
+                or "path_to_your_file" in stripped
+                or "your_file.csv" in stripped
+                or stripped.startswith("df = pd.")
+                or stripped.startswith("df = data")
             ):
                 continue
             filtered_lines.append(line)
-        
-        code = '\n'.join(filtered_lines).strip()
-        
+
+        code = "\n".join(filtered_lines).strip()
+
         # Remove any trailing print statements or comments
-        lines = code.split('\n')
+        lines = code.split("\n")
         clean_lines = []
         last_non_comment_idx = -1
-        
+
         for i, line in enumerate(lines):
             stripped = line.strip()
-            if stripped and not stripped.startswith('#'):
+            if stripped and not stripped.startswith("#"):
                 last_non_comment_idx = i
             clean_lines.append(line)
-        
+
         # If last line is an expression (not assignment), wrap it
         # Match simple assignment: identifier (optionally subscripted) followed by =
         # but NOT ==, !=, <=, >=
@@ -366,14 +381,18 @@ Code: result = df[df['price'] > 100]
             last_line = clean_lines[last_non_comment_idx].strip()
 
             is_assignment = bool(_ASSIGN_RE.match(last_line))
-            is_control = last_line.startswith(('if ', 'for ', 'while ', 'with ', 'try', 'def ', 'class '))
+            is_control = last_line.startswith(
+                ("if ", "for ", "while ", "with ", "try", "def ", "class ")
+            )
 
             if not is_assignment and not is_control:
-                indent = len(clean_lines[last_non_comment_idx]) - len(clean_lines[last_non_comment_idx].lstrip())
-                clean_lines[last_non_comment_idx] = ' ' * indent + f'result = {last_line}'
-        
-        return '\n'.join(clean_lines)
-    
+                indent = len(clean_lines[last_non_comment_idx]) - len(
+                    clean_lines[last_non_comment_idx].lstrip()
+                )
+                clean_lines[last_non_comment_idx] = " " * indent + f"result = {last_line}"
+
+        return "\n".join(clean_lines)
+
     def _build_answer(self, result: Any, question: str) -> str:
         """Build natural language answer from result."""
         if isinstance(result, pd.DataFrame):
@@ -386,13 +405,17 @@ Code: result = df[df['price'] > 100]
                 f"Found {len(result)} rows with columns: {', '.join(result.columns.tolist())}\n\n"
                 f"Top {min(5, len(result))} rows:\n{preview_text}"
             )
-        
-        elif isinstance(result, (int, float)):
-            return f"The answer is {result:,.2f}" if isinstance(result, float) else f"The answer is {result}"
-        
+
+        elif isinstance(result, int | float):
+            return (
+                f"The answer is {result:,.2f}"
+                if isinstance(result, float)
+                else f"The answer is {result}"
+            )
+
         elif isinstance(result, dict):
             return f"Results: {json.dumps(result, indent=2)}"
-        
+
         elif result is None:
             return "Query executed but no result was returned."
 
@@ -410,7 +433,9 @@ Code: result = df[df['price'] > 100]
         # If query result is a DataFrame, prefer plotting that.
         if isinstance(result_obj, pd.DataFrame) and not result_obj.empty:
             numeric_cols = result_obj.select_dtypes(include=["number"]).columns.tolist()
-            categorical_cols = result_obj.select_dtypes(include=["object", "string", "category"]).columns.tolist()
+            categorical_cols = result_obj.select_dtypes(
+                include=["object", "string", "category"]
+            ).columns.tolist()
             if categorical_cols and numeric_cols:
                 return px.bar(result_obj, x=categorical_cols[0], y=numeric_cols[0])
             if len(numeric_cols) >= 2:
@@ -420,7 +445,9 @@ Code: result = df[df['price'] > 100]
 
         # Fallback to original dataset
         numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
-        categorical_cols = df.select_dtypes(include=["object", "string", "category"]).columns.tolist()
+        categorical_cols = df.select_dtypes(
+            include=["object", "string", "category"]
+        ).columns.tolist()
         if categorical_cols and numeric_cols:
             grouped = df.groupby(categorical_cols[0])[numeric_cols[0]].mean().reset_index()
             return px.bar(grouped, x=categorical_cols[0], y=numeric_cols[0])
@@ -429,7 +456,7 @@ Code: result = df[df['price'] > 100]
         if len(numeric_cols) == 1:
             return px.histogram(df, x=numeric_cols[0])
         return None
-    
+
     _PLOTLY_FALLBACK = (
         "\nif hasattr(result, 'columns') and len(result.columns) >= 2:\n"
         "    str_cols = result.select_dtypes(include=['object', 'string']).columns\n"
@@ -440,9 +467,13 @@ Code: result = df[df['price'] > 100]
         "        result = px.bar(result, x=result.columns[1], y=result.columns[-1])\n"
     )
 
-    def run(self, df: pd.DataFrame, question: str,
-            context: Optional[List[Dict]] = None,
-            session_id: Optional[str] = None) -> NLQResponse:
+    def run(
+        self,
+        df: pd.DataFrame,
+        question: str,
+        context: list[dict] | None = None,
+        session_id: str | None = None,
+    ) -> NLQResponse:
         """Process a natural language query against the DataFrame."""
         sid = session_id or "?"
         logger.info(f"[session={sid}] Processing NLQ: {question[:100]!r}")
@@ -510,15 +541,13 @@ Code: result = df[df['price'] > 100]
                             executed_code, df, max_retries=self.max_retries
                         )
                         if not exec_result.success:
-                            logger.error(
-                                f"[session={sid}] Retry also failed: {exec_result.error}"
-                            )
+                            logger.error(f"[session={sid}] Retry also failed: {exec_result.error}")
                 except Exception as e:
                     logger.error(f"[session={sid}] Retry code generation failed: {e}")
-            
+
             # Step 3: Build answer
             answer = self._build_answer(exec_result.result, question)
-            
+
             # Step 4: Extract plot JSON if result is a Plotly figure.
             # NOTE: pandas DataFrames also have to_json(), so we MUST check the module
             # name before calling it — otherwise we send pandas JSON to the frontend
@@ -540,7 +569,7 @@ Code: result = df[df['price'] > 100]
                         answer = "Chart generated successfully."
                 except Exception as e:
                     logger.error(f"Fallback chart generation failed: {e}")
-            
+
             return NLQResponse(
                 answer=answer,
                 code=executed_code,
@@ -552,7 +581,7 @@ Code: result = df[df['price'] > 100]
                 tokens_used=self.llm.total_tokens,
                 cost_usd=self.llm.total_cost,
             )
-            
+
         except Exception as e:
             logger.error(f"[session={sid}] NLQ processing failed: {e}")
             return NLQResponse(
@@ -563,46 +592,49 @@ Code: result = df[df['price'] > 100]
                 tokens_used=self.llm.total_tokens,
                 cost_usd=self.llm.total_cost,
             )
-    
-    def get_cost_summary(self) -> Dict[str, Any]:
+
+    def get_cost_summary(self) -> dict[str, Any]:
         """Get cost summary from LLM service."""
         return self.llm.get_cost_summary()
 
 
 # Example usage
 if __name__ == "__main__":
-    import pandas as pd
     import os
-    
+
+    import pandas as pd
+
     # Check for API key
     if not os.getenv("OPENAI_API_KEY"):
         print("Note: Set OPENAI_API_KEY to test LLM integration")
         print("Running in demo mode...\n")
-    
+
     # Create sample DataFrame
-    df = pd.DataFrame({
-        'Name': ['Alice', 'Bob', 'Charlie', 'Diana'],
-        'Age': [25, 30, 35, 28],
-        'Department': ['Engineering', 'Sales', 'Engineering', 'Marketing'],
-        'Salary': [75000, 65000, 85000, 70000],
-    })
-    
+    df = pd.DataFrame(
+        {
+            "Name": ["Alice", "Bob", "Charlie", "Diana"],
+            "Age": [25, 30, 35, 28],
+            "Department": ["Engineering", "Sales", "Engineering", "Marketing"],
+            "Salary": [75000, 65000, 85000, 70000],
+        }
+    )
+
     agent = NaturalLanguageQueryAgent()
-    
+
     # Test questions
     questions = [
         "What is the average age?",
         "Show me salary by department",
         "How many people are in each department?",
     ]
-    
+
     for question in questions:
-        print(f"\n{'='*50}")
+        print(f"\n{'=' * 50}")
         print(f"Question: {question}")
-        print(f"{'='*50}")
-        
+        print(f"{'=' * 50}")
+
         response = agent.run(df, question)
-        
+
         print(f"Answer: {response.answer}")
         print(f"\nCode:\n{response.code}")
         print(f"\nReasoning: {response.reasoning}")

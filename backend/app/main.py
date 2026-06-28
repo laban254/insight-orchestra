@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from app.api.endpoints import router as api_router
 from app.config import settings
 
@@ -19,15 +20,19 @@ app.add_middleware(
 
 app.include_router(api_router)
 
-from app.api.connectors import router as connectors_router
+from app.api.connectors import router as connectors_router  # noqa: E402
+
 app.include_router(connectors_router)
 
-from app.api.export import router as export_router
+from app.api.export import router as export_router  # noqa: E402
+
 app.include_router(export_router)
 
-from app.api.sessions import router as sessions_router
+from app.api.sessions import router as sessions_router  # noqa: E402
+
 app.include_router(sessions_router)
+
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok"} 
+    return {"status": "ok"}

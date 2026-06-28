@@ -10,12 +10,10 @@ import type { Agent } from "../agents/AgentTimeline";
 
 /** Progressively reveals text word-by-word for a live "typing" feel. */
 function useReveal(text: string, enabled: boolean) {
-    const [n, setN] = useState(enabled ? 0 : text.length);
+    const [n, setN] = useState(0);
     useEffect(() => {
-        if (!enabled) {
-            setN(text.length);
-            return;
-        }
+        if (!enabled) return;
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setN(0);
         const tokens = text.split(/(\s+)/);
         let i = 0;
@@ -27,7 +25,8 @@ function useReveal(text: string, enabled: boolean) {
         }, 22);
         return () => clearInterval(id);
     }, [text, enabled]);
-    return { shown: text.slice(0, n), done: n >= text.length };
+    const displayed = enabled ? n : text.length;
+    return { shown: text.slice(0, displayed), done: displayed >= text.length };
 }
 
 export interface ChatMessage {

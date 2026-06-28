@@ -43,7 +43,7 @@ class TestAgentUpgrades(unittest.TestCase):
         self.mock_llm = MagicMock(spec=LLMService)
         self.hypothesis_agent = HypothesisBotAgent(name="TestHypothesis", llm_service=self.mock_llm)
         self.debate_agent = DebateManagerAgent(name="TestDebate", llm_service=self.mock_llm)
-        
+
         self.sample_data = [
             {"Name": "Alice", "Age": 25, "Salary": 75000},
             {"Name": "Bob", "Age": 30, "Salary": 65000}
@@ -55,15 +55,15 @@ class TestAgentUpgrades(unittest.TestCase):
             "hypotheses": ["Age correlates with Salary"],
             "reasoning": "Standard trend analysis"
         }
-        
+
         # Mock schema response to avoid index errors with MagicMock
         with patch('app.services.llm_service.DataFrameSchema.from_dataframe') as mock_schema:
             mock_schema.return_value = {"shape": [2, 3], "columns": [], "null_counts": {}}
             with patch('app.services.llm_service.DataFrameSchema.to_prompt') as mock_prompt:
                 mock_prompt.return_value = "Mock Prompt"
-                
+
                 result = self.hypothesis_agent.run(self.sample_data)
-                
+
                 self.assertIn("hypotheses", result)
                 self.assertEqual(len(result["hypotheses"]), 1)
                 self.assertEqual(result["hypotheses"][0], "Age correlates with Salary")
@@ -82,9 +82,9 @@ class TestAgentUpgrades(unittest.TestCase):
                 }
             ]
         }
-        
+
         result = self.debate_agent.run(["Age correlates with Salary"])
-        
+
         self.assertIn("scored_hypotheses", result)
         scored = result["scored_hypotheses"][0]
         self.assertEqual(scored["confidence"], 0.9)

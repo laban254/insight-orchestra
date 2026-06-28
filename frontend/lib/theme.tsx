@@ -26,6 +26,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         const stored = (localStorage.getItem("io-theme") as Theme | null) ?? null;
         const system = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
         const initial = stored ?? system;
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setThemeState(initial);
         apply(initial);
         // Enable color transitions only after first paint to avoid a flash.

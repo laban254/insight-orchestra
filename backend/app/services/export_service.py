@@ -1,6 +1,4 @@
-from jinja2 import Environment, BaseLoader
-import json
-
+from jinja2 import BaseLoader, Environment
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -77,7 +75,9 @@ class ExportService:
         if "agents" in session_data and session_data["agents"]:
             lines.append("## Agent Analysis\n")
             for agent in session_data["agents"]:
-                lines.append(f"### {agent.get('emoji', '')} {agent.get('name', 'Agent')}\n{agent.get('output', '')}\n")
+                lines.append(
+                    f"### {agent.get('emoji', '')} {agent.get('name', 'Agent')}\n{agent.get('output', '')}\n"
+                )
 
         lines.append("## Conversation\n")
         # Ensure we have at least an empty list if this isn't in test data.

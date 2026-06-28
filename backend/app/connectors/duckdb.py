@@ -1,6 +1,8 @@
 import duckdb
 import pandas as pd
+
 from .base import BaseConnector
+
 
 class DuckDBConnector(BaseConnector):
     """
@@ -39,14 +41,14 @@ class DuckDBConnector(BaseConnector):
             cols = self.connection.execute(f"DESCRIBE {table}").fetchall()
             schema[table] = [{"name": col[0], "type": col[1]} for col in cols]
         return schema
-        
+
     def test_connection(self) -> bool:
         try:
             self.connection.execute("SELECT 1")
             return True
         except Exception:
             return False
-            
+
     def disconnect(self) -> None:
         if self.connection:
             self.connection.close()
