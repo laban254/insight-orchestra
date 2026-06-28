@@ -1,10 +1,10 @@
-from fastapi import APIRouter, HTTPException, Body
-from pydantic import BaseModel
-from google.cloud import bigquery
-import pandas as pd
-import os
 import json
 import re
+
+import pandas as pd
+from google.cloud import bigquery
+from pydantic import BaseModel
+
 
 class BigQueryRequest(BaseModel):
     credentials_json: str  # JSON string of service account credentials
@@ -56,8 +56,8 @@ def run_bigquery_query(credentials_json: str, query: str) -> pd.DataFrame:
 
     try:
         credentials_dict = json.loads(credentials_json)
-    except json.JSONDecodeError:
-        raise ValueError("Invalid JSON format for credentials")
+    except json.JSONDecodeError as e:
+        raise ValueError("Invalid JSON format for credentials") from e
 
     required_fields = ["type", "project_id"]
     missing_fields = [f for f in required_fields if f not in credentials_dict]
@@ -76,4 +76,4 @@ def run_bigquery_query(credentials_json: str, query: str) -> pd.DataFrame:
         df = job.result().to_dataframe()
         return df
     except Exception as e:
-        raise RuntimeError(f"BigQuery error: {str(e)}")
+        raise RuntimeError(f"BigQuery error: {str(e)}") from e

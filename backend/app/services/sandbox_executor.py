@@ -9,15 +9,15 @@ This module provides:
 """
 
 import ast
-import io
-import time
-import logging
 import concurrent.futures
-from typing import Dict, Any, Optional, Tuple
-from dataclasses import dataclass, field
-from contextlib import redirect_stdout, redirect_stderr
+import io
+import logging
+import time
+from contextlib import redirect_stderr, redirect_stdout
+from dataclasses import dataclass
+from typing import Any
+
 from RestrictedPython import compile_restricted
-from RestrictedPython.Guards import safe_builtins
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ class ExecutionResult:
     execution_time_ms: float = 0.0
     memory_used_mb: float = 0.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "success": self.success,
             "output": self.output,
@@ -56,38 +56,104 @@ class SandboxExecutor:
     """
 
     BLOCKED_MODULES = {
-        "os", "sys", "subprocess", "socket", "requests", "urllib",
-        "shutil", "pathlib", "tempfile", "glob", "fnmatch",
-        "pickle", "shelve", "marshal", "ctypes", "cffi",
-        "importlib", "imp", "runpy", "code", "codeop",
-        "pty", "tty", "termios", "fcntl", "signal",
-        "multiprocessing", "threading", "concurrent",
-        "asyncio", "selectors", "ssl",
+        "os",
+        "sys",
+        "subprocess",
+        "socket",
+        "requests",
+        "urllib",
+        "shutil",
+        "pathlib",
+        "tempfile",
+        "glob",
+        "fnmatch",
+        "pickle",
+        "shelve",
+        "marshal",
+        "ctypes",
+        "cffi",
+        "importlib",
+        "imp",
+        "runpy",
+        "code",
+        "codeop",
+        "pty",
+        "tty",
+        "termios",
+        "fcntl",
+        "signal",
+        "multiprocessing",
+        "threading",
+        "concurrent",
+        "asyncio",
+        "selectors",
+        "ssl",
     }
 
     BLOCKED_CALLS = {"eval", "exec", "compile", "open", "breakpoint", "__import__"}
 
     BLOCKED_DUNDERS = {
-        "__globals__", "__code__", "__builtins__", "__import__",
-        "__subclasses__", "__mro__", "__bases__", "__loader__",
-        "__spec__", "__reduce__", "__reduce_ex__",
+        "__globals__",
+        "__code__",
+        "__builtins__",
+        "__import__",
+        "__subclasses__",
+        "__mro__",
+        "__bases__",
+        "__loader__",
+        "__spec__",
+        "__reduce__",
+        "__reduce_ex__",
     }
 
     SAFE_BUILTINS = {
-        "abs": abs, "all": all, "any": any, "bin": bin,
-        "bool": bool, "bytes": bytes, "callable": callable,
-        "chr": chr, "complex": complex, "dict": dict,
-        "divmod": divmod, "enumerate": enumerate, "filter": filter,
-        "float": float, "format": format, "frozenset": frozenset,
-        "getattr": getattr, "hasattr": hasattr, "hash": hash,
-        "hex": hex, "int": int, "isinstance": isinstance,
-        "issubclass": issubclass, "iter": iter, "len": len,
-        "list": list, "map": map, "max": max, "min": min,
-        "next": next, "object": object, "oct": oct, "ord": ord,
-        "pow": pow, "print": print, "range": range, "repr": repr,
-        "reversed": reversed, "round": round, "set": set,
-        "setattr": setattr, "slice": slice, "sorted": sorted,
-        "str": str, "sum": sum, "tuple": tuple, "type": type,
+        "abs": abs,
+        "all": all,
+        "any": any,
+        "bin": bin,
+        "bool": bool,
+        "bytes": bytes,
+        "callable": callable,
+        "chr": chr,
+        "complex": complex,
+        "dict": dict,
+        "divmod": divmod,
+        "enumerate": enumerate,
+        "filter": filter,
+        "float": float,
+        "format": format,
+        "frozenset": frozenset,
+        "getattr": getattr,
+        "hasattr": hasattr,
+        "hash": hash,
+        "hex": hex,
+        "int": int,
+        "isinstance": isinstance,
+        "issubclass": issubclass,
+        "iter": iter,
+        "len": len,
+        "list": list,
+        "map": map,
+        "max": max,
+        "min": min,
+        "next": next,
+        "object": object,
+        "oct": oct,
+        "ord": ord,
+        "pow": pow,
+        "print": print,
+        "range": range,
+        "repr": repr,
+        "reversed": reversed,
+        "round": round,
+        "set": set,
+        "setattr": setattr,
+        "slice": slice,
+        "sorted": sorted,
+        "str": str,
+        "sum": sum,
+        "tuple": tuple,
+        "type": type,
         "zip": zip,
     }
 
@@ -97,7 +163,7 @@ class SandboxExecutor:
         # One persistent pool so threads are reused across requests
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
-    def _check_safety(self, code: str) -> Tuple[bool, str]:
+    def _check_safety(self, code: str) -> tuple[bool, str]:
         """
         AST-based safety analysis — not bypassable via string obfuscation.
         """
@@ -108,7 +174,7 @@ class SandboxExecutor:
 
         for node in ast.walk(tree):
             # Block dangerous imports
-            if isinstance(node, (ast.Import, ast.ImportFrom)):
+            if isinstance(node, ast.Import | ast.ImportFrom):
                 for alias in getattr(node, "names", []):
                     module_root = alias.name.split(".")[0]
                     if module_root in self.BLOCKED_MODULES:
@@ -128,10 +194,18 @@ class SandboxExecutor:
                     if isinstance(func.value, ast.Name):
                         full = f"{func.value.id}.{func.attr}"
                         dangerous = {
-                            "os.system", "os.popen", "os.execve", "os.execvp",
-                            "subprocess.call", "subprocess.run", "subprocess.Popen",
-                            "socket.socket", "pickle.loads", "pickle.load",
-                            "yaml.load", "marshal.loads",
+                            "os.system",
+                            "os.popen",
+                            "os.execve",
+                            "os.execvp",
+                            "subprocess.call",
+                            "subprocess.run",
+                            "subprocess.Popen",
+                            "socket.socket",
+                            "pickle.loads",
+                            "pickle.load",
+                            "yaml.load",
+                            "marshal.loads",
                         }
                         if full in dangerous:
                             return False, f"Call to '{full}' is not allowed"
@@ -148,13 +222,15 @@ class SandboxExecutor:
 
         return True, ""
 
-    def _create_globals(self, df=None, **additional_globals) -> Dict[str, Any]:
+    def _create_globals(self, df=None, **additional_globals) -> dict[str, Any]:
         """Create restricted globals dictionary."""
         try:
-            from RestrictedPython.Guards import safe_iter, guarded_iter_unpack_sequence
+            from RestrictedPython.Guards import guarded_iter_unpack_sequence, safe_iter
         except Exception:
+
             def safe_iter(obj):
                 return iter(obj)
+
             def guarded_iter_unpack_sequence(seq, count=None):
                 return seq
 
@@ -174,6 +250,7 @@ class SandboxExecutor:
         try:
             import pandas as pd
             import plotly.express as px
+
             globals_dict["pd"] = pd
             globals_dict["px"] = px
         except ImportError:

@@ -1,6 +1,9 @@
 import sqlite3
+
 import pandas as pd
+
 from .base import BaseConnector
+
 
 class SQLiteConnector(BaseConnector):
     def __init__(self):
@@ -15,7 +18,7 @@ class SQLiteConnector(BaseConnector):
         query = "SELECT name FROM sqlite_master WHERE type='table';"
         self.cursor.execute(query)
         tables = self.cursor.fetchall()
-        
+
         schema = {}
         for (table,) in tables:
             self.cursor.execute(f"PRAGMA table_info({table});")
@@ -26,7 +29,10 @@ class SQLiteConnector(BaseConnector):
 
     def execute_query(self, sql: str) -> pd.DataFrame:
         sql_upper = sql.strip().upper()
-        if any(sql_upper.startswith(kw) for kw in ["DROP", "DELETE", "INSERT", "UPDATE", "ALTER", "TRUNCATE"]):
+        if any(
+            sql_upper.startswith(kw)
+            for kw in ["DROP", "DELETE", "INSERT", "UPDATE", "ALTER", "TRUNCATE"]
+        ):
             raise ValueError("Only SELECT queries are permitted")
         return pd.read_sql_query(sql, self.connection)
 

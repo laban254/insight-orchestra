@@ -1,10 +1,11 @@
 import os
-import uuid
 import shutil
+import uuid
+
 from fastapi import UploadFile
 
 UPLOAD_DIR = os.path.abspath(
-    os.path.join(os.path.dirname(os.path.dirname(__file__)), '..', 'uploads')
+    os.path.join(os.path.dirname(os.path.dirname(__file__)), "..", "uploads")
 )
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -58,7 +59,7 @@ def save_upload_file(upload_file: UploadFile) -> str:
     if actual_size > MAX_UPLOAD_BYTES:
         os.remove(file_path)
         raise ValueError(
-            f"File too large ({actual_size // (1024*1024)} MB). Maximum is {MAX_UPLOAD_BYTES // (1024*1024)} MB."
+            f"File too large ({actual_size // (1024 * 1024)} MB). Maximum is {MAX_UPLOAD_BYTES // (1024 * 1024)} MB."
         )
 
     return file_path

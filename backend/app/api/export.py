@@ -37,7 +37,11 @@ def _build_session(session_id: str) -> dict:
         elif entry.get("question"):
             messages.append({"role": "user", "content": entry.get("question", "")})
             messages.append(
-                {"role": "assistant", "content": entry.get("answer", ""), "code": entry.get("code", "")}
+                {
+                    "role": "assistant",
+                    "content": entry.get("answer", ""),
+                    "code": entry.get("code", ""),
+                }
             )
 
     return {
@@ -83,10 +87,14 @@ async def export_qa_csv(session_id: str):
     rows = 0
     for entry in history:
         if entry.get("question"):
-            writer.writerow([entry.get("question", ""), entry.get("answer", ""), entry.get("code", "")])
+            writer.writerow(
+                [entry.get("question", ""), entry.get("answer", ""), entry.get("code", "")]
+            )
             rows += 1
     if rows == 0:
-        raise HTTPException(status_code=404, detail="No questions have been asked in this session yet.")
+        raise HTTPException(
+            status_code=404, detail="No questions have been asked in this session yet."
+        )
 
     return Response(
         content=buf.getvalue(),

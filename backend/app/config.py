@@ -5,8 +5,8 @@ All config is read from environment variables (or a .env file).
 Import the singleton `settings` anywhere in the app.
 """
 
-from pydantic_settings import BaseSettings
 from pydantic import Field
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):

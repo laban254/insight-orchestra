@@ -1,12 +1,13 @@
-from typing import Optional, List, Dict, Any
-from app.services.llm_service import LLMService
 import logging
+from typing import Any
+
+from app.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
 
 
 class InsightSummarizerAgent:
-    def __init__(self, llm_service: Optional[LLMService] = None):
+    def __init__(self, llm_service: LLMService | None = None):
         self.llm = llm_service
         if self.llm is None:
             try:
@@ -14,12 +15,12 @@ class InsightSummarizerAgent:
             except Exception:
                 self.llm = None
 
-    def _fallback_summary(self, workflow_results: Dict[str, Any]) -> Dict[str, Any]:
+    def _fallback_summary(self, workflow_results: dict[str, Any]) -> dict[str, Any]:
         """Template-based summary when LLM is unavailable."""
-        cleaner   = workflow_results.get("cleaner", {})
+        cleaner = workflow_results.get("cleaner", {})
         hypothesis = workflow_results.get("hypothesis", {})
-        debate    = workflow_results.get("debate", {})
-        viz       = workflow_results.get("viz", {})
+        debate = workflow_results.get("debate", {})
+        viz = workflow_results.get("viz", {})
 
         parts = []
         report = cleaner.get("report", {})
@@ -45,7 +46,7 @@ class InsightSummarizerAgent:
         # Generic suggested questions using actual column names from the summary
         num_cols = hypothesis.get("summary", {}).get("numeric_columns", [])
         cat_cols = hypothesis.get("summary", {}).get("categorical_columns", [])
-        questions: List[str] = []
+        questions: list[str] = []
         if cat_cols and num_cols:
             questions.append(f"Show me a bar chart of {num_cols[0]} by {cat_cols[0]}")
             questions.append(f"Which {cat_cols[0]} has the highest {num_cols[0]}?")
@@ -57,21 +58,19 @@ class InsightSummarizerAgent:
 
         return {"narrative": narrative, "suggested_questions": questions[:5]}
 
-    def run(self, workflow_results: Dict[str, Any]) -> Dict[str, Any]:
-        cleaner    = workflow_results.get("cleaner", {})
+    def run(self, workflow_results: dict[str, Any]) -> dict[str, Any]:
+        cleaner = workflow_results.get("cleaner", {})
         hypothesis = workflow_results.get("hypothesis", {})
-        debate     = workflow_results.get("debate", {})
-        viz        = workflow_results.get("viz", {})
-        stats      = workflow_results.get("stats", "")
-
+        debate = workflow_results.get("debate", {})
+        viz = workflow_results.get("viz", {})
         # Build structured context for the LLM
-        report    = cleaner.get("report", {})
-        rows      = report.get("final_shape", [0])[0]
-        hyps      = hypothesis.get("hypotheses", [])
+        report = cleaner.get("report", {})
+        rows = report.get("final_shape", [0])[0]
+        hyps = hypothesis.get("hypotheses", [])
         consensus = debate.get("summary", {}).get("consensus") or {}
-        plots     = viz.get("chart_info", {}).get("plots", [])
-        num_cols  = hypothesis.get("summary", {}).get("numeric_columns", [])
-        cat_cols  = hypothesis.get("summary", {}).get("categorical_columns", [])
+        plots = viz.get("chart_info", {}).get("plots", [])
+        num_cols = hypothesis.get("summary", {}).get("numeric_columns", [])
+        cat_cols = hypothesis.get("summary", {}).get("categorical_columns", [])
 
         if self.llm is None:
             return self._fallback_summary(workflow_results)
@@ -102,8 +101,8 @@ OUTPUT (JSON only):
 
         try:
             result = self.llm.complete_json(system, context)
-            narrative  = result.get("narrative", "")
-            questions  = result.get("suggested_questions", [])
+            narrative = result.get("narrative", "")
+            questions = result.get("suggested_questions", [])
             if not narrative:
                 raise ValueError("empty narrative")
             return {

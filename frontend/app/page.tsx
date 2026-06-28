@@ -66,6 +66,7 @@ export default function Home() {
     const [cost, setCost] = useState({ tokens: 0, cost: 0 });
 
     const currentState = useRef<SavedState | null>(null);
+    // eslint-disable-next-line react-hooks/purity
     const createdAt = useRef<number>(Date.now());
 
     useEffect(() => {
@@ -81,6 +82,7 @@ export default function Home() {
         setWorkspaceId(newId());
         setRestore(null);
         currentState.current = null;
+        // eslint-disable-next-line react-hooks/purity
         createdAt.current = Date.now();
         setCost({ tokens: 0, cost: 0 });
     };

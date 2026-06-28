@@ -11,7 +11,7 @@ This module provides:
 import json
 import logging
 import threading
-from typing import Dict, List, Any, Optional
+from typing import Any
 
 from app.config import settings
 
@@ -25,16 +25,16 @@ class SessionManager:
     """
     Session manager with Redis backend and in-memory fallback.
     """
-    
+
     def __init__(self):
         self._redis_client = None
         self._use_redis = False
-        self._memory_store: Dict[str, List[Dict]] = {}
-        self._lock = threading.Lock()   # guards _memory_store read-modify-write
+        self._memory_store: dict[str, list[dict]] = {}
+        self._lock = threading.Lock()  # guards _memory_store read-modify-write
 
         # Try to initialize Redis
         self._init_redis()
-    
+
     def _init_redis(self):
         """Initialize Redis connection if available."""
         redis_url = settings.redis_url
@@ -42,9 +42,10 @@ class SessionManager:
         if not settings.use_redis:
             logger.info("Redis disabled via USE_REDIS=false, using in-memory sessions")
             return
-        
+
         try:
             import redis
+
             self._redis_client = redis.from_url(redis_url, decode_responses=True)
             # Test connection
             self._redis_client.ping()
@@ -54,14 +55,14 @@ class SessionManager:
             logger.warning("redis package not installed, using in-memory sessions")
         except Exception as e:
             logger.warning(f"Failed to connect to Redis: {e}, using in-memory sessions")
-    
-    def get(self, session_id: str) -> List[Dict[str, Any]]:
+
+    def get(self, session_id: str) -> list[dict[str, Any]]:
         """
         Get session history.
-        
+
         Args:
             session_id: The session identifier
-            
+
         Returns:
             List of session interactions
         """
@@ -73,11 +74,11 @@ class SessionManager:
                 logger.error(f"Redis get error: {e}")
 
         return list(self._memory_store.get(session_id, []))
-    
-    def set(self, session_id: str, history: List[Dict[str, Any]]) -> None:
+
+    def set(self, session_id: str, history: list[dict[str, Any]]) -> None:
         """
         Set session history.
-        
+
         Args:
             session_id: The session identifier
             history: List of interactions to store
@@ -99,8 +100,8 @@ class SessionManager:
 
         with self._lock:
             self._memory_store[session_id] = list(history)
-    
-    def append(self, session_id: str, interaction: Dict[str, Any]) -> List[Dict[str, Any]]:
+
+    def append(self, session_id: str, interaction: dict[str, Any]) -> list[dict[str, Any]]:
         """
         Append an interaction to session history (atomic in both backends).
         """
@@ -119,16 +120,16 @@ class SessionManager:
         # In-memory: lock protects the read-modify-write
         with self._lock:
             history = self._memory_store.get(session_id, [])
-            history = list(history)   # copy before mutating
+            history = list(history)  # copy before mutating
             history.append(interaction)
             history = history[-MAX_HISTORY_PER_SESSION:]
             self._memory_store[session_id] = history
             return list(history)
-    
+
     def delete(self, session_id: str) -> None:
         """
         Delete a session.
-        
+
         Args:
             session_id: The session identifier
         """
@@ -138,10 +139,10 @@ class SessionManager:
                 return
             except Exception as e:
                 logger.error(f"Redis delete error: {e}")
-        
+
         # Fallback to memory
         self._memory_store.pop(session_id, None)
-    
+
     def clear_all(self) -> None:
         """Clear all sessions (for testing)."""
         if self._use_redis and self._redis_client:
@@ -152,11 +153,11 @@ class SessionManager:
                 return
             except Exception as e:
                 logger.error(f"Redis clear error: {e}")
-        
+
         # Fallback to memory
         self._memory_store.clear()
-    
-    def get_stats(self) -> Dict[str, Any]:
+
+    def get_stats(self) -> dict[str, Any]:
         """Get session statistics."""
         if self._use_redis and self._redis_client:
             try:
@@ -168,7 +169,7 @@ class SessionManager:
                 }
             except Exception as e:
                 logger.error(f"Redis stats error: {e}")
-        
+
         return {
             "backend": "memory",
             "session_count": len(self._memory_store),
@@ -177,7 +178,7 @@ class SessionManager:
 
 
 # Global session manager instance
-_session_manager: Optional[SessionManager] = None
+_session_manager: SessionManager | None = None
 
 
 def get_session_manager() -> SessionManager:
