@@ -21,9 +21,9 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 }
 
 export function SharedReport({ datasetName, analysisResult, results }: SharedPayload) {
-    const report = analysisResult.cleaner.report;
-    const consensus = analysisResult.debate.summary.consensus;
-    const plots = analysisResult.viz.chart_info.plots ?? [];
+    const report = analysisResult?.cleaner?.report;
+    const consensus = analysisResult?.debate?.summary?.consensus;
+    const plots = analysisResult?.viz?.chart_info?.plots ?? [];
 
     return (
         <main className="min-h-screen bg-bg">
@@ -51,10 +51,10 @@ export function SharedReport({ datasetName, analysisResult, results }: SharedPay
                 </section>
 
                 <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                    <Stat label="Rows" value={report.final_shape[0].toLocaleString()} />
-                    <Stat label="Columns" value={report.final_shape[1]} />
-                    <Stat label="Duplicates removed" value={report.duplicates_removed.toLocaleString()} />
-                    <Stat label="Missing fixed" value={report.total_missing.toLocaleString()} />
+                    <Stat label="Rows" value={report?.final_shape?.[0]?.toLocaleString() ?? "—"} />
+                    <Stat label="Columns" value={report?.final_shape?.[1] ?? "—"} />
+                    <Stat label="Duplicates removed" value={report?.duplicates_removed?.toLocaleString() ?? "—"} />
+                    <Stat label="Missing fixed" value={report?.total_missing?.toLocaleString() ?? "—"} />
                 </section>
 
                 {consensus && (

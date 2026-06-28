@@ -29,6 +29,8 @@ def _build_session(session_id: str) -> dict:
             if entry.get("narrative"):
                 messages.append({"role": "assistant", "content": entry["narrative"]})
             for h in entry.get("hypotheses", []) or []:
+                if h is None:
+                    continue
                 text = h.get("hypothesis") if isinstance(h, dict) else str(h)
                 if text:
                     agents.append({"emoji": "💡", "name": "Insight", "output": text})

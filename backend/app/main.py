@@ -8,7 +8,7 @@ app = FastAPI()
 # Explicit allowed origins (set ALLOWED_ORIGINS, comma-separated). A wildcard
 # can't be combined with credentials, so only enable credentials when scoped.
 _origins = [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
-_wildcard = "*" in _origins
+_wildcard = "*" in _origins or not _origins  # empty list also falls back to wildcard
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins or ["*"],

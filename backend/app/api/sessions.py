@@ -33,6 +33,13 @@ class ShareRequest(BaseModel):
     session_data: dict
 
 
+def _evict_expired() -> None:
+    now = datetime.now()
+    expired = [k for k, v in _memory_store.items() if now > v["expires_at"]]
+    for k in expired:
+        del _memory_store[k]
+
+
 @router.post("/share")
 async def create_share_link(req: ShareRequest):
     token = secrets.token_urlsafe(16)
@@ -45,6 +52,7 @@ async def create_share_link(req: ShareRequest):
         except Exception as e:
             logger.error(f"Share store redis set error: {e}")
 
+    _evict_expired()
     _memory_store[token] = {"data": req.session_data, "expires_at": expires_at}
     return {"token": token, "expires_at": expires_at.isoformat()}
 
