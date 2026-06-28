@@ -2,7 +2,6 @@ import json
 import re
 
 import pandas as pd
-from google.cloud import bigquery
 from pydantic import BaseModel
 
 
@@ -71,6 +70,8 @@ def run_bigquery_query(credentials_json: str, query: str) -> pd.DataFrame:
     _validate_select_only(query)
 
     try:
+        from google.cloud import bigquery  # optional dep; only needed here
+
         client = bigquery.Client.from_service_account_info(credentials_dict)
         job = client.query(query)
         df = job.result().to_dataframe()
