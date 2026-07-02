@@ -1,0 +1,10 @@
+# Code owners are automatically requested for review on matching PRs.
+# Docs: https://docs.github.com/en/repositories/managing-your-repos-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything in the repo.
+*                   @laban254
+
+# Area owners (kept same for now; adjust as the team grows).
+/backend/           @laban254
+/frontend/          @laban254
+/.github/           @laban254

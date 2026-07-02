@@ -1,0 +1,49 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit AI code review configuration.
+# Docs: https://docs.coderabbit.ai/getting-started/configure-coderabbit
+language: en-US
+early_access: false
+
+reviews:
+  # "chill" avoids nitpicking style already enforced by ruff/eslint.
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - main
+
+  # Don't duplicate what linters/formatters already cover.
+  path_filters:
+    - "!**/*.lock"
+    - "!frontend/package-lock.json"
+    - "!**/.next/**"
+    - "!**/node_modules/**"
+    - "!**/*.egg-info/**"
+    - "!**/__pycache__/**"
+
+  path_instructions:
+    - path: "backend/**/*.py"
+      instructions: >-
+        Focus on correctness, async/await misuse, unhandled exceptions,
+        input validation on FastAPI routes, SQL/command injection, and safe
+        handling of user-supplied files and LLM output. Formatting and import
+        order are already enforced by ruff, so skip pure style nits.
+    - path: "frontend/**/*.{ts,tsx}"
+      instructions: >-
+        Focus on React hook correctness, missing error/loading states, unsafe
+        rendering of untrusted markdown/HTML, and type safety. ESLint and
+        TypeScript already cover style and basic type errors.
+
+  tools:
+    ruff:
+      enabled: true
+
+chat:
+  auto_reply: true
