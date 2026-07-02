@@ -15,7 +15,7 @@ python-dotenv==1.2.2
 psycopg2-binary==2.9.12
 pymysql==1.2.0
 jinja2==3.1.6
-numpy==2.4.6
+numpy==2.5.0
 statsmodels==0.14.6
 redis==8.0.1
 pydantic-settings==2.14.2
