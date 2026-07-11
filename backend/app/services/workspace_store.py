@@ -59,7 +59,7 @@ class WorkspaceStore:
             k: record.get(k) for k in ("id", "datasetName", "filePath", "createdAt", "updatedAt")
         }
 
-    def list(self) -> list[dict[str, Any]]:
+    def list_metas(self) -> list[dict[str, Any]]:
         """All workspace metas, most recently updated first."""
         if self._use_redis and self._redis_client:
             try:

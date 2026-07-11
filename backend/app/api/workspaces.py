@@ -44,7 +44,7 @@ class WorkspaceUpsert(BaseModel):
 @router.get("")
 async def list_workspaces():
     """List saved workspaces (metadata only), most recently updated first."""
-    return {"workspaces": _store.list()}
+    return {"workspaces": _store.list_metas()}
 
 
 @router.get("/{workspace_id}")
