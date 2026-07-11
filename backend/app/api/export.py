@@ -1,5 +1,7 @@
 import csv
 import io
+import json
+import logging
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException
@@ -11,6 +13,23 @@ from app.services.session_manager import get_session_manager
 router = APIRouter(prefix="/export", tags=["export"])
 export_service = ExportService()
 _session_manager = get_session_manager()
+logger = logging.getLogger(__name__)
+
+
+def _parse_chart(plotly_json: str | None, title: str) -> dict | None:
+    """Parse a stored Plotly figure JSON string into template-ready form."""
+    if not plotly_json:
+        return None
+    try:
+        fig = json.loads(plotly_json)
+        return {
+            "title": title,
+            "data": fig.get("data", []),
+            "layout": fig.get("layout", {}),
+        }
+    except (json.JSONDecodeError, AttributeError) as e:
+        logger.warning(f"Skipping unparseable chart in export: {e}")
+        return None
 
 
 def _build_session(session_id: str) -> dict:
@@ -24,6 +43,7 @@ def _build_session(session_id: str) -> dict:
 
     agents = []
     messages = []
+    charts = []
     for entry in history:
         if entry.get("role") == "analysis":
             if entry.get("narrative"):
@@ -34,6 +54,10 @@ def _build_session(session_id: str) -> dict:
                 text = h.get("hypothesis") if isinstance(h, dict) else str(h)
                 if text:
                     agents.append({"emoji": "💡", "name": "Insight", "output": text})
+            for c in entry.get("charts", []) or []:
+                chart = _parse_chart(c.get("plotly_json"), c.get("title") or "Pipeline chart")
+                if chart:
+                    charts.append(chart)
         elif entry.get("question"):
             messages.append({"role": "user", "content": entry.get("question", "")})
             messages.append(
@@ -43,13 +67,16 @@ def _build_session(session_id: str) -> dict:
                     "code": entry.get("code", ""),
                 }
             )
+            chart = _parse_chart(entry.get("plot_json"), entry.get("question", "Query chart"))
+            if chart:
+                charts.append(chart)
 
     return {
         "title": f"Analysis · {session_id}",
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "agents": agents,
         "messages": messages,
-        "charts": [],  # charts live client-side; the in-app HTML export embeds them
+        "charts": charts,
     }
 
 
