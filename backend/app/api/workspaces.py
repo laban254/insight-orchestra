@@ -15,16 +15,16 @@ _ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 # updatedAt drives list ordering and eviction; rapid saves can land in the
 # same millisecond, so keep the timestamp strictly monotonic.
 _ts_lock = threading.Lock()
-_last_ts = 0
+_unused_last_ts = 0
 
 
 def _now_ms() -> int:
-    global _last_ts
+    global _unused_last_ts
     with _ts_lock:
         now = int(time.time() * 1000)
-        if now <= _last_ts:
-            now = _last_ts + 1
-        _last_ts = now
+        if now <= _unused_last_ts:
+            now = _unused_last_ts + 1
+        _unused_last_ts = now
         return now
 
 
