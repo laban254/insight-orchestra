@@ -165,7 +165,7 @@ async def process_data(request: ProcessRequest):
                 "hypotheses": hypotheses[:5],
                 "charts": [
                     {"title": p.get("title", ""), "plotly_json": p.get("plotly_json")}
-                    for p in viz_result.get("chart_info", {}).get("plots", [])
+                    for p in (viz_result.get("chart_info") or {}).get("plots", [])
                     if p.get("plotly_json")
                 ],
             },
