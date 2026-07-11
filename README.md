@@ -26,7 +26,7 @@
 
 ## What is Insight Orchestra?
 
-Insight Orchestra is an **open-source, self-hostable alternative to Julius AI** — AI-powered data analysis where your data never leaves your machine. Upload a CSV or connect a database, and a 4-agent pipeline cleans the data, generates evidence-backed hypotheses, scores them in an LLM-refereed debate, and builds interactive Plotly charts. Then keep asking questions in plain English: an NLQ agent writes pandas code and executes it in a locked-down sandbox.
+Insight Orchestra is an **open-source AI data analyst you can self-host** — think Julius AI or ChatGPT's data analysis, but running on your own hardware, with your choice of LLM, where your data never leaves your machine. Upload a CSV or connect a database, and a 4-agent pipeline cleans the data, generates evidence-backed hypotheses, scores them in an LLM-refereed debate, and builds interactive Plotly charts. Then keep asking questions in plain English: an NLQ agent writes pandas code and executes it in a locked-down sandbox.
 
 It works with **your choice of LLM** — OpenAI, Anthropic, or DeepSeek in the cloud, or fully local and private with Ollama.
 
@@ -107,7 +107,7 @@ Each stage streams real-time progress to the UI via SSE. See the [Agent Pipeline
 - **Multi-Database Support** — PostgreSQL, MySQL, SQLite, DuckDB, BigQuery, and CSV — all read-only with SQL injection protection
 - **Sandboxed Code Execution** — no file I/O, no network access, no dangerous imports; configurable timeout
 - **Real-Time Agent Progress** — SSE streaming shows each agent's status, output, and duration
-- **Workspace, Share & Export** — pin and compare charts, one-click read-only share links (72 h TTL), export as HTML / Markdown / CSV
+- **Workspace, Share & Export** — pin and compare charts, workspace history saved server-side (reopen past runs from any browser), one-click read-only share links (72 h TTL), export as HTML / Markdown / CSV with embedded interactive charts
 - **5 Demo Datasets** — try it without bringing your own data
 
 ## Documentation
@@ -121,7 +121,7 @@ Each stage streams real-time progress to the UI via SSE. See the [Agent Pipeline
 
 ## Roadmap
 
-Near-term focus is correctness and hardening: CI builds from a clean cache, rate limiting, input validation, and broader test coverage. Further out: more data formats (Excel, JSON, Parquet), saved dashboards, PDF export, and server-side workspace persistence. Have a request or want to influence priorities? [Open an issue](https://github.com/laban254/insight-orchestra/issues).
+Near-term focus is correctness and hardening: CI builds from a clean cache, rate limiting, input validation, and broader test coverage. Further out: more data formats (Excel, JSON, Parquet), saved dashboards, and PDF export. Have a request or want to influence priorities? [Open an issue](https://github.com/laban254/insight-orchestra/issues).
 
 ## Contributing
 

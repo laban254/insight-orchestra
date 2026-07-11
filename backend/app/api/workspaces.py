@@ -1,6 +1,7 @@
 import re
 import threading
 import time
+from collections.abc import Callable
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -12,20 +13,26 @@ _store = get_workspace_store()
 
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
+
 # updatedAt drives list ordering and eviction; rapid saves can land in the
 # same millisecond, so keep the timestamp strictly monotonic.
-_ts_lock = threading.Lock()
-_unused_last_ts = 0
+def _make_monotonic_ms() -> Callable[[], int]:
+    lock = threading.Lock()
+    last = 0
+
+    def now_ms() -> int:
+        nonlocal last
+        with lock:
+            now = int(time.time() * 1000)
+            if now <= last:
+                now = last + 1
+            last = now
+            return now
+
+    return now_ms
 
 
-def _now_ms() -> int:
-    global _unused_last_ts
-    with _ts_lock:
-        now = int(time.time() * 1000)
-        if now <= _unused_last_ts:
-            now = _unused_last_ts + 1
-        _unused_last_ts = now
-        return now
+_now_ms = _make_monotonic_ms()
 
 
 def _validate_id(workspace_id: str) -> str:
@@ -44,7 +51,7 @@ class WorkspaceUpsert(BaseModel):
 @router.get("")
 async def list_workspaces():
     """List saved workspaces (metadata only), most recently updated first."""
-    return {"workspaces": _store.list()}
+    return {"workspaces": _store.list_metas()}
 
 
 @router.get("/{workspace_id}")
