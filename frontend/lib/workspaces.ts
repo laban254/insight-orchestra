@@ -106,9 +106,9 @@ function localSave(meta: Omit<WorkspaceMeta, "updatedAt">, state: SavedState) {
  * saved before server-side persistence existed, or saved while offline).
  */
 export async function listWorkspaces(): Promise<WorkspaceMeta[]> {
-    let metas: WorkspaceMeta[];
+    let metas: WorkspaceMeta[] = [];
     try {
-        metas = (await api.listWorkspaces()).workspaces;
+        metas = (await api.listWorkspaces()).workspaces || [];
     } catch {
         return localList();
     }
