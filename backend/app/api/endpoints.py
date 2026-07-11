@@ -224,7 +224,7 @@ async def natural_language_query(request: NLQRequest):
         if sid:
             context = [
                 {k: v for k, v in entry.items() if k not in ("plot_json", "charts")}
-                for entry in _session_manager.get(sid)
+                for entry in (_session_manager.get(sid) or [])
             ]
 
         # --- Phase 2: NLQ Agent ---
