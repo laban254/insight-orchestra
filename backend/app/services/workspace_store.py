@@ -81,6 +81,7 @@ class WorkspaceStore:
                 return json.loads(raw) if raw else None
             except Exception as e:
                 logger.error(f"Redis workspace get error: {e}")
+                raise
 
         with self._lock:
             record = self._memory_store.get(workspace_id)
