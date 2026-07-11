@@ -44,8 +44,10 @@ HTML_TEMPLATE = """
     {% endif %}
   {% endfor %}
 
+  {% if charts %}
   <h2>Visualisations</h2>
   {% for chart in charts %}
+  {% if chart.title %}<h3>{{ chart.title }}</h3>{% endif %}
   <div class="chart" id="chart-{{ loop.index }}"></div>
   <script>
     Plotly.newPlot('chart-{{ loop.index }}',
@@ -54,6 +56,7 @@ HTML_TEMPLATE = """
     );
   </script>
   {% endfor %}
+  {% endif %}
 
 </body>
 </html>
@@ -78,6 +81,14 @@ class ExportService:
                 lines.append(
                     f"### {agent.get('emoji', '')} {agent.get('name', 'Agent')}\n{agent.get('output', '')}\n"
                 )
+
+        if session_data.get("charts"):
+            lines.append("## Visualisations\n")
+            for chart in session_data["charts"]:
+                lines.append(f"- {chart.get('title', 'Chart')}")
+            lines.append(
+                "\n*Interactive versions of these charts are included in the HTML export.*\n"
+            )
 
         lines.append("## Conversation\n")
         # Ensure we have at least an empty list if this isn't in test data.

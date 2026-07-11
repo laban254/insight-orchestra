@@ -9,6 +9,8 @@ import {
     ProcessResponse,
     AppConfig,
 } from './types';
+// Type-only import — erased at compile time, so no runtime cycle with workspaces.ts.
+import type { SavedState, WorkspaceMeta, WorkspaceRecord } from './workspaces';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -66,6 +68,26 @@ export const api = {
     // EXPORT
     getExportUrl: (sessionId: string, format: 'html' | 'markdown' | 'csv') => {
         return `${API_BASE_URL}/export/${sessionId}/${format}`;
+    },
+
+    // WORKSPACES (server-side persistence)
+    listWorkspaces: async (): Promise<{ workspaces: WorkspaceMeta[] }> => {
+        const response = await apiClient.get<{ workspaces: WorkspaceMeta[] }>('/workspaces');
+        return response.data;
+    },
+    getWorkspace: async (id: string): Promise<WorkspaceRecord> => {
+        const response = await apiClient.get<WorkspaceRecord>(`/workspaces/${id}`);
+        return response.data;
+    },
+    saveWorkspace: async (
+        id: string,
+        payload: { datasetName: string; filePath: string; createdAt: number; state: SavedState }
+    ): Promise<WorkspaceMeta> => {
+        const response = await apiClient.put<WorkspaceMeta>(`/workspaces/${id}`, payload);
+        return response.data;
+    },
+    deleteWorkspace: async (id: string): Promise<void> => {
+        await apiClient.delete(`/workspaces/${id}`);
     },
 
     // SESSIONS

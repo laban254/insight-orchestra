@@ -32,6 +32,10 @@ from app.api.sessions import router as sessions_router  # noqa: E402
 
 app.include_router(sessions_router)
 
+from app.api.workspaces import router as workspaces_router  # noqa: E402
+
+app.include_router(workspaces_router)
+
 
 @app.get("/health")
 def health_check():

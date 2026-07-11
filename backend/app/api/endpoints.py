@@ -152,7 +152,9 @@ async def process_data(request: ProcessRequest):
         # Always close the progress stream, even if an agent raised.
         push_sentinel(sid)
 
-    # Store analysis context in session so NLQ queries can reference it
+    # Store analysis context in session so NLQ queries can reference it.
+    # Charts are kept so server-side exports can embed them; they are stripped
+    # before the history is used as LLM context (see /nlq).
     if sid:
         _session_manager.append(
             sid,
@@ -161,6 +163,11 @@ async def process_data(request: ProcessRequest):
                 "narrative": summary_result.get("narrative", ""),
                 "top_insight": consensus.get("hypothesis", "") if consensus else "",
                 "hypotheses": hypotheses[:5],
+                "charts": [
+                    {"title": p.get("title", ""), "plotly_json": p.get("plotly_json")}
+                    for p in viz_result.get("chart_info", {}).get("plots", [])
+                    if p.get("plotly_json")
+                ],
             },
         )
 
@@ -210,10 +217,15 @@ async def natural_language_query(request: NLQRequest):
             duration=int((time.monotonic() - t0) * 1000),
         )
 
-        # Get session context if provided
+        # Get session context if provided. Chart payloads are stored in the
+        # history for exports but are far too large for an LLM prompt — strip
+        # them before passing the history as context.
         context = None
         if sid:
-            context = _session_manager.get(sid)
+            context = [
+                {k: v for k, v in entry.items() if k not in ("plot_json", "charts")}
+                for entry in _session_manager.get(sid)
+            ]
 
         # --- Phase 2: NLQ Agent ---
         push_event(sid, agent_id="nlq", status="running")
@@ -251,16 +263,17 @@ async def natural_language_query(request: NLQRequest):
         # Always close the progress stream, even if an agent raised.
         push_sentinel(sid)
 
-    # Store in session
+    # Store in session (plot_json included so server-side exports can embed
+    # the chart; it is stripped from LLM context above).
     if sid:
-        _session_manager.append(
-            sid,
-            {
-                "question": request.question,
-                "answer": response.answer,
-                "code": response.code,
-            },
-        )
+        interaction = {
+            "question": request.question,
+            "answer": response.answer,
+            "code": response.code,
+        }
+        if response.plot_json:
+            interaction["plot_json"] = response.plot_json
+        _session_manager.append(sid, interaction)
 
     return {
         "answer": response.answer,

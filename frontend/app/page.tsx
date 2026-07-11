@@ -73,7 +73,7 @@ export default function Home() {
         api.listDemoDatasets()
             .then((r) => setAvailableDatasets(r.datasets))
             .catch((e) => console.error("Failed to load datasets:", e));
-        setWorkspaces(listWorkspaces());
+        void listWorkspaces().then(setWorkspaces);
     }, []);
 
     const startWorkspace = (path: string, info: DatasetInfo) => {
@@ -118,23 +118,23 @@ export default function Home() {
         (state: SavedState) => {
             if (!workspaceId) return;
             currentState.current = state;
-            const existing = listWorkspaces().find((w) => w.id === workspaceId);
-            saveWorkspace(
+            // createdAt.current is set by startWorkspace and restored by reopen,
+            // so it is correct for both new and reopened workspaces.
+            void saveWorkspace(
                 {
                     id: workspaceId,
                     datasetName: datasetInfo?.name ?? "Dataset",
                     filePath: filePath ?? "",
-                    createdAt: existing?.createdAt ?? createdAt.current,
+                    createdAt: createdAt.current,
                 },
                 state
-            );
-            setWorkspaces(listWorkspaces());
+            ).then(() => listWorkspaces().then(setWorkspaces));
         },
         [workspaceId, datasetInfo, filePath]
     );
 
-    const reopen = (id: string) => {
-        const record = loadWorkspace(id);
+    const reopen = async (id: string) => {
+        const record = await loadWorkspace(id);
         if (!record) {
             toast("Could not load that analysis", "error");
             return;
@@ -155,8 +155,7 @@ export default function Home() {
     };
 
     const handleDelete = (id: string) => {
-        removeWorkspace(id);
-        setWorkspaces(listWorkspaces());
+        void removeWorkspace(id).then(() => listWorkspaces().then(setWorkspaces));
         if (id === workspaceId) handleNew();
     };
 

@@ -1,113 +1,94 @@
+<h1 align="center">Insight Orchestra</h1>
 
-# Insight Orchestra
+<p align="center"><strong>Your data, analyzed by a team of AI agents.</strong></p>
 
-<div align="center">
+<p align="center">
+  Connect a CSV or database and watch specialized agents clean it, form hypotheses,<br/>
+  debate them, and visualize what matters — then ask follow-ups in plain English.
+</p>
 
-![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)
-![Next.js 14](https://img.shields.io/badge/Next.js-14-black.svg)
-![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)
+<p align="center">
+  <a href="https://insight-orchestra-io.lovable.app">Website</a> ·
+  <a href="docs/">Docs</a> ·
+  <a href="https://github.com/laban254/insight-orchestra/issues/new">Report a bug</a>
+</p>
 
-**Self-hostable AI data analysis platform with a multi-agent pipeline and pluggable LLM backends**
+<p align="center">
+  <a href="https://github.com/laban254/insight-orchestra/actions/workflows/ci.yml"><img src="https://github.com/laban254/insight-orchestra/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/laban254/insight-orchestra/actions/workflows/codeql.yml"><img src="https://github.com/laban254/insight-orchestra/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/laban254/insight-orchestra" alt="License"></a>
+  <a href="https://github.com/laban254/insight-orchestra/stargazers"><img src="https://img.shields.io/github/stars/laban254/insight-orchestra?style=social" alt="Stars"></a>
+</p>
 
-</div>
-
----
-
-## Overview
-
-Insight Orchestra is a production-ready, self-hostable AI data analysis platform. It accepts CSV files or database connections, runs data through a **4-agent pipeline** (cleaning → hypothesis generation → scoring → visualization), and answers natural-language questions via LLM-powered code generation.
-
-**Key capabilities:**
-- Upload a CSV or connect to PostgreSQL, MySQL, SQLite, or DuckDB
-- Run the full agent pipeline: automated cleaning, insight generation, ranking, and charting
-- Ask arbitrary natural-language questions — the system generates and sandbox-executes Python code
-- Choose between cloud LLMs (OpenAI) or local models (Ollama) — no vendor lock-in
-- Stream real-time agent progress to the frontend via SSE
+![Insight Orchestra workspace](docs/assets/workspace.png)
 
 ---
 
-## Architecture
+## What is Insight Orchestra?
 
-```
-User → Frontend (Next.js 14) → FastAPI Backend → Agent Pipeline → LLM Provider → Results
-                                                        ↓
-                                              Sandbox Executor
-                                          (RestrictedPython)
-```
+Insight Orchestra is an **open-source, self-hostable alternative to Julius AI** — AI-powered data analysis where your data never leaves your machine. Upload a CSV or connect a database, and a 4-agent pipeline cleans the data, generates evidence-backed hypotheses, scores them in an LLM-refereed debate, and builds interactive Plotly charts. Then keep asking questions in plain English: an NLQ agent writes pandas code and executes it in a locked-down sandbox.
 
-The system has three layers:
-
-1. **Frontend** — Next.js 14 with React, Tailwind CSS, Plotly.js charts
-2. **Backend API** — FastAPI (Python 3.11+) with REST endpoints, SSE streaming, session management
-3. **Services** — 4-agent pipeline + NLQ agent + sandboxed code execution
-
-LLM providers are pluggable via environment variable:
-- **OpenAI** (GPT-4o-mini, GPT-4o) — cloud API
-- **Ollama** (Llama, Mistral, Qwen) — local, private
-
-See [Architecture Overview](docs/ARCHITECTURE.md) for the complete breakdown.
-
----
+It works with **your choice of LLM** — OpenAI, Anthropic, or DeepSeek in the cloud, or fully local and private with Ollama.
 
 ## Quick Start
 
-### Prerequisites
-
-- Docker & Docker Compose
-- Git
-- 4 GB RAM (8 GB recommended for local LLMs)
+**Prerequisites:** Docker & Docker Compose v2 · Git · 4 GB RAM (8 GB recommended for local LLMs)
 
 ### 1. Clone and configure
 
 ```bash
 git clone https://github.com/laban254/insight-orchestra.git
 cd insight-orchestra
-cp .env.example .env
+cp backend/.env.example backend/.env
 ```
 
-Edit `backend/.env` to set your LLM provider:
+Edit `backend/.env` to pick your LLM provider:
 
 ```bash
-# For OpenAI (cloud)
+# Local inference with Ollama (default — no API key needed, fully private)
+LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://ollama:11434
+OLLAMA_MODEL=qwen2.5:1.5b
+REQUEST_TIMEOUT=600
+
+# Or OpenAI (cloud)
 LLM_PROVIDER=openai
 OPENAI_API_KEY=sk-...
 
-# For DeepSeek (cloud — OpenAI-compatible, cheap & fast)
+# Or Anthropic (cloud)
+LLM_PROVIDER=anthropic
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Or DeepSeek (cloud — OpenAI-compatible, cheap & fast)
 LLM_PROVIDER=deepseek
 DEEPSEEK_API_KEY=sk-...
 DEEPSEEK_MODEL=deepseek-chat
-
-# For local inference with Ollama (default — no API key needed)
-LLM_PROVIDER=ollama
-OLLAMA_BASE_URL=http://ollama:11434
-OLLAMA_MODEL=qwen2.5:1.5b    # pull with: docker compose exec ollama ollama pull qwen2.5:1.5b
-REQUEST_TIMEOUT=600
 ```
 
 ### 2. Start services
 
 ```bash
-# API mode (OpenAI, no Ollama needed)
-docker-compose up backend frontend
-
 # Full local mode (with Ollama)
-docker-compose up -d --build
+docker compose up -d --build
+docker compose exec ollama ollama pull qwen2.5:1.5b   # once, after first start
+
+# Or API mode (cloud LLM — no Ollama container needed)
+docker compose up backend frontend
 ```
 
-### 3. Access
+### 3. Open the app
 
 | Service | URL |
 |---------|-----|
 | Frontend | http://localhost:8501 |
 | Backend API | http://localhost:8000 |
 | Swagger Docs | http://localhost:8000/docs |
-| Ollama | http://localhost:11435 |
 
----
+Pick one of the five bundled demo datasets (or upload your own CSV) and the pipeline runs automatically.
 
-## The Multi-Agent Pipeline
+## How It Works
 
-The pipeline runs **automatically** the moment you upload or select a dataset. Results (narrative, charts, suggested follow-up questions) appear in the chat as the first message.
+The pipeline runs the moment you upload or select a dataset. Results — narrative, ranked insights, charts, suggested follow-ups — appear in the chat as the first message.
 
 | Stage | Agent | Function |
 |-------|-------|----------|
@@ -117,65 +98,36 @@ The pipeline runs **automatically** the moment you upload or select a dataset. R
 | 4 | **Viz Whiz** | Asks the LLM which columns best illustrate the top insight; falls back to regex extraction then structured heuristics; generates up to 6 Plotly charts |
 | 5 | **Insight Summarizer** | LLM writes a 3–5 sentence narrative summarising all findings; generates 4–5 specific follow-up questions using actual column names |
 
-Each stage emits real-time progress events via SSE, shown in the UI as a collapsible pipeline pill.
-
-See [Agent Pipeline Guide](docs/AGENTS.md) for detailed workflow and examples.
-
----
+Each stage streams real-time progress to the UI via SSE. See the [Agent Pipeline Guide](docs/AGENTS.md) for the full breakdown.
 
 ## Features
 
-- **Natural Language Queries** — Ask questions in plain English; the NLQ agent generates pandas code, executes it in the RestrictedPython sandbox, and returns results + optional Plotly charts
-- **Multi-Database Support** — PostgreSQL, MySQL, SQLite, DuckDB, and CSV — all read-only with SQL injection protection
-- **Pluggable LLM Providers** — OpenAI (GPT-4o-mini, GPT-4o) or Ollama (any locally-hosted model). Configured entirely through environment variables
-- **Sandboxed Code Execution** — All generated Python runs through RestrictedPython: no file I/O, no network access, no dangerous imports. Configurable timeout (default 30 s)
-- **Real-Time Agent Progress** — SSE-based streaming shows each agent's status, output, and duration in the UI
-- **Session Management** — Redis-backed (with in-memory fallback) for stateless API usage
-- **5 Demo Datasets** — Pre-configured: Sales, Employees, Customers, Weather, Movies — loadable via `/demo/load` endpoint
-- **Session Sharing** — Token-based share links with 72-hour TTL
-- **Export** — Session results as HTML, Markdown, or CSV (via `/export/{session_id}/{format}`)
-- **BigQuery Integration** — Query Google BigQuery datasets via service account credentials
-
----
-
-## Tech Stack
-
-| Layer | Technologies |
-|-------|--------------|
-| **Frontend** | Next.js 14, React, Tailwind CSS, Plotly.js |
-| **Backend** | Python 3.11+, FastAPI, Pandas, DuckDB |
-| **AI/Agents** | Google ADK, OpenAI SDK, Ollama |
-| **Security** | RestrictedPython sandbox, SQL injection protection, credential masking |
-| **Data** | PostgreSQL, MySQL, SQLite, DuckDB, CSV, BigQuery |
-| **Sessions** | Redis (with in-memory fallback) |
-| **Deployment** | Docker, Docker Compose |
-
----
+- **Natural Language Queries** — the NLQ agent generates pandas code, executes it in the RestrictedPython sandbox, and returns results + optional Plotly charts
+- **Four LLM Providers** — OpenAI, Anthropic, DeepSeek, or Ollama (any locally-hosted model); switch provider/model at runtime, no restart needed
+- **Multi-Database Support** — PostgreSQL, MySQL, SQLite, DuckDB, BigQuery, and CSV — all read-only with SQL injection protection
+- **Sandboxed Code Execution** — no file I/O, no network access, no dangerous imports; configurable timeout
+- **Real-Time Agent Progress** — SSE streaming shows each agent's status, output, and duration
+- **Workspace, Share & Export** — pin and compare charts, one-click read-only share links (72 h TTL), export as HTML / Markdown / CSV
+- **5 Demo Datasets** — try it without bringing your own data
 
 ## Documentation
 
 | Document | Purpose |
 |----------|---------|
+| [Setup Guide](docs/SETUP.md) | Docker and local development setup, troubleshooting |
 | [Architecture](docs/ARCHITECTURE.md) | System design, component breakdown, data flow |
 | [Agent Pipeline](docs/AGENTS.md) | Deep dive into all 4 agents + NLQ agent |
-| [Setup Guide](docs/SETUP.md) | Docker and local development setup |
 | [API Reference](docs/API_REFERENCE.md) | All REST endpoints with request/response examples |
-| [Frontend Testing](docs/FRONTEND_TESTING.md) | Manual test scenarios for the UI |
-| [Contributing](CONTRIBUTING.md) | Code style, PR process, and development workflow |
 
----
+## Roadmap
 
-## System Requirements
+Near-term focus is correctness and hardening: CI builds from a clean cache, rate limiting, input validation, and broader test coverage. Further out: more data formats (Excel, JSON, Parquet), saved dashboards, PDF export, and server-side workspace persistence. Have a request or want to influence priorities? [Open an issue](https://github.com/laban254/insight-orchestra/issues).
 
-| Resource | Minimum | Recommended (local LLM) |
-|----------|---------|------------------------|
-| CPU | 2 cores | 4+ cores |
-| RAM | 4 GB | 8 GB |
-| Disk | 2 GB | 10 GB |
-| Docker | Compose v2 | Compose v2 |
-| Python | 3.11 | 3.12 |
+## Contributing
 
----
+Contributions are welcome — the [Contributing Guide](CONTRIBUTING.md) covers the development workflow, code style, and how to add a new agent to the pipeline.
+
+If Insight Orchestra is useful to you, consider **starring the repo** — it helps others find the project.
 
 ## License
 
