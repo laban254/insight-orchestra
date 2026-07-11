@@ -100,6 +100,7 @@ class WorkspaceStore:
                 return meta
             except Exception as e:
                 logger.error(f"Redis workspace upsert error: {e}")
+                raise
 
         with self._lock:
             self._memory_store[record["id"]] = json.loads(json.dumps(record))
