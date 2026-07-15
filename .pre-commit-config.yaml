@@ -10,6 +10,8 @@ repos:
         args: ["--maxkb=500"]
       - id: check-yaml
       - id: check-json
+        # devcontainer.json is JSONC (comments allowed) per the dev container spec.
+        exclude: ^\.devcontainer/.*\.json$
       - id: detect-private-key
 
   # ── Secret scanning ────────────────────────────────────────────────────────

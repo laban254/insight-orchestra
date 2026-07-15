@@ -18,6 +18,7 @@
   <a href="https://github.com/laban254/insight-orchestra/actions/workflows/codeql.yml"><img src="https://github.com/laban254/insight-orchestra/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/laban254/insight-orchestra" alt="License"></a>
   <a href="https://github.com/laban254/insight-orchestra/stargazers"><img src="https://img.shields.io/github/stars/laban254/insight-orchestra?style=social" alt="Stars"></a>
+  <a href="https://codespaces.new/laban254/insight-orchestra"><img src="https://github.com/codespaces/badge.svg" alt="Open in GitHub Codespaces"></a>
 </p>
 
 ![Insight Orchestra workspace](docs/assets/workspace.png)
@@ -34,49 +35,26 @@ It works with **your choice of LLM** — OpenAI, Anthropic, or DeepSeek in the c
 
 **Prerequisites:** Docker & Docker Compose v2 · Git · 4 GB RAM (8 GB recommended for local LLMs)
 
-### 1. Clone and configure
-
 ```bash
 git clone https://github.com/laban254/insight-orchestra.git
 cd insight-orchestra
-cp backend/.env.example backend/.env
+./setup.sh
 ```
 
-Edit `backend/.env` to pick your LLM provider:
+The script asks which LLM provider to use (Ollama by default — local, private, no API key needed), writes `backend/.env`, starts the containers, and pulls the Ollama model automatically. Run it again any time; it won't clobber an existing `backend/.env` without asking.
+
+Fully non-interactive:
 
 ```bash
-# Local inference with Ollama (default — no API key needed, fully private)
-LLM_PROVIDER=ollama
-OLLAMA_BASE_URL=http://ollama:11434
-OLLAMA_MODEL=qwen2.5:1.5b
-REQUEST_TIMEOUT=600
-
-# Or OpenAI (cloud)
-LLM_PROVIDER=openai
-OPENAI_API_KEY=sk-...
-
-# Or Anthropic (cloud)
-LLM_PROVIDER=anthropic
-ANTHROPIC_API_KEY=sk-ant-...
-
-# Or DeepSeek (cloud — OpenAI-compatible, cheap & fast)
-LLM_PROVIDER=deepseek
-DEEPSEEK_API_KEY=sk-...
-DEEPSEEK_MODEL=deepseek-chat
+./setup.sh --provider ollama -y                        # local, no API key
+./setup.sh --provider openai --api-key sk-... -y       # or anthropic / deepseek
 ```
 
-### 2. Start services
+Something not working? `./setup.sh doctor` checks Docker, ports, config, and running services. Prefer to configure `backend/.env` by hand instead? See the [Setup Guide](docs/SETUP.md).
 
-```bash
-# Full local mode (with Ollama)
-docker compose up -d --build
-docker compose exec ollama ollama pull qwen2.5:1.5b   # once, after first start
+### Open the app
 
-# Or API mode (cloud LLM — no Ollama container needed)
-docker compose up backend frontend
-```
-
-### 3. Open the app
+Once `./setup.sh` finishes:
 
 | Service | URL |
 |---------|-----|
