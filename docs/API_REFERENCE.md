@@ -295,9 +295,21 @@ Run a SQL query against Google BigQuery using service account credentials.
 
 ### Database Connection
 
-#### `POST /connectors/connect`
+Connecting a database is a three-step flow: connect (get a schema + a
+`connection_id`), load a table (materializes it as a CSV), then run it
+through the normal analysis pipeline (`/process`, `/nlq`) exactly like an
+uploaded file.
 
-Connect to a database for live querying.
+The live connection itself is never held open between requests — the
+backend runs multiple uvicorn workers, so a socket held in one worker's
+memory would be invisible to requests handled by another. Instead, `/connect`
+opens the connection just long enough to validate credentials and read the
+schema, then closes it; only the connection metadata (type, connection
+string, cached schema) is persisted (in Redis, with a sliding TTL — see
+`DB_CONNECTION_TTL_SECONDS` in the [Setup Guide](SETUP.md)). `/load-table`
+reconnects fresh each time it's called.
+
+#### `POST /connectors/connect`
 
 **Request Body**:
 ```json
@@ -313,7 +325,7 @@ Connect to a database for live querying.
 ```json
 {
   "status": "connected",
-  "database": "mydb",
+  "connection_id": "5518441615654de8b110d090db78de1f",
   "schema": {
     "users": [
       {"name": "id", "type": "integer"},
@@ -326,18 +338,60 @@ Connect to a database for live querying.
 **Errors**:
 | Status | Detail |
 |--------|--------|
+| `400` | `Connection string cannot be empty.` |
+| `400` | `Invalid connection string. Expected format: postgresql://user:password@host:5432/dbname` — malformed string caught before it reaches the driver |
+| `400` | `Failed to connect: ...` — the driver's own error (wrong host, refused connection, bad auth) |
 | `500` | `Connection failed. Check your credentials.` |
 
-#### `GET /connectors/schema`
+> Connecting from inside Docker to a database on your host machine? `localhost`
+> means the container itself, not your host. See
+> [Connecting to a database on your host machine](SETUP.md#connecting-to-a-database-on-your-host-machine).
 
-List the schema of the currently connected database.
+#### `POST /connectors/load-table`
+
+Materialize a table from a connected database into a CSV, using the
+`connection_id` returned by `/connect`.
+
+**Request Body**:
+```json
+{
+  "connection_id": "5518441615654de8b110d090db78de1f",
+  "table_name": "users",
+  "row_limit": 50000
+}
+```
+`row_limit` is optional (default `50000`, capped at `500000`).
 
 **Response** `200 OK`:
 ```json
 {
-  "schema": { "table_name": [{"name": "col", "type": "type"}] }
+  "file_path": "/tmp/dbtable_e3643ffa9da84b5b8a5a6a82c1b0d2ab.csv",
+  "table_name": "users",
+  "row_count": 1000,
+  "column_count": 6,
+  "columns": ["id", "email", "..."]
 }
 ```
+Pass `file_path` to `/process` or `/nlq` just like an uploaded file's path.
+
+**Errors**:
+| Status | Detail |
+|--------|--------|
+| `404` | `Connection not found or expired. Please reconnect to the database.` |
+| `400` | `Unknown table: ...` — table isn't in the connection's schema |
+| `400` | `Failed to load table: ...` — query failed against the live database |
+
+#### `DELETE /connectors/{connection_id}`
+
+Disconnect and forget a connection before its TTL expires.
+
+**Response** `200 OK`: `{"status": "disconnected"}`
+**Errors**: `404` — `Connection not found or already expired.`
+
+#### `GET /connectors/schema`
+
+Placeholder — not yet implemented (always returns `{"status": "not_implemented"}`).
+Use the `schema` field returned by `/connectors/connect` instead.
 
 ---
 
@@ -574,14 +628,25 @@ curl -s -X POST http://localhost:8000/nlq \
 ### Database Query
 
 ```bash
-# Connect to PostgreSQL
-curl -X POST http://localhost:8000/connectors/connect \
+# 1. Connect — returns a connection_id and the DB's schema
+CONNECTION_ID=$(curl -s -X POST http://localhost:8000/connectors/connect \
   -H "Content-Type: application/json" \
   -d '{
     "type": "postgresql",
-    "connection_string": "postgresql://user:pass@localhost/db"
-  }'
+    "connection_string": "postgresql://user:pass@localhost:5432/db"
+  }' | jq -r '.connection_id')
 
-# Get schema
-curl http://localhost:8000/connectors/schema
+# 2. Load a table — materializes it as a CSV
+FILE_PATH=$(curl -s -X POST http://localhost:8000/connectors/load-table \
+  -H "Content-Type: application/json" \
+  -d "{\"connection_id\": \"$CONNECTION_ID\", \"table_name\": \"users\"}" \
+  | jq -r '.file_path')
+
+# 3. Run it through the normal pipeline
+curl -s -X POST http://localhost:8000/process \
+  -H "Content-Type: application/json" \
+  -d "{\"file_path\": \"$FILE_PATH\"}"
+
+# Optional: disconnect early instead of waiting for the TTL
+curl -X DELETE http://localhost:8000/connectors/$CONNECTION_ID
 ```

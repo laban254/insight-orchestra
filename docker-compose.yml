@@ -17,6 +17,8 @@ services:
       - USE_REDIS=true
       - REDIS_URL=redis://redis:6379
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:8501,http://localhost:3000,http://127.0.0.1:8501,http://127.0.0.1:3000}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./backend/uploads:/app/uploads
       - ./backend/uploads:/home/appuser/uploads

@@ -66,7 +66,7 @@ Insight Orchestra is a **multi-agent AI data analysis platform** with a three-la
 
 **Key Components**:
 - [`FileUpload.tsx`](frontend/components/upload/FileUpload.tsx) — CSV file upload with drag-and-drop, demo dataset selector
-- [`DatabaseConnect.tsx`](frontend/components/upload/DatabaseConnect.tsx) — Database connection form
+- [`DatabaseConnect.tsx`](frontend/components/upload/DatabaseConnect.tsx) — Database connection form, then a table picker to select which table to analyze
 - [`ChatPanel.tsx`](frontend/components/chat/ChatPanel.tsx) — Main Q&A interface with message history
 - [`AgentPipeline.tsx`](frontend/components/agents/AgentPipeline.tsx) — SSE-based real-time agent progress display
 - [`MessageBubble.tsx`](frontend/components/chat/MessageBubble.tsx) — Renders messages with code blocks, Plotly charts, reasoning
@@ -106,8 +106,10 @@ POST   /summarize              → Summarize workflow results
 POST   /explain                → Explain a visualization
 POST   /report                 → Generate HTML report
 POST   /bigquery               → Query Google BigQuery
-POST   /connectors/connect     → Establish DB connection
-GET    /connectors/schema       → List connected DB schema
+POST   /connectors/connect     → Establish DB connection, return connection_id + schema
+POST   /connectors/load-table  → Materialize a table into a CSV (feeds /process, /nlq)
+DELETE /connectors/{id}        → Disconnect a database connection
+GET    /connectors/schema       → Not yet implemented (placeholder)
 GET    /sessions/{id}          → Get session history
 DELETE /sessions/{id}          → Clear session
 POST   /sessions/share         → Create share link
@@ -337,6 +339,21 @@ class BaseConnector(ABC):
 | BigQuery | [`bigquery_utils.py`](backend/app/utils/bigquery_utils.py) | `google.cloud.bigquery` (via API) |
 
 **Safety**: All connectors enforce read-only queries (SELECT only). SQL injection is mitigated via blocked keyword patterns.
+
+**Connection Persistence**: [`connection_store.py`](backend/app/services/connection_store.py)
+
+The backend runs multiple uvicorn workers (`--workers 2`), so a live connector
+instance (open socket + cursor) held in one worker's memory is invisible to
+requests handled by another. Connections are therefore never held open across
+requests: `/connectors/connect` opens just long enough to validate
+credentials and read the schema, then disconnects. Only the connection
+metadata (type, connection string, cached schema) is persisted — Redis-backed
+with an in-memory fallback, same pattern as `session_manager.py` and
+`workspace_store.py` — keyed by a `connection_id` with a sliding TTL
+(`DB_CONNECTION_TTL_SECONDS`, default 10 min). `/connectors/load-table`
+reconnects fresh from that metadata each time it's called, runs `SELECT *
+FROM <table> LIMIT n`, and writes the result to a CSV under `/tmp` so it can
+flow through `/process`/`/nlq` exactly like an uploaded file.
 
 ---
 

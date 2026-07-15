@@ -60,7 +60,7 @@ def get_customer_demo() -> pd.DataFrame:
     return pd.DataFrame(
         {
             "customer_id": range(1, n + 1),
-            "signup_date": pd.date_range("2021-01-01", periods=n, freq="H"),
+            "signup_date": pd.date_range("2021-01-01", periods=n, freq="h"),
             "country": np.random.choice(["USA", "UK", "Canada", "Australia", "Germany"], n),
             "lifetime_value": np.random.exponential(500, n).round(2),
             "total_purchases": np.random.randint(1, 50, n),

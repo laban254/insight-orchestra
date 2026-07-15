@@ -17,6 +17,7 @@ from app.services.report_agent import ReportGeneratorAgent
 from app.services.session_manager import get_session_manager
 from app.services.summarizer_agent import InsightSummarizerAgent
 from app.utils.file_utils import UPLOAD_DIR, save_upload_file
+from app.utils.json_sanitize import sanitize_json
 
 logger = logging.getLogger(__name__)
 
@@ -180,15 +181,17 @@ async def process_data(request: ProcessRequest):
         "rows": _json.loads(preview_df.head(20).to_json(orient="records")),
     }
 
-    return {
-        "cleaner": cleaner_result,
-        "hypothesis": hypothesis_result,
-        "debate": debate_result,
-        "viz": viz_result,
-        "narrative": summary_result.get("narrative", ""),
-        "suggested_questions": summary_result.get("suggested_questions", []),
-        "preview": preview,
-    }
+    return sanitize_json(
+        {
+            "cleaner": cleaner_result,
+            "hypothesis": hypothesis_result,
+            "debate": debate_result,
+            "viz": viz_result,
+            "narrative": summary_result.get("narrative", ""),
+            "suggested_questions": summary_result.get("suggested_questions", []),
+            "preview": preview,
+        }
+    )
 
 
 @router.post("/nlq")
@@ -275,17 +278,19 @@ async def natural_language_query(request: NLQRequest):
             interaction["plot_json"] = response.plot_json
         _session_manager.append(sid, interaction)
 
-    return {
-        "answer": response.answer,
-        "code": response.code,
-        "reasoning": response.reasoning,
-        "plot_json": response.plot_json,
-        "needs_clarification": response.needs_clarification,
-        "clarification_question": response.clarification_question,
-        "execution_success": response.execution_success,
-        "error": response.error,
-        "session_id": sid,
-    }
+    return sanitize_json(
+        {
+            "answer": response.answer,
+            "code": response.code,
+            "reasoning": response.reasoning,
+            "plot_json": response.plot_json,
+            "needs_clarification": response.needs_clarification,
+            "clarification_question": response.clarification_question,
+            "execution_success": response.execution_success,
+            "error": response.error,
+            "session_id": sid,
+        }
+    )
 
 
 @router.post("/summarize")

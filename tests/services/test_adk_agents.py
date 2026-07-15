@@ -79,6 +79,22 @@ class TestDataJanitorAgent:
 
         assert "constant" in result["report"]["constant_columns"]
 
+    def test_impute_all_null_numeric_column_does_not_leave_nan(self, agent):
+        """An all-null numeric column has no median (NaN itself), so a plain
+        fillna(median) leaves NaN in place — not valid JSON, and it crashes
+        response serialization downstream. Should fall back to 0 instead."""
+        data = pd.DataFrame(
+            {
+                "id": [1, 2, 3],
+                "processed_at": [np.nan, np.nan, np.nan],
+            }
+        )
+        result = agent.run(data.to_dict(orient="records"))
+
+        cleaned_df = pd.DataFrame(result["cleaned_data"])
+        assert cleaned_df["processed_at"].isnull().sum() == 0
+        assert (cleaned_df["processed_at"] == 0).all()
+
     def test_bias_flags(self, agent):
         """Test bias flag generation for high missing rates."""
         data = pd.DataFrame(

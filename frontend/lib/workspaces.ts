@@ -153,3 +153,26 @@ export async function deleteWorkspace(id: string): Promise<void> {
         // Server copy (if any) will be evicted eventually; local copy is gone.
     }
 }
+
+// ── Last active workspace (resume-on-refresh) ───────────────────────────────
+//
+// Remembers which workspace was open so a page refresh (or reconnecting a
+// database — that flow only turns into a saved workspace once a table has
+// been loaded and analysis starts) picks up where you left off instead of
+// dropping back to the landing screen. `handleNew()` clears this — starting
+// a fresh analysis is an explicit choice, not something to auto-resume into.
+
+const LAST_KEY = "io-ws-last";
+
+export function getLastWorkspaceId(): string | null {
+    if (typeof window === "undefined") return null;
+    return localStorage.getItem(LAST_KEY);
+}
+
+export function setLastWorkspaceId(id: string): void {
+    localStorage.setItem(LAST_KEY, id);
+}
+
+export function clearLastWorkspaceId(): void {
+    localStorage.removeItem(LAST_KEY);
+}

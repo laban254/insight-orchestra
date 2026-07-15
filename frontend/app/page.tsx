@@ -23,13 +23,16 @@ import {
     loadWorkspace,
     deleteWorkspace as removeWorkspace,
     saveWorkspace,
+    getLastWorkspaceId,
+    setLastWorkspaceId,
+    clearLastWorkspaceId,
     type SavedState,
     type WorkspaceMeta,
 } from "@/lib/workspaces";
 
 export interface DatasetInfo {
     name: string;
-    type: "uploaded" | "demo";
+    type: "uploaded" | "demo" | "database";
     rows: number | string;
     columns: number | string;
     description?: string;
@@ -66,23 +69,33 @@ export default function Home() {
     const [cost, setCost] = useState({ tokens: 0, cost: 0 });
 
     const currentState = useRef<SavedState | null>(null);
-    // eslint-disable-next-line react-hooks/purity
     const createdAt = useRef<number>(Date.now());
 
     useEffect(() => {
         api.listDemoDatasets()
             .then((r) => setAvailableDatasets(r.datasets))
             .catch((e) => console.error("Failed to load datasets:", e));
-        void listWorkspaces().then(setWorkspaces);
+
+        // Resume the last active workspace on load (e.g. after a refresh)
+        // instead of always dropping back to the landing/connect screen.
+        void listWorkspaces().then((list) => {
+            setWorkspaces(list);
+            const lastId = getLastWorkspaceId();
+            if (lastId && list.some((w) => w.id === lastId)) {
+                void reopen(lastId);
+            }
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const startWorkspace = (path: string, info: DatasetInfo) => {
+        const id = newId();
         setFilePath(path);
         setDatasetInfo(info);
-        setWorkspaceId(newId());
+        setWorkspaceId(id);
+        setLastWorkspaceId(id);
         setRestore(null);
         currentState.current = null;
-        // eslint-disable-next-line react-hooks/purity
         createdAt.current = Date.now();
         setCost({ tokens: 0, cost: 0 });
     };
@@ -96,6 +109,7 @@ export default function Home() {
         setRestore(null);
         currentState.current = null;
         setHistoryOpen(false);
+        clearLastWorkspaceId();
     };
 
     const handleSwitchDataset = async (datasetId: string) => {
@@ -137,6 +151,7 @@ export default function Home() {
         const record = await loadWorkspace(id);
         if (!record) {
             toast("Could not load that analysis", "error");
+            clearLastWorkspaceId(); // stale pointer — target no longer exists
             return;
         }
         const shape = record.state.analysisResult?.cleaner.report.final_shape;
@@ -148,6 +163,7 @@ export default function Home() {
             columns: shape ? shape[1] : "—",
         });
         setWorkspaceId(record.id);
+        setLastWorkspaceId(record.id);
         setRestore(record.state);
         currentState.current = record.state;
         createdAt.current = record.createdAt;
@@ -157,6 +173,7 @@ export default function Home() {
     const handleDelete = (id: string) => {
         void removeWorkspace(id).then(() => listWorkspaces().then(setWorkspaces));
         if (id === workspaceId) handleNew();
+        else if (id === getLastWorkspaceId()) clearLastWorkspaceId();
     };
 
     const handleExport = useCallback(() => {
@@ -354,17 +371,7 @@ export default function Home() {
                                         />
                                     )
                                 ) : (
-                                    <DatabaseConnect
-                                        onConnectSuccess={() =>
-                                            handleUploadSuccess("database-session", {
-                                                name: "Database Connection",
-                                                type: "uploaded",
-                                                rows: "N/A",
-                                                columns: "N/A",
-                                                description: "Connected to database",
-                                            })
-                                        }
-                                    />
+                                    <DatabaseConnect onDataReady={handleUploadSuccess} />
                                 )}
                             </div>
                         </div>

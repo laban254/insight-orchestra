@@ -47,7 +47,11 @@ class DataJanitorAgent(Agent):
         for col in df.columns:
             if df[col].isnull().any():
                 if pd.api.types.is_numeric_dtype(df[col]):
-                    df[col] = df[col].fillna(df[col].median())
+                    median = df[col].median()
+                    # An all-null column has no median (NaN) — fall back to 0
+                    # rather than leaving NaN, which isn't valid JSON and
+                    # crashes response serialization downstream.
+                    df[col] = df[col].fillna(median if pd.notna(median) else 0)
                 else:
                     mode = df[col].mode()
                     df[col] = df[col].fillna(mode[0] if not mode.empty else "MISSING")
