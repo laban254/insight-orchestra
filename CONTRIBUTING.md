@@ -13,7 +13,17 @@ git clone https://github.com/YOUR_USERNAME/insight-orchestra.git
 cd insight-orchestra
 ```
 
-### 2. Set Up Development Environment
+### 2. Run the App
+
+```bash
+./setup.sh
+```
+
+This is the same Docker-first setup used in the [README](README.md#quick-start) and [Setup Guide](docs/SETUP.md) — it writes `backend/.env`, starts the containers, and pulls the Ollama model if you pick that provider. Use this to run the app end-to-end while you work.
+
+### 3. Set Up Local Tooling (for linting, type-checking, and tests)
+
+CI runs lint/type-check/tests outside Docker, so match that locally:
 
 ```bash
 # Backend
@@ -21,25 +31,31 @@ cd backend
 python -m venv venv
 source venv/bin/activate  # or `venv\Scripts\activate` on Windows
 pip install -r requirements.txt
+pip install ruff mypy pytest pytest-asyncio pytest-cov
+
+# Pre-commit hooks (ruff, ruff-format, eslint, gitleaks, etc. — see .pre-commit-config.yaml)
+pip install pre-commit
+pre-commit install
 
 # Frontend (new terminal)
 cd frontend
 npm install
 ```
 
-### 3. Run Tests
+### 4. Run Tests
 
 ```bash
 # From project root
 pytest tests/ -v
 ```
 
-### 4. Run Linting
+### 5. Run Linting
 
 ```bash
 ruff check .
-black --check .
-mypy backend/app/
+ruff format --check .
+mypy backend/app/ --ignore-missing-imports
+cd frontend && npm run lint && npx tsc --noEmit
 ```
 
 ---
@@ -50,7 +66,7 @@ mypy backend/app/
 
 - Follow [PEP 8](https://peps.python.org/pep-0008/)
 - Use type hints on all function signatures
-- Format with [Black](https://black.readthedocs.io/): `black .`
+- Format with [Ruff](https://docs.astral.sh/ruff/): `ruff format .`
 - Lint with [Ruff](https://docs.astral.sh/ruff/): `ruff check .`
 
 ### TypeScript / React

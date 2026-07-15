@@ -1,0 +1,42 @@
+{
+  "name": "Insight Orchestra",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+
+  // docker-in-docker lets `./setup.sh` / `docker compose` run the real stack
+  // inside the Codespace exactly as it would on a local machine.
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.11"
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20"
+    }
+  },
+
+  "forwardPorts": [8000, 8501],
+  "portsAttributes": {
+    "8000": { "label": "Backend API", "onAutoForward": "notify" },
+    "8501": { "label": "Frontend", "onAutoForward": "openPreview" }
+  },
+
+  // Installs everything needed to lint/type-check/test locally (matches CI);
+  // running the app itself is still `./setup.sh` (see README Quick Start).
+  "postCreateCommand": "pip install -r backend/requirements.txt && pip install ruff mypy pytest pytest-asyncio pytest-cov pre-commit && pre-commit install && npm install --prefix frontend",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "charliermarsh.ruff",
+        "dbaeumer.vscode-eslint",
+        "ms-azuretools.vscode-docker"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python3"
+      }
+    }
+  },
+
+  "remoteUser": "vscode"
+}

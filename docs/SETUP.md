@@ -28,7 +28,30 @@ Complete guide to set up Insight Orchestra for development using Docker.
 
 ---
 
-## Setup Steps
+## Fast Path: `./setup.sh`
+
+```bash
+git clone https://github.com/laban254/insight-orchestra.git
+cd insight-orchestra
+./setup.sh
+```
+
+This prompts for an LLM provider (Ollama by default — local, no API key), writes `backend/.env`, runs `docker compose up -d --build` with the right service set, and pulls the Ollama model if needed. It's safe to re-run — it won't overwrite an existing `backend/.env` without asking first.
+
+Non-interactive:
+
+```bash
+./setup.sh --provider ollama -y
+./setup.sh --provider openai --api-key sk-... -y   # or anthropic / deepseek
+```
+
+Troubleshooting: `./setup.sh doctor` checks Docker, ports, `backend/.env`, and whether the backend/Ollama model are actually up.
+
+The rest of this guide covers the manual, step-by-step path — useful if you want full control over each step, or are configuring for production.
+
+---
+
+## Manual Setup Steps
 
 ### 1. Clone Repository
 
@@ -45,7 +68,7 @@ The backend reads its environment from `backend/.env`. Copy the example and edit
 cp backend/.env.example backend/.env
 ```
 
-> **Note**: The backend Docker container reads `backend/.env` — not the root `.env`. Keep both in sync if you maintain both.
+`backend/.env.example` is the single source of truth for configuration — there is no separate root-level `.env.example`.
 
 ### 3. Choose Your LLM Mode
 
@@ -143,6 +166,8 @@ curl http://localhost:8000/health
 open http://localhost:8501
 ```
 
+Or run all of the above (plus Docker, port, and Ollama model checks) in one shot: `./setup.sh doctor`.
+
 ---
 
 ## Environment Variables Reference
@@ -239,6 +264,8 @@ Insight Orchestra is designed as a **local-first, privacy-by-default** system:
 ---
 
 ## Troubleshooting
+
+Start with `./setup.sh doctor` — it checks Docker, ports, `backend/.env`, and whether the backend/Ollama model are actually up, which covers most of what's below.
 
 ### Port 8000 already in use
 
