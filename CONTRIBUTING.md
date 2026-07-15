@@ -34,8 +34,10 @@ pip install -r requirements.txt
 pip install ruff mypy pytest pytest-asyncio pytest-cov
 
 # Pre-commit hooks (ruff, ruff-format, eslint, gitleaks, etc. — see .pre-commit-config.yaml)
+# Installs both the pre-commit hooks and the commit-msg hook that enforces Conventional Commits.
 pip install pre-commit
 pre-commit install
+pre-commit install --hook-type commit-msg
 
 # Frontend (new terminal)
 cd frontend
@@ -77,7 +79,7 @@ cd frontend && npm run lint && npx tsc --noEmit
 
 ### Commits
 
-Use [Conventional Commits](https://www.conventionalcommits.org/):
+Use [Conventional Commits](https://www.conventionalcommits.org/) — this is enforced by a commit-msg hook (`pre-commit install --hook-type commit-msg`, see above) and drives automated versioning (see [Releases](#releases) below), not just a style preference:
 
 ```
 feat: add Excel file upload support
@@ -87,11 +89,25 @@ refactor: extract schema prompt builder
 test: add Hypothesis Bot unit tests
 ```
 
+A breaking change adds a `!` after the type or a `BREAKING CHANGE:` footer, e.g. `feat!: drop support for CSV files without headers`.
+
 ### Tests
 
 - Write tests for new features
 - Use pytest fixtures for shared setup
 - Mock LLM calls to avoid external dependencies in unit tests
+
+---
+
+## Releases
+
+Versioning and changelogs are automated by [release-please](https://github.com/googleapis/release-please) (`.github/workflows/release-please.yml`), driven entirely by Conventional Commits on `main`:
+
+- `fix:` commits → patch release, `feat:` → minor release, `feat!:`/`BREAKING CHANGE:` → major release.
+- release-please keeps a standing "Release PR" up to date with the next version bump and changelog as commits land on `main`.
+- Merging that PR is what actually cuts the release: it tags the commit, publishes a GitHub Release, and updates the version in `pyproject.toml` and `frontend/package.json` together (config: `release-please-config.json`, current version tracked in `.release-please-manifest.json`).
+
+Nothing is published to a package registry or container registry as part of this — it's tags, changelog, and GitHub Releases only.
 
 ---
 

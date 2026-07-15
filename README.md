@@ -16,6 +16,7 @@
 <p align="center">
   <a href="https://github.com/laban254/insight-orchestra/actions/workflows/ci.yml"><img src="https://github.com/laban254/insight-orchestra/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/laban254/insight-orchestra/actions/workflows/codeql.yml"><img src="https://github.com/laban254/insight-orchestra/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
+  <a href="https://github.com/laban254/insight-orchestra/releases"><img src="https://img.shields.io/github/v/release/laban254/insight-orchestra?include_prereleases" alt="Latest release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/laban254/insight-orchestra" alt="License"></a>
   <a href="https://github.com/laban254/insight-orchestra/stargazers"><img src="https://img.shields.io/github/stars/laban254/insight-orchestra?style=social" alt="Stars"></a>
   <a href="https://codespaces.new/laban254/insight-orchestra"><img src="https://github.com/codespaces/badge.svg" alt="Open in GitHub Codespaces"></a>
