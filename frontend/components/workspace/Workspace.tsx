@@ -153,7 +153,7 @@ export function Workspace({ workspaceId, filePath, datasetName, restore, onPersi
     const suggested = analysisResult?.suggested_questions ?? [];
 
     return (
-        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(380px,2fr)_3fr]">
+        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(380px,2fr)_minmax(0,3fr)]">
             {/* ── Conversation pane ─────────────────────────────────────── */}
             <section className="flex min-h-0 flex-col border-border lg:border-r">
                 <div className="flex items-center gap-2 border-b border-border px-5 py-3">

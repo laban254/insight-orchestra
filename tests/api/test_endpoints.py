@@ -2,6 +2,7 @@
 Unit tests for API endpoint handlers (function-level).
 """
 
+import json
 import os
 import tempfile
 from io import BytesIO
@@ -110,6 +111,40 @@ class TestEndpointsIntegration:
         mock_instance.hypothesis.run.assert_called_once()
         mock_instance.debate.run.assert_called_once()
         mock_instance.viz.run.assert_called_once()
+
+    @pytest.mark.asyncio
+    @patch("app.api.endpoints.InsightSummarizerAgent")
+    @patch("app.api.endpoints.InsightOrchestraWorkflow")
+    async def test_process_response_is_json_safe_with_nan(
+        self, mock_workflow, mock_summarizer, temp_csv
+    ):
+        """Real databases routinely have all-null numeric columns, which
+        (pre-fix) left NaN in cleaned_data and crashed response
+        serialization with Starlette's allow_nan=False JSONResponse. The
+        endpoint's own response should never contain a raw NaN/Infinity."""
+        mock_instance = MagicMock()
+        mock_instance.cleaner.run.return_value = {
+            "cleaned_data": [{"x": 1, "processed_at": float("nan")}],
+            "report": {"duplicates_removed": 0, "total_missing": 1},
+        }
+        mock_instance.hypothesis.run.return_value = {"hypotheses": ["h1"]}
+        mock_instance.debate.run.return_value = {
+            "summary": {"consensus": {"hypothesis": "h1"}},
+            "scored_hypotheses": [],
+        }
+        mock_instance.viz.run.return_value = {"chart_info": {"plots": []}}
+        mock_workflow.return_value = mock_instance
+        mock_summarizer.return_value.run.return_value = {
+            "narrative": "Summary text.",
+            "suggested_questions": ["What drives x?"],
+        }
+
+        response = await endpoints.process_data(ProcessRequest(file_path=temp_csv))
+
+        # Would raise ValueError before the sanitize_json fix, matching the
+        # real crash from Starlette's JSONResponse renderer.
+        json.dumps(response, allow_nan=False)
+        assert response["cleaner"]["cleaned_data"][0]["processed_at"] is None
 
     @pytest.mark.asyncio
     @patch("app.api.endpoints.NaturalLanguageQueryAgent")

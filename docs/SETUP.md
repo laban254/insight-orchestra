@@ -178,6 +178,7 @@ open http://localhost:8501
 | `REDIS_URL` | `redis://localhost:6379` | Redis connection URL |
 | `USE_REDIS` | `true` | Enable Redis; set `false` for in-memory fallback |
 | `SESSION_TTL_SECONDS` | `3600` | Session expiration time (1 hour) |
+| `DB_CONNECTION_TTL_SECONDS` | `600` | How long a `/connectors/connect` connection stays valid before you must reconnect (10 min) |
 
 ### CORS
 
@@ -284,6 +285,51 @@ docker compose up -d backend
 - Check CORS origin matches your frontend URL: `CORS_ORIGIN=http://localhost:8501`
 - Verify network: `curl -v http://localhost:8000/health`
 - Frontend runs on port **8501** by default (not 3000).
+
+### Connecting to a database on your host machine
+
+The backend runs inside Docker, so `localhost` in a connection string means
+the backend **container**, not your machine — `postgresql://user:pass@localhost:5432/db`
+will fail with `Connection refused` even if Postgres is running right there
+on your host. `postgres` as a hostname won't work either unless you've added
+a `postgres` service to `docker-compose.yml` — this project doesn't ship one
+by default, since it assumes you may already have a database running.
+
+To reach a database on your host machine:
+
+1. **Use `host.docker.internal` as the host**, not `localhost`:
+   ```
+   postgresql://user:pass@host.docker.internal:5432/db
+   ```
+   `docker-compose.yml` already maps this hostname for the `backend` service
+   via `extra_hosts: ["host.docker.internal:host-gateway"]` — no compose
+   changes needed.
+
+2. **Make sure your host database actually accepts connections from
+   containers**, not just `127.0.0.1`. For PostgreSQL:
+   ```bash
+   # In postgresql.conf (e.g. /etc/postgresql/14/main/postgresql.conf):
+   listen_addresses = 'localhost,172.17.0.1'   # 172.17.0.1 is Docker's default bridge gateway
+
+   # In pg_hba.conf, scope it to just the database/user/network you need:
+   host    mydb    myuser    172.30.0.0/16    scram-sha-256
+   ```
+   The second value isn't the docker0 subnet (`172.17.0.0/16`) — it's the
+   *backend container's own* network (`insight-orchestra-network`, `172.30.0.0/16`
+   by default). Docker doesn't NAT the source address between bridges on the
+   same host, so Postgres sees the connection arriving from the container's
+   real IP, not from `172.17.0.1`. Confirm the actual subnet with:
+   ```bash
+   docker inspect insight-orchestra-backend-1 --format '{{json .NetworkSettings.Networks}}'
+   ```
+   Then restart Postgres: `sudo systemctl restart postgresql`.
+
+3. **Same idea applies to MySQL** — bind beyond `127.0.0.1` and grant the
+   user access from the container's subnet.
+
+This only matters for a **host-installed** database. If your database
+already runs in Docker on the same `insight-orchestra-network`, just use its
+service name as the host instead (e.g. `postgresql://user:pass@postgres:5432/db`).
 
 ---
 

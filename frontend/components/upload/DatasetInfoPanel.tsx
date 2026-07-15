@@ -6,7 +6,7 @@ import { DemoDataset } from "@/lib/types";
 
 interface DatasetInfo {
     name: string;
-    type: "uploaded" | "demo";
+    type: "uploaded" | "demo" | "database";
     rows: number | string;
     columns: number | string;
     description?: string;

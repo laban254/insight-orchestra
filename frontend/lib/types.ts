@@ -9,7 +9,22 @@ export interface ConnectRequest {
 
 export interface ConnectResponse {
   status: string;
+  connection_id: string;
   schema: Schema;
+}
+
+export interface LoadTableRequest {
+  connection_id: string;
+  table_name: string;
+  row_limit?: number;
+}
+
+export interface LoadTableResponse {
+  file_path: string;
+  table_name: string;
+  row_count: number;
+  column_count: number;
+  columns: string[];
 }
 
 export interface NLQRequest {

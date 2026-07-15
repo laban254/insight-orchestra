@@ -2,6 +2,8 @@ import axios from 'axios';
 import {
     ConnectRequest,
     ConnectResponse,
+    LoadTableRequest,
+    LoadTableResponse,
     NLQRequest,
     NLQResponse,
     DemoDatasetListResponse,
@@ -30,6 +32,13 @@ export const api = {
     getSchema: async () => {
         const response = await apiClient.get('/connectors/schema');
         return response.data;
+    },
+    loadTable: async (data: LoadTableRequest): Promise<LoadTableResponse> => {
+        const response = await apiClient.post<LoadTableResponse>('/connectors/load-table', data);
+        return response.data;
+    },
+    disconnectDatabase: async (connectionId: string): Promise<void> => {
+        await apiClient.delete(`/connectors/${connectionId}`);
     },
 
     // DATA
