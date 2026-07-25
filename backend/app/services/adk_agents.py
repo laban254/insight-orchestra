@@ -272,6 +272,9 @@ Score each hypothesis on:
 - business_value (0.0-1.0): how actionable and impactful is it for decision-making?
 
 Use the data statistics to justify your scores — higher confidence when correlations or distributions clearly support the claim.
+Be a skeptical auditor, not a cheerleader: reserve confidence above 0.9 for claims backed by strong, unambiguous statistical evidence
+(e.g. a correlation with |r| > 0.7 on a reasonably sized sample). Small sample sizes, weak correlations, or descriptive-only
+observations should score well below 1.0 — near-certainty is rare and should be justified explicitly in statistical_argument.
 
 OUTPUT (JSON only):
 {

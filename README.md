@@ -36,6 +36,14 @@ It works with **your choice of LLM** — OpenAI, Anthropic, or DeepSeek in the c
 
 **Prerequisites:** Docker & Docker Compose v2 · Git · 4 GB RAM (8 GB recommended for local LLMs)
 
+One line, clones into `./insight-orchestra` and runs the setup wizard:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/laban254/insight-orchestra/main/install.sh | bash
+```
+
+Or clone it yourself first:
+
 ```bash
 git clone https://github.com/laban254/insight-orchestra.git
 cd insight-orchestra
@@ -44,11 +52,14 @@ cd insight-orchestra
 
 The script asks which LLM provider to use (Ollama by default — local, private, no API key needed), writes `backend/.env`, starts the containers, and pulls the Ollama model automatically. Run it again any time; it won't clobber an existing `backend/.env` without asking.
 
-Fully non-interactive:
+Fully non-interactive (works with either path above — pass the flags after `bash -s --` for the curl one-liner):
 
 ```bash
 ./setup.sh --provider ollama -y                        # local, no API key
 ./setup.sh --provider openai --api-key sk-... -y       # or anthropic / deepseek
+
+# equivalent, without cloning first:
+curl -fsSL https://raw.githubusercontent.com/laban254/insight-orchestra/main/install.sh | bash -s -- --provider ollama -y
 ```
 
 Something not working? `./setup.sh doctor` checks Docker, ports, config, and running services. Prefer to configure `backend/.env` by hand instead? See the [Setup Guide](docs/SETUP.md).

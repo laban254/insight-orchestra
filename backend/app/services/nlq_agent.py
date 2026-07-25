@@ -10,6 +10,7 @@ This agent:
 
 import json
 import logging
+import numbers
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -424,9 +425,76 @@ Code: result = df[df['price'] > 100]
             return "Here's the chart for your question — see the Canvas."
         # Plotly figures stringify into a huge binary blob; never surface that.
         if "plotly" in module or hasattr(result, "to_plotly_json"):
-            return "Here's the chart for your question — see the Canvas."
+            return self._describe_chart(result)
 
         return str(result)
+
+    @staticmethod
+    def _to_list(value: Any) -> list:
+        """`list(value) if value is not None else []` — plain `value or []` raises
+        on numpy arrays, whose truthiness is ambiguous for more than one element."""
+        return [] if value is None else list(value)
+
+    @classmethod
+    def _describe_chart(cls, fig: Any) -> str:
+        """Best-effort plain-English narration of a Plotly figure's underlying data.
+
+        Falls back to a generic pointer to the Canvas if the figure shape isn't
+        one we know how to summarize (e.g. multi-trace or 3D charts).
+        """
+        fallback = "Here's the chart for your question — see the Canvas."
+        try:
+            traces = getattr(fig, "data", None)
+            if not traces:
+                return fallback
+            trace = traces[0]
+            trace_type = getattr(trace, "type", "")
+
+            if trace_type == "pie":
+                labels = cls._to_list(getattr(trace, "labels", None))
+                values = [
+                    float(v)
+                    for v in cls._to_list(getattr(trace, "values", None))
+                    if isinstance(v, numbers.Real)
+                ]
+                if labels and values and len(labels) == len(values):
+                    total = sum(values)
+                    top_label, top_value = max(zip(labels, values, strict=True), key=lambda p: p[1])
+                    share = (top_value / total * 100) if total else 0
+                    return f"{top_label} is the largest share at {share:.0f}% ({top_value:,.2f})."
+                return fallback
+
+            if trace_type == "histogram":
+                xs = [
+                    float(v)
+                    for v in cls._to_list(getattr(trace, "x", None))
+                    if isinstance(v, numbers.Real)
+                ]
+                if xs:
+                    return (
+                        f"Values range from {min(xs):,.2f} to {max(xs):,.2f}, "
+                        f"averaging {sum(xs) / len(xs):,.2f} across {len(xs)} points."
+                    )
+                return fallback
+
+            xs = cls._to_list(getattr(trace, "x", None))
+            ys = [
+                float(v)
+                for v in cls._to_list(getattr(trace, "y", None))
+                if isinstance(v, numbers.Real)
+            ]
+            if xs and ys and len(xs) == len(ys):
+                pairs = sorted(zip(xs, ys, strict=True), key=lambda p: p[1], reverse=True)
+                top_x, top_y = pairs[0]
+                if len(pairs) == 1:
+                    return f"{top_x} is {top_y:,.2f}."
+                bottom_x, bottom_y = pairs[-1]
+                return (
+                    f"{top_x} is highest at {top_y:,.2f}, {bottom_x} is lowest at {bottom_y:,.2f}."
+                )
+        except Exception:
+            pass
+        return fallback
 
     def _build_fallback_plot(self, df: pd.DataFrame, result_obj: Any):
         """Build a Plotly chart when chart mode returns a non-Plotly object."""
