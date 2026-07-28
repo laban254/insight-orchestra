@@ -465,23 +465,33 @@ Access a shared session.
 
 ### Export
 
+Built from the real session history stored server-side (`session_manager`) —
+narrative, hypotheses, charts, and Q&A pairs for that `session_id`. Returns
+`404` if the session doesn't exist or has expired.
+
 #### `GET /export/{session_id}/html`
 
-Export session results as an HTML file. Currently returns mock data.
+Export session results as an HTML file, with charts embedded as interactive Plotly figures.
 
 **Response**: `200 OK` — HTML file download.
 
 #### `GET /export/{session_id}/markdown`
 
-Export session results as Markdown. Currently returns mock data.
+Export session results as Markdown (narrative, top insights, chart titles, Q&A transcript).
 
 **Response**: `200 OK` — Markdown text file download.
 
 #### `GET /export/{session_id}/csv`
 
-Export session results as CSV. Currently returns mock data.
+Export the session's question/answer/code history as CSV. Returns `404` if no questions have been asked yet.
 
 **Response**: `200 OK` — CSV file download.
+
+> The frontend's "Interactive report" export button uses a separate,
+> client-side HTML generator ([`exportReport.ts`](../frontend/lib/exportReport.ts))
+> instead of this endpoint, since it already has the live Plotly figures in
+> memory. The "Summary" and "Q&A history" export options call these endpoints
+> directly.
 
 ---
 

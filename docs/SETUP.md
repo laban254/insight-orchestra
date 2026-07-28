@@ -30,6 +30,16 @@ Complete guide to set up Insight Orchestra for development using Docker.
 
 ## Fast Path: `./setup.sh`
 
+Skip the clone step with the one-line installer — it clones into `./insight-orchestra` and hands off to `setup.sh`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/laban254/insight-orchestra/main/install.sh | bash
+```
+
+(Inspect [`install.sh`](../install.sh) first if you'd rather not pipe a script straight into bash — it only clones the repo and execs `setup.sh`, both reversible, local operations.)
+
+Or clone it yourself:
+
 ```bash
 git clone https://github.com/laban254/insight-orchestra.git
 cd insight-orchestra

@@ -121,7 +121,7 @@ DEMO_DATASETS = {
         "name": "📊 Sales Analytics",
         "description": "1000 rows of daily sales data with regions and products",
         "rows": 1000,
-        "columns": 8,
+        "columns": 9,
         "use_cases": ["Time series", "Regional analysis", "Product performance"],
         "loader": get_sales_demo,
     },
