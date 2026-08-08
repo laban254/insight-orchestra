@@ -17,6 +17,7 @@ from typing import Any
 
 import pandas as pd
 import plotly.express as px
+import requests
 
 from app.services.llm_service import DataFrameSchema, LLMProvider, LLMService
 from app.services.sandbox_executor import SandboxExecutor
@@ -664,12 +665,17 @@ Code: result = df[df['price'] > 100]
     def _friendly_error(self, e: Exception) -> str:
         """Map a raw LLM provider exception to an actionable message.
 
-        Detected by shape (a `status_code` of 401, or "AuthenticationError"
-        in the exception's class name) rather than importing any specific
-        SDK's error types, so this covers every provider — including ones
-        added later — without needing an update here. The raw `str()` of
-        these is a provider JSON error body, which isn't actionable for a
-        user, so surface what to actually do instead.
+        Auth failures are detected by shape (a `status_code` of 401, or
+        "AuthenticationError" in the exception's class name) rather than
+        importing any specific SDK's error types, so this covers every cloud
+        provider — including ones added later — without needing an update
+        here. Ollama is the one provider called over plain HTTP instead of
+        an SDK, so a dead/unreachable container surfaces as a
+        `requests.exceptions.ConnectionError` instead — checked separately
+        since neither signal above would catch it. Either way, the raw
+        `str()` is a provider JSON error body or a urllib3 retry trace,
+        neither of which is actionable for a user, so surface what to
+        actually do instead.
         """
         is_auth_error = (
             getattr(e, "status_code", None) == 401
@@ -688,6 +694,16 @@ Code: result = df[df['price'] > 100]
                     f"Add it to backend/.env ({env_var}=...) and restart the backend "
                     "(docker compose up -d --build backend)."
                 )
+
+        if (
+            isinstance(e, requests.exceptions.ConnectionError)
+            and self.llm.config.provider == LLMProvider.OLLAMA
+        ):
+            return (
+                f"Can't reach Ollama at {self.llm.config.base_url}. Make sure the ollama "
+                "container is running (docker compose up -d ollama) and the model is pulled "
+                f"(docker compose exec ollama ollama pull {self.llm.config.model})."
+            )
         return f"Error processing your question: {str(e)}"
 
     def get_cost_summary(self) -> dict[str, Any]:
