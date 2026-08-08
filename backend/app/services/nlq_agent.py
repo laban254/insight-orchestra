@@ -653,13 +653,42 @@ Code: result = df[df['price'] > 100]
         except Exception as e:
             logger.error(f"[session={sid}] NLQ processing failed: {e}")
             return NLQResponse(
-                answer=f"Error processing your question: {str(e)}",
+                answer=self._friendly_error(e),
                 code="",
                 reasoning="",
                 error=str(e),
                 tokens_used=self.llm.total_tokens,
                 cost_usd=self.llm.total_cost,
             )
+
+    def _friendly_error(self, e: Exception) -> str:
+        """Map a raw LLM provider exception to an actionable message.
+
+        Detected by shape (a `status_code` of 401, or "AuthenticationError"
+        in the exception's class name) rather than importing any specific
+        SDK's error types, so this covers every provider — including ones
+        added later — without needing an update here. The raw `str()` of
+        these is a provider JSON error body, which isn't actionable for a
+        user, so surface what to actually do instead.
+        """
+        is_auth_error = (
+            getattr(e, "status_code", None) == 401
+            or "authenticationerror" in type(e).__name__.lower()
+        )
+        if is_auth_error:
+            provider = self.llm.config.provider
+            env_var = {
+                LLMProvider.OPENAI: "OPENAI_API_KEY",
+                LLMProvider.ANTHROPIC: "ANTHROPIC_API_KEY",
+                LLMProvider.DEEPSEEK: "DEEPSEEK_API_KEY",
+            }.get(provider)
+            if env_var:
+                return (
+                    f"Your {provider.value} API key is missing or invalid. "
+                    f"Add it to backend/.env ({env_var}=...) and restart the backend "
+                    "(docker compose up -d --build backend)."
+                )
+        return f"Error processing your question: {str(e)}"
 
     def get_cost_summary(self) -> dict[str, Any]:
         """Get cost summary from LLM service."""
