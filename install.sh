@@ -23,7 +23,15 @@ printf '%s\n' "${BOLD}${CYAN}Insight Orchestra${RESET} installer"
 
 command -v git >/dev/null 2>&1 || die "git is required but not found. Install git and re-run."
 command -v docker >/dev/null 2>&1 || die "Docker is required but not found. Install Docker and re-run."
-docker compose version >/dev/null 2>&1 || die "Docker Compose v2 is required (docker compose version failed)."
+
+# Compose v2 ships either as the `docker compose` CLI plugin or (less commonly)
+# as a standalone `docker-compose` binary — accept either. setup.sh re-detects
+# this itself, so we only need a fast fail here.
+if ! docker compose version >/dev/null 2>&1; then
+  if ! { command -v docker-compose >/dev/null 2>&1 && docker-compose version --short 2>/dev/null | grep -q '^2\.'; }; then
+    die "Docker Compose v2 is required (docker compose version failed). Install the compose plugin: https://docs.docker.com/compose/install/linux/"
+  fi
+fi
 
 if [ -d "$INSTALL_DIR" ]; then
   if [ -d "$INSTALL_DIR/.git" ] && git -C "$INSTALL_DIR" remote get-url origin 2>/dev/null | grep -q "laban254/insight-orchestra"; then

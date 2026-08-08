@@ -13,6 +13,7 @@ PROVIDER=""
 API_KEY=""
 ASSUME_YES=false
 SUBCOMMAND=""
+COMPOSE="docker compose"
 
 # ── output helpers ───────────────────────────────────────────────────────
 if [ -t 1 ]; then
@@ -94,8 +95,17 @@ check_docker() {
   command -v docker >/dev/null 2>&1 || { fail "Docker is not installed — https://docs.docker.com/get-docker/"; return 1; }
   ok "Docker is installed ($(docker --version | sed 's/,.*//'))"
 
-  docker compose version >/dev/null 2>&1 || { fail "Docker Compose v2 is not available (try updating Docker)"; return 1; }
-  ok "Docker Compose v2 is available"
+  # Compose v2 ships either as the `docker compose` CLI plugin or (less
+  # commonly) as a standalone `docker-compose` binary — accept either.
+  if docker compose version >/dev/null 2>&1; then
+    COMPOSE="docker compose"
+  elif command -v docker-compose >/dev/null 2>&1 && docker-compose version --short 2>/dev/null | grep -q '^2\.'; then
+    COMPOSE="docker-compose"
+  else
+    fail "Docker Compose v2 is not available (try updating Docker, or install the plugin: https://docs.docker.com/compose/install/linux/)"
+    return 1
+  fi
+  ok "Docker Compose v2 is available (via '$COMPOSE')"
 
   docker info >/dev/null 2>&1 || { fail "Docker daemon is not running — start Docker Desktop / dockerd"; return 1; }
   ok "Docker daemon is running"
@@ -132,7 +142,7 @@ check_backend_health() {
   if curl -fsS "http://localhost:${port}/health" >/dev/null 2>&1; then
     ok "Backend is responding at http://localhost:${port}/health"
   else
-    warn "Backend is not responding at http://localhost:${port}/health (is it running? try: docker compose up -d)"
+    warn "Backend is not responding at http://localhost:${port}/health (is it running? try: $COMPOSE up -d)"
   fi
 }
 
@@ -142,10 +152,10 @@ check_ollama_model() {
   local model
   model="$(env_get OLLAMA_MODEL)"
   model="${model:-qwen2.5:1.5b}"
-  if docker compose exec -T ollama ollama list 2>/dev/null | grep -q "$model"; then
+  if $COMPOSE exec -T ollama ollama list 2>/dev/null | grep -q "$model"; then
     ok "Ollama model '$model' is pulled"
   else
-    warn "Ollama model '$model' not found — run: docker compose exec ollama ollama pull $model"
+    warn "Ollama model '$model' not found — run: $COMPOSE exec ollama ollama pull $model"
   fi
 }
 
@@ -252,17 +262,17 @@ check_ports || warn "Continuing anyway — free the ports above if a service fai
 info "Starting services"
 SERVICES="backend frontend"
 [ "$PROVIDER" = "ollama" ] && SERVICES="backend frontend ollama"
-(cd "$ROOT_DIR" && docker compose up -d --build $SERVICES)
+(cd "$ROOT_DIR" && $COMPOSE up -d --build $SERVICES)
 ok "Containers started ($SERVICES)"
 
 if [ "$PROVIDER" = "ollama" ]; then
   MODEL="$(env_get OLLAMA_MODEL)"
   MODEL="${MODEL:-qwen2.5:1.5b}"
   info "Pulling Ollama model '$MODEL' (first run only, can take a few minutes)"
-  if (cd "$ROOT_DIR" && docker compose exec -T ollama ollama pull "$MODEL"); then
+  if (cd "$ROOT_DIR" && $COMPOSE exec -T ollama ollama pull "$MODEL"); then
     ok "Model '$MODEL' ready"
   else
-    warn "Model pull failed — retry later with: docker compose exec ollama ollama pull $MODEL"
+    warn "Model pull failed — retry later with: $COMPOSE exec ollama ollama pull $MODEL"
   fi
 fi
 
@@ -284,7 +294,7 @@ done
 if [ "$healthy" = true ]; then
   ok "Backend healthy at http://localhost:${PORT}/health"
 else
-  warn "Backend didn't respond within 60s — check: docker compose logs -f backend"
+  warn "Backend didn't respond within 60s — check: $COMPOSE logs -f backend"
 fi
 
 info "Done in ${SECONDS}s"
@@ -293,7 +303,7 @@ cat <<SUMMARY
   Backend API   http://localhost:${PORT}
   Swagger docs  http://localhost:${PORT}/docs
 
-  Logs:    docker compose logs -f
+  Logs:    $COMPOSE logs -f
   Health:  ./setup.sh doctor
 
   Pick one of the five demo datasets (or upload your own CSV) — the pipeline runs automatically.
