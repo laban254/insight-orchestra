@@ -257,13 +257,18 @@ if [ ! -f "$ENV_FILE" ]; then
 fi
 
 info "Checking ports"
-check_ports || warn "Continuing anyway — free the ports above if a service fails to start"
+PORTS_FREE=true
+check_ports || { PORTS_FREE=false; warn "Continuing anyway — free the ports above if a service fails to start"; }
 
 info "Starting services"
 SERVICES="backend frontend"
 [ "$PROVIDER" = "ollama" ] && SERVICES="backend frontend ollama"
 if ! (cd "$ROOT_DIR" && $COMPOSE up -d --build $SERVICES); then
-  die "Failed to start containers — if a port above was already in use, free it (or stop the conflicting service) and re-run ./setup.sh"
+  if [ "$PORTS_FREE" = false ]; then
+    die "Failed to start containers — a port above was already in use; free it (or stop the conflicting service) and re-run ./setup.sh"
+  else
+    die "Failed to start containers — see the build output above for the cause. A failed package download mid-build is usually just a transient network hiccup; re-running ./setup.sh often fixes it."
+  fi
 fi
 ok "Containers started ($SERVICES)"
 
