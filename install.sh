@@ -21,8 +21,8 @@ die()  { printf '%s\n' "  ${RED}✗${RESET} $*" >&2; exit 1; }
 
 printf '%s\n' "${BOLD}${CYAN}Insight Orchestra${RESET} installer"
 
-command -v git >/dev/null 2>&1 || die "git is required but not found. Install git and re-run."
-command -v docker >/dev/null 2>&1 || die "Docker is required but not found. Install Docker and re-run."
+command -v git >/dev/null 2>&1 || die "git is required but not found: https://git-scm.com/downloads"
+command -v docker >/dev/null 2>&1 || die "Docker is required but not found: https://docs.docker.com/get-docker/"
 
 # Compose v2 ships either as the `docker compose` CLI plugin or (less commonly)
 # as a standalone `docker-compose` binary — accept either. setup.sh re-detects
@@ -41,7 +41,7 @@ if [ -d "$INSTALL_DIR" ]; then
   fi
 else
   ok "Cloning into ./$INSTALL_DIR"
-  git clone --depth 1 "$REPO_URL" "$INSTALL_DIR"
+  git clone --depth 1 --quiet "$REPO_URL" "$INSTALL_DIR" || die "Failed to clone $REPO_URL"
 fi
 
 cd "$INSTALL_DIR"
