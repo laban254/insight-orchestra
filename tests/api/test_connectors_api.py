@@ -24,7 +24,9 @@ class TestConnectValidation:
     @pytest.mark.asyncio
     async def test_unsupported_type_rejected(self):
         with pytest.raises(HTTPException) as exc:
-            await connectors_api.connect_database(ConnectRequest(type="oracle", connection_string="x"))
+            await connectors_api.connect_database(
+                ConnectRequest(type="oracle", connection_string="x")
+            )
         assert exc.value.status_code == 400
         assert "Unsupported connector" in exc.value.detail
 
@@ -52,7 +54,9 @@ class TestConnectValidation:
     @pytest.mark.asyncio
     async def test_malformed_mysql_dsn_gives_friendly_message(self):
         with pytest.raises(HTTPException) as exc:
-            await connectors_api.connect_database(ConnectRequest(type="mysql", connection_string="not-a-url"))
+            await connectors_api.connect_database(
+                ConnectRequest(type="mysql", connection_string="not-a-url")
+            )
         assert exc.value.status_code == 400
         assert "Invalid connection string" in exc.value.detail
         assert "mysql://" in exc.value.detail
@@ -87,7 +91,9 @@ def fake_connector(monkeypatch):
     }
     instance.execute_query.return_value = pd.DataFrame({"id": [1, 2], "name": ["Alice", "Bob"]})
 
-    monkeypatch.setitem(connectors_api.CONNECTOR_MAP, "postgresql", MagicMock(return_value=instance))
+    monkeypatch.setitem(
+        connectors_api.CONNECTOR_MAP, "postgresql", MagicMock(return_value=instance)
+    )
     return instance
 
 
@@ -143,7 +149,9 @@ class TestLoadTable:
     @pytest.mark.asyncio
     async def test_unknown_connection_id_404(self, store):
         with pytest.raises(HTTPException) as exc:
-            await connectors_api.load_table(LoadTableRequest(connection_id="nope", table_name="users"))
+            await connectors_api.load_table(
+                LoadTableRequest(connection_id="nope", table_name="users")
+            )
         assert exc.value.status_code == 404
 
     @pytest.mark.asyncio
