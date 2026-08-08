@@ -209,7 +209,7 @@ if [ ! -f "$ENV_FILE" ]; then
       echo "  1) Ollama    — local, private, no API key needed (default)"
       echo "  2) OpenAI    — cloud"
       echo "  3) Anthropic — cloud"
-      echo "  4) DeepSeek  — cloud, cheap & fast"
+      echo "  4) DeepSeek  — cloud"
       read -r -p "  Pick 1-4 [1]: " choice
       case "${choice:-1}" in
         1) PROVIDER="ollama" ;;
@@ -262,7 +262,9 @@ check_ports || warn "Continuing anyway — free the ports above if a service fai
 info "Starting services"
 SERVICES="backend frontend"
 [ "$PROVIDER" = "ollama" ] && SERVICES="backend frontend ollama"
-(cd "$ROOT_DIR" && $COMPOSE up -d --build $SERVICES)
+if ! (cd "$ROOT_DIR" && $COMPOSE up -d --build $SERVICES); then
+  die "Failed to start containers — if a port above was already in use, free it (or stop the conflicting service) and re-run ./setup.sh"
+fi
 ok "Containers started ($SERVICES)"
 
 if [ "$PROVIDER" = "ollama" ]; then
