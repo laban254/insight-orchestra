@@ -53,12 +53,12 @@ def get_df(file_path: str) -> pd.DataFrame:
     # distinct "access denied") so we don't confirm the existence of
     # files outside it.
     real_path = os.path.realpath(file_path)
-    allowed_dirs = ["/tmp", UPLOAD_DIR]
-    in_allowed_dir = any(
-        real_path == allowed_dir or real_path.startswith(allowed_dir + os.sep)
-        for allowed_dir in allowed_dirs
-    )
-    if not in_allowed_dir:
+    if not (
+        real_path == "/tmp"
+        or real_path.startswith("/tmp" + os.sep)
+        or real_path == UPLOAD_DIR
+        or real_path.startswith(UPLOAD_DIR + os.sep)
+    ):
         raise HTTPException(status_code=404, detail="File not found.")
 
     if not os.path.isfile(real_path):
