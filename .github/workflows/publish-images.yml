@@ -10,6 +10,9 @@ name: publish-images
 # Each platform is pushed by digest, then a merge job stitches the digests
 # into one multi-platform manifest per component.
 
+# Releases reach this workflow by dispatch, not by the tag push: release-please
+# tags with GITHUB_TOKEN, whose events GitHub suppresses. See the dispatch step
+# in release-please.yml. The tag trigger below still covers tags pushed by hand.
 on:
   push:
     tags: ['v*']
