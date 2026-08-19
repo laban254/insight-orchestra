@@ -13,6 +13,7 @@ PROVIDER=""
 API_KEY=""
 ASSUME_YES=false
 SUBCOMMAND=""
+BUILD_FROM_SOURCE=false
 COMPOSE="docker compose"
 
 # ── output helpers ───────────────────────────────────────────────────────
@@ -60,12 +61,14 @@ Commands:
 Options:
   --provider <openai|anthropic|deepseek|ollama>   LLM provider (skips the prompt)
   --api-key <key>                                 API key for a cloud provider (skips the prompt)
+  --build                                          Build images from source instead of pulling
   -y, --yes                                        Non-interactive: accept defaults, don't prompt
 
 Examples:
   ./setup.sh                                  # interactive wizard
   ./setup.sh --provider ollama -y             # fully non-interactive, local model
   ./setup.sh --provider openai --api-key sk-... -y
+  ./setup.sh --build                          # build locally (for development)
   ./setup.sh doctor                           # just run health checks
 EOF
 }
@@ -78,6 +81,7 @@ while [ $# -gt 0 ]; do
     --provider=*) PROVIDER="${1#*=}"; shift ;;
     --api-key) API_KEY="${2:-}"; shift 2 ;;
     --api-key=*) API_KEY="${1#*=}"; shift ;;
+    --build) BUILD_FROM_SOURCE=true; shift ;;
     -y|--yes) ASSUME_YES=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) die "Unknown argument: $1 (see --help)" ;;
@@ -263,11 +267,27 @@ check_ports || { PORTS_FREE=false; warn "Continuing anyway — free the ports ab
 info "Starting services"
 SERVICES="backend frontend"
 [ "$PROVIDER" = "ollama" ] && SERVICES="backend frontend ollama"
-if ! (cd "$ROOT_DIR" && $COMPOSE up -d --build $SERVICES); then
+
+# Default path pulls the released images from GHCR (seconds). --build layers in
+# docker-compose.dev.yml to compile from source instead — several minutes, since
+# the backend builds pandas/statsmodels.
+COMPOSE_FILES=(-f docker-compose.yml)
+UP_ARGS=(up -d)
+if [ "$BUILD_FROM_SOURCE" = true ]; then
+  COMPOSE_FILES+=(-f docker-compose.dev.yml)
+  UP_ARGS+=(--build)
+  printf '%s\n' "  ${DIM}Building from source — this takes a few minutes on a first run.${RESET}"
+else
+  printf '%s\n' "  ${DIM}Pulling prebuilt images (use --build to compile from source instead).${RESET}"
+fi
+
+if ! (cd "$ROOT_DIR" && $COMPOSE "${COMPOSE_FILES[@]}" "${UP_ARGS[@]}" $SERVICES); then
   if [ "$PORTS_FREE" = false ]; then
     die "Failed to start containers — a port above was already in use; free it (or stop the conflicting service) and re-run ./setup.sh"
-  else
+  elif [ "$BUILD_FROM_SOURCE" = true ]; then
     die "Failed to start containers — see the build output above for the cause. A failed package download mid-build is usually just a transient network hiccup; re-running ./setup.sh often fixes it."
+  else
+    die "Failed to start containers — see the output above. If the image pull failed, check your network and that ghcr.io is reachable; you can also build locally instead with ./setup.sh --build"
   fi
 fi
 ok "Containers started ($SERVICES)"

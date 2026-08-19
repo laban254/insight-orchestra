@@ -52,6 +52,14 @@ cd insight-orchestra
 
 The script asks which LLM provider to use (Ollama by default — local, private, no API key needed), writes `backend/.env`, starts the containers, and pulls the Ollama model automatically. Run it again any time; it won't clobber an existing `backend/.env` without asking.
 
+Images are pulled prebuilt from GitHub Container Registry, so there's no local build to sit through. To pin a specific release instead of tracking `latest`:
+
+```bash
+IO_IMAGE_TAG=v1.0.0 ./setup.sh
+```
+
+To build from source instead — for development, or on a platform we don't publish images for — use `./setup.sh --build`. See [Contributing](CONTRIBUTING.md) for the development workflow.
+
 Fully non-interactive (works with either path above — pass the flags after `bash -s --` for the curl one-liner):
 
 ```bash

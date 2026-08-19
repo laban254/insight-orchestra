@@ -16,10 +16,20 @@ cd insight-orchestra
 ### 2. Run the App
 
 ```bash
-./setup.sh
+./setup.sh --build
 ```
 
 This is the same Docker-first setup used in the [README](README.md#quick-start) and [Setup Guide](docs/SETUP.md) — it writes `backend/.env`, starts the containers, and pulls the Ollama model if you pick that provider. Use this to run the app end-to-end while you work.
+
+`--build` is the part that matters for development: without it, setup pulls the
+released images from GHCR and you'd be running published code rather than your
+own. It's shorthand for layering in the dev override:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+```
+
+Rebuild the same way after changing backend or frontend source.
 
 ### 3. Set Up Local Tooling (for linting, type-checking, and tests)
 
