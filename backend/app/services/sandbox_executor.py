@@ -92,6 +92,54 @@ class SandboxExecutor:
 
     BLOCKED_CALLS = {"eval", "exec", "compile", "open", "breakpoint", "__import__"}
 
+    # pandas I/O and eval-alike methods — blocked regardless of receiver
+    # (df.eval(), pd.read_pickle(), a chained df.x.to_sql(), etc.), since
+    # generated code only ever needs to transform the pre-loaded `df`; it
+    # never legitimately reads/writes files, hits a DB, or runs a second
+    # eval. This is defense-in-depth alongside the AST checks below, not a
+    # substitute for process-level isolation — a hand-maintained blocklist
+    # can't be exhaustive against a library as large as pandas.
+    BLOCKED_METHOD_NAMES = {
+        "eval",
+        "query",
+        "read_pickle",
+        "read_hdf",
+        "read_sql",
+        "read_sql_query",
+        "read_sql_table",
+        "read_gbq",
+        "read_html",
+        "read_csv",
+        "read_excel",
+        "read_json",
+        "read_parquet",
+        "read_feather",
+        "read_stata",
+        "read_orc",
+        "read_sas",
+        "read_spss",
+        "read_clipboard",
+        "read_fwf",
+        "read_xml",
+        "to_pickle",
+        "to_hdf",
+        "to_sql",
+        "to_gbq",
+        "to_csv",
+        "to_excel",
+        "to_parquet",
+        "to_feather",
+        "to_stata",
+        "to_orc",
+        "to_xml",
+        "to_html",
+        "to_latex",
+        "to_markdown",
+        "to_clipboard",
+        "to_json",
+        "to_string",
+    }
+
     BLOCKED_DUNDERS = {
         "__globals__",
         "__code__",
@@ -214,6 +262,8 @@ class SandboxExecutor:
             if isinstance(node, ast.Attribute):
                 if node.attr in self.BLOCKED_DUNDERS:
                     return False, f"Access to '{node.attr}' is not allowed"
+                if node.attr in self.BLOCKED_METHOD_NAMES:
+                    return False, f"Call to '.{node.attr}(...)' is not allowed"
 
             # Block Name access to dangerous builtins not in safe set
             if isinstance(node, ast.Name) and node.id in self.BLOCKED_CALLS:

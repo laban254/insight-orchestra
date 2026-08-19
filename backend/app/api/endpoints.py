@@ -90,6 +90,7 @@ async def process_data(request: ProcessRequest):
         cleaner_result = await asyncio.to_thread(workflow.cleaner.run, df.to_dict(orient="records"))
         cleaned_data = cleaner_result["cleaned_data"]
         r = cleaner_result["report"]
+        bias_flags = r.get("bias_flags")
         push_event(
             sid,
             agent_id="janitor",
@@ -101,9 +102,13 @@ async def process_data(request: ProcessRequest):
 
         push_event(sid, agent_id="hypothesis", status="running")
         t0 = time.monotonic()
-        hypothesis_result = await asyncio.to_thread(workflow.hypothesis.run, cleaned_data)
+        hypothesis_result = await asyncio.to_thread(
+            workflow.hypothesis.run, cleaned_data, bias_flags=bias_flags
+        )
         hypotheses = hypothesis_result["hypotheses"]
-        stats_summary = HypothesisBotAgent._build_stats_summary(pd.DataFrame(cleaned_data))
+        stats_summary = HypothesisBotAgent._build_stats_summary(
+            pd.DataFrame(cleaned_data), bias_flags=bias_flags
+        )
         push_event(
             sid,
             agent_id="hypothesis",
