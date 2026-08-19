@@ -7,12 +7,46 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  # Needed by the dispatch step below.
+  actions: write
 
 jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
       - uses: googleapis/release-please-action@v5
+        id: release
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+      # Recorded on every run so the exact output names are visible in the log.
+      # The dispatch below keys off them, and the failure mode if they ever
+      # change is a release that quietly ships without images.
+      - name: Record release-please outputs
+        run: echo '${{ toJSON(steps.release.outputs) }}'
+
+      # release-please pushes the tag with GITHUB_TOKEN, and GitHub suppresses
+      # workflow triggers from that token to prevent recursion — so the
+      # `push: tags` trigger in publish-images.yml never fires for a release,
+      # and v1.0.0 shipped with no images until it was dispatched by hand.
+      # workflow_dispatch is one of the two documented exceptions to that rule,
+      # so asking for the run explicitly does work.
+      #
+      # Dispatching against the tag ref matters: metadata-action derives the
+      # semver tags from the ref, so a run against `main` would publish `edge`
+      # instead of 1.2.3 / 1.2 / 1 / latest.
+      - name: Publish images for the new tag
+        if: ${{ steps.release.outputs.releases_created == 'true' || steps.release.outputs.release_created == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.release.outputs.tag_name || steps.release.outputs['.--tag_name'] }}
+        run: |
+          if [ -z "$TAG" ]; then
+            echo "::error::release-please created a release but exposed no tag_name, so" \
+                 "there is no ref to build from. Check the recorded outputs above, then" \
+                 "dispatch publish-images manually against the new tag."
+            exit 1
+          fi
+          echo "Dispatching publish-images against $TAG"
+          gh workflow run publish-images.yml --ref "$TAG" -R "$GITHUB_REPOSITORY"
