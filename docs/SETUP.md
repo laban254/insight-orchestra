@@ -363,6 +363,23 @@ If the backend is using the wrong model after you change `OLLAMA_MODEL`:
 docker compose up -d --force-recreate backend
 ```
 
+### Backend takes a long time to start
+
+Expected on a first run, and on any run with a cold page cache. `uvicorn` binds
+port 8000 almost immediately, but each worker then imports pandas, statsmodels
+and the agent SDK before it can serve a request — a measured cold start was
+**64 seconds**. Until that finishes, requests to the backend simply hang, and
+`docker compose ps` reports the container as `health: starting`.
+
+The frontend waits on the backend's healthcheck, so the whole stack looks idle
+during this window. `./setup.sh` shows elapsed time while it waits.
+
+If it's still unresponsive after a few minutes, that's no longer startup:
+
+```bash
+docker compose logs -f backend
+```
+
 ### Frontend connection refused
 
 - Ensure the backend is running: `docker compose ps`

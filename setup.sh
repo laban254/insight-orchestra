@@ -306,22 +306,31 @@ fi
 info "Waiting for backend to become healthy"
 PORT="$(env_get BACKEND_PORT)"
 PORT="${PORT:-8000}"
+
+# uvicorn binds the port long before it can serve: each worker still has to
+# import pandas, statsmodels and the agent SDK, which on a cold page cache is
+# most of a minute. A measured cold start was 64s, so the old 60s budget
+# reported a healthy stack as broken. Wait well past that, and show elapsed
+# time so the wait reads as progress rather than a hang.
+HEALTH_TIMEOUT=240
 healthy=false
-for i in $(seq 1 30); do
+waited=0
+while [ "$waited" -lt "$HEALTH_TIMEOUT" ]; do
   if curl -fsS "http://localhost:${PORT}/health" >/dev/null 2>&1; then
     healthy=true
     break
   fi
   if [ -t 1 ]; then
-    printf '\r  waiting%s   ' "$(printf '.%.0s' $(seq 1 $(( (i % 4) + 1 ))))"
+    printf '\r  starting the backend — first run loads a lot, this is normal (%ss)   ' "$waited"
   fi
   sleep 2
+  waited=$((waited + 2))
 done
 [ -t 1 ] && printf '\r\033[K'
 if [ "$healthy" = true ]; then
-  ok "Backend healthy at http://localhost:${PORT}/health"
+  ok "Backend healthy at http://localhost:${PORT}/health (${waited}s)"
 else
-  warn "Backend didn't respond within 60s — check: $COMPOSE logs -f backend"
+  warn "Backend still not responding after ${HEALTH_TIMEOUT}s — check: $COMPOSE logs -f backend"
 fi
 
 info "Done in ${SECONDS}s"

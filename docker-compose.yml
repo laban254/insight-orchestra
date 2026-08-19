@@ -32,7 +32,12 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      # A measured cold start was 64s — uvicorn binds the port immediately,
+      # then each worker imports pandas, statsmodels and the agent SDK. With
+      # the old 10s start_period a slower machine would be marked unhealthy
+      # while still legitimately booting, and the frontend below waits on
+      # this condition, so the whole stack would appear to hang.
+      start_period: 120s
 
   frontend:
     image: ghcr.io/laban254/insight-orchestra-frontend:${IO_IMAGE_TAG:-latest}
