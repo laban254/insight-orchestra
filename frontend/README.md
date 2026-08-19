@@ -54,11 +54,22 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 
 ## Docker Deployment
 
-The frontend is included in the main docker-compose.yml:
+The frontend is included in the main docker-compose.yml, which pulls a prebuilt
+image from GHCR:
 
 ```bash
-docker-compose up -d --build
+docker compose up -d
 ```
+
+To build this directory from source instead:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build frontend
+```
+
+Note that `NEXT_PUBLIC_API_URL` is baked in at build time, so the published
+image points at `http://localhost:8000`. Serving the app from another origin
+means building the image yourself with that variable set.
 
 Access the frontend at: http://localhost:8501
 

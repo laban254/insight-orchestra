@@ -46,7 +46,7 @@ cd insight-orchestra
 ./setup.sh
 ```
 
-This prompts for an LLM provider (Ollama by default — local, no API key), writes `backend/.env`, runs `docker compose up -d --build` with the right service set, and pulls the Ollama model if needed. It's safe to re-run — it won't overwrite an existing `backend/.env` without asking first.
+This prompts for an LLM provider (Ollama by default — local, no API key), writes `backend/.env`, runs `docker compose up -d` with the right service set, and pulls the Ollama model if needed. It's safe to re-run — it won't overwrite an existing `backend/.env` without asking first.
 
 Non-interactive:
 
@@ -56,6 +56,31 @@ Non-interactive:
 ```
 
 Troubleshooting: `./setup.sh doctor` checks Docker, ports, `backend/.env`, and whether the backend/Ollama model are actually up.
+
+### Images
+
+`docker-compose.yml` refers to prebuilt images published to GitHub Container
+Registry on each release, for `linux/amd64` and `linux/arm64`:
+
+- `ghcr.io/laban254/insight-orchestra-backend`
+- `ghcr.io/laban254/insight-orchestra-frontend`
+
+Both default to `latest`. Pin a release with the `IO_IMAGE_TAG` variable:
+
+```bash
+IO_IMAGE_TAG=v1.0.0 docker compose up -d
+```
+
+To build from source instead — for development, or on a platform without a
+published image — layer in the dev override, which swaps the pulls for local
+builds:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+```
+
+`./setup.sh --build` is a shortcut for exactly that. Expect several minutes on a
+first build: the backend compiles pandas and statsmodels.
 
 The rest of this guide covers the manual, step-by-step path — useful if you want full control over each step, or are configuring for production.
 
@@ -311,9 +336,9 @@ If you see `Read timed out` errors, the model is taking too long for your hardwa
 
 If the backend is using the wrong model after you change `OLLAMA_MODEL`:
 ```bash
-# Rebuild the backend container to pick up the new env value
-docker compose build --no-cache backend
-docker compose up -d backend
+# backend/.env is read when the container is created, not on restart —
+# recreate it to pick up the new value
+docker compose up -d --force-recreate backend
 ```
 
 ### Frontend connection refused

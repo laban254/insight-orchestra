@@ -4,9 +4,10 @@ x-logging: &default-logging
 
 services:
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    # Prebuilt image from GHCR — no local compile on first run. Pin a release
+    # with IO_IMAGE_TAG=v1.0.0, or build from source with docker-compose.dev.yml
+    # (see CONTRIBUTING.md).
+    image: ghcr.io/laban254/insight-orchestra-backend:${IO_IMAGE_TAG:-latest}
     logging: *default-logging
     ports:
       - "8000:8000"
@@ -34,14 +35,15 @@ services:
       start_period: 10s
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
+    image: ghcr.io/laban254/insight-orchestra-frontend:${IO_IMAGE_TAG:-latest}
     logging: *default-logging
     ports:
       - "8501:8501"
+    # No API URL here: the browser calls the backend directly, at the
+    # NEXT_PUBLIC_API_URL baked in at image build time (default
+    # http://localhost:8000). Serving this on a real domain needs a frontend
+    # image rebuilt with that variable set.
     environment:
-      - API_BASE_URL=http://backend:8000
       - FRONTEND_PORT=8501
     depends_on:
       backend:
