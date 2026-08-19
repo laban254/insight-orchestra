@@ -53,12 +53,23 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Only the labels are wanted here — the tags are applied later, by the
+      # merge job, to the manifest list. org.opencontainers.image.source is
+      # the one that matters: without it GHCR shows the package orphaned,
+      # with no link back to this repo and no README on the package page.
+      - name: Derive image labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component }}
+
       - name: Build and push by digest
         id: build
         uses: docker/build-push-action@v6
         with:
           context: ./${{ matrix.component }}
           platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
           # Must stay on one line — buildx parses this as CSV and folded YAML
           # would inject spaces into the values.
           outputs: type=image,name=${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component }},push-by-digest=true,name-canonical=true,push=true
