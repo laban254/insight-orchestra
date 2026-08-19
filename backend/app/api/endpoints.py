@@ -61,11 +61,10 @@ def get_df(file_path: str) -> pd.DataFrame:
     ):
         raise HTTPException(status_code=404, detail="File not found.")
 
-    if not os.path.isfile(real_path):
-        raise HTTPException(status_code=404, detail="File not found.")
-
     try:
         return pd.read_csv(real_path)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="File not found.") from None
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to read CSV: {e}") from e
 
