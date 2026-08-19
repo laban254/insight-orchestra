@@ -82,6 +82,27 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 `./setup.sh --build` is a shortcut for exactly that. Expect several minutes on a
 first build: the backend compiles pandas and statsmodels.
 
+### Running it on a different machine
+
+The defaults assume you browse from the same machine that runs Docker. If the
+stack lives on a homelab box, NAS, or VPS and you open the UI from a laptop,
+two settings have to point at the host's real address — the frontend calls the
+backend **from your browser**, so `localhost` would resolve to the laptop:
+
+```bash
+PUBLIC_API_URL=http://192.168.1.50:8000 \
+ALLOWED_ORIGINS=http://192.168.1.50:8501 \
+docker compose up -d
+```
+
+- `PUBLIC_API_URL` — where the browser should reach the backend.
+- `ALLOWED_ORIGINS` — the backend's CORS allowlist, which must contain the
+  origin you're browsing from, or those requests are rejected.
+
+They have to agree. Setting only the first produces requests that reach the
+backend and are refused by CORS; setting only the second leaves the browser
+still trying `localhost`.
+
 The rest of this guide covers the manual, step-by-step path — useful if you want full control over each step, or are configuring for production.
 
 ---
@@ -227,6 +248,7 @@ Or run all of the above (plus Docker, port, and Ollama model checks) in one shot
 | `BACKEND_HOST` | `0.0.0.0` | Backend bind address |
 | `BACKEND_PORT` | `8000` | Backend port |
 | `FRONTEND_PORT` | `8501` | Frontend port |
+| `PUBLIC_API_URL` | `http://localhost:8000` | Backend URL used by the **browser** — must be reachable from wherever you open the UI. Pair with `ALLOWED_ORIGINS` |
 | `ENVIRONMENT` | `development` | `development` or `production` |
 | `DEMO_MODE` | `true` | Enable demo endpoints (disable in production) |
 | `LOG_LEVEL` | `INFO` | Logging level: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
@@ -344,9 +366,14 @@ docker compose up -d --force-recreate backend
 ### Frontend connection refused
 
 - Ensure the backend is running: `docker compose ps`
-- Check CORS origin matches your frontend URL: `CORS_ORIGIN=http://localhost:8501`
+- Check the CORS allowlist contains your frontend URL: `ALLOWED_ORIGINS=http://localhost:8501`
 - Verify network: `curl -v http://localhost:8000/health`
 - Frontend runs on port **8501** by default (not 3000).
+
+If the UI loads but every request fails, and you're browsing from a *different*
+machine than the one running Docker, the browser is most likely still calling
+`http://localhost:8000` — which is itself, not the server. See
+[Running it on a different machine](#running-it-on-a-different-machine).
 
 ### Connecting to a database on your host machine
 
