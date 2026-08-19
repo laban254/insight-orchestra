@@ -39,12 +39,14 @@ services:
     logging: *default-logging
     ports:
       - "8501:8501"
-    # No API URL here: the browser calls the backend directly, at the
-    # NEXT_PUBLIC_API_URL baked in at image build time (default
-    # http://localhost:8000). Serving this on a real domain needs a frontend
-    # image rebuilt with that variable set.
     environment:
       - FRONTEND_PORT=8501
+      # The URL the *browser* uses to reach the backend — so it must be
+      # resolvable from wherever you open the UI, not from inside this
+      # container. Override it when the stack runs on a different machine
+      # than the one you browse from, e.g.
+      #   PUBLIC_API_URL=http://192.168.1.50:8000 docker compose up -d
+      - PUBLIC_API_URL=${PUBLIC_API_URL:-http://localhost:8000}
     depends_on:
       backend:
         condition: service_healthy
