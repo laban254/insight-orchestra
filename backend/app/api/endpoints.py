@@ -58,7 +58,10 @@ def get_df(file_path: str) -> pd.DataFrame:
         real_path == allowed_dir or real_path.startswith(allowed_dir + os.sep)
         for allowed_dir in allowed_dirs
     )
-    if not in_allowed_dir or not os.path.isfile(real_path):
+    if not in_allowed_dir:
+        raise HTTPException(status_code=404, detail="File not found.")
+
+    if not os.path.isfile(real_path):
         raise HTTPException(status_code=404, detail="File not found.")
 
     try:
