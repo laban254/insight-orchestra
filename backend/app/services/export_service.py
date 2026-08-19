@@ -66,7 +66,7 @@ HTML_TEMPLATE = """
 class ExportService:
     def to_html(self, session_data: dict) -> str:
         """Generate self-contained HTML report"""
-        env = Environment(loader=BaseLoader())
+        env = Environment(loader=BaseLoader(), autoescape=True)
         template = env.from_string(HTML_TEMPLATE)
         return str(template.render(**session_data))
 

@@ -39,7 +39,7 @@ export interface DatasetInfo {
     use_cases?: string[];
 }
 
-const newId = () => Math.random().toString(36).substring(2, 11);
+const newId = () => crypto.randomUUID();
 
 function Logo({ size = 8 }: { size?: number }) {
     return (

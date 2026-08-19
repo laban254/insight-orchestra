@@ -17,6 +17,8 @@ import asyncio
 import logging
 from typing import Any
 
+from app.utils.log_utils import safe_log_value
+
 logger = logging.getLogger(__name__)
 
 # session_id → asyncio.Queue; only populated by get_queue()
@@ -43,7 +45,10 @@ def _enqueue(session_id: str, value: Any) -> None:
     """
     queue = _queues.get(session_id)
     if queue is None:
-        logger.debug(f"push_event: no queue for session {session_id!r}, dropping event")
+        logger.debug(
+            "push_event: no queue for session %s, dropping event",
+            safe_log_value(session_id),
+        )
         return
 
     try:
@@ -53,7 +58,11 @@ def _enqueue(session_id: str, value: Any) -> None:
         # No running loop — direct put (unit tests / sync contexts)
         queue.put_nowait(value)
     except Exception as e:
-        logger.warning(f"Failed to enqueue event for session {session_id}: {e}")
+        logger.warning(
+            "Failed to enqueue event for session %s: %s",
+            safe_log_value(session_id),
+            safe_log_value(e),
+        )
 
 
 def push_event(

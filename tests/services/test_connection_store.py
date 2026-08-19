@@ -44,7 +44,8 @@ class TestConnectionStore:
 
     def test_remove_unknown_id_returns_false(self):
         store = make_store()
-        assert store.remove("does-not-exist") is False
+        removed = store.remove("does-not-exist")
+        assert removed is False
 
     def test_stale_entry_is_reaped(self):
         store = make_store(ttl_seconds=0.05)

@@ -21,6 +21,7 @@ import requests
 
 from app.services.llm_service import DataFrameSchema, LLMProvider, LLMService
 from app.services.sandbox_executor import SandboxExecutor
+from app.utils.log_utils import safe_log_value
 
 logger = logging.getLogger(__name__)
 
@@ -493,8 +494,10 @@ Code: result = df[df['price'] > 100]
                 return (
                     f"{top_x} is highest at {top_y:,.2f}, {bottom_x} is lowest at {bottom_y:,.2f}."
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            # Best-effort summary only — fall back to the generic caption below
+            # if the trace data doesn't have the shape we expect.
+            logger.debug("Could not summarize chart trace: %s", safe_log_value(e))
         return fallback
 
     def _build_fallback_plot(self, df: pd.DataFrame, result_obj: Any):
@@ -545,7 +548,11 @@ Code: result = df[df['price'] > 100]
     ) -> NLQResponse:
         """Process a natural language query against the DataFrame."""
         sid = session_id or "?"
-        logger.info(f"[session={sid}] Processing NLQ: {question[:100]!r}")
+        logger.info(
+            "[session=%s] Processing NLQ: %r",
+            safe_log_value(sid),
+            safe_log_value(question[:100]),
+        )
 
         try:
             # Step 1: Generate code

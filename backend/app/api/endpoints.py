@@ -47,20 +47,22 @@ class BigQueryRequest(BaseModel):
 
 def get_df(file_path: str) -> pd.DataFrame:
     """Load DataFrame from file path."""
-    # Security: Validate file path to prevent path traversal
-    if not os.path.isfile(file_path):
+    # Security: Resolve and validate the path against allowed directories
+    # before touching the filesystem, to prevent path traversal. Paths
+    # outside the sandbox are reported as "not found" (rather than a
+    # distinct "access denied") so we don't confirm the existence of
+    # files outside it.
+    real_path = os.path.realpath(file_path)
+    allowed_dirs = ["/tmp", UPLOAD_DIR]
+    in_allowed_dir = any(
+        real_path == allowed_dir or real_path.startswith(allowed_dir + os.sep)
+        for allowed_dir in allowed_dirs
+    )
+    if not in_allowed_dir or not os.path.isfile(real_path):
         raise HTTPException(status_code=404, detail="File not found.")
 
-    # Ensure the file is within allowed directories (absolute paths only)
-    allowed_dirs = ["/tmp", UPLOAD_DIR]
-    real_path = os.path.realpath(file_path)
-    if not any(real_path.startswith(allowed_dir) for allowed_dir in allowed_dirs):
-        raise HTTPException(
-            status_code=403, detail="Access denied: file outside allowed directories."
-        )
-
     try:
-        return pd.read_csv(file_path)
+        return pd.read_csv(real_path)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to read CSV: {e}") from e
 

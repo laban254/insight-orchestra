@@ -1,17 +1,19 @@
+import importlib.util
 import json
+import logging
 from typing import Any
 
 import pandas as pd
 from google.adk import Agent
 
 from app.services.llm_service import DataFrameSchema, LLMService
+from app.utils.log_utils import safe_log_value
 
-try:
-    import statsmodels.api  # noqa: F401 — enables OLS trendlines in plotly express
+logger = logging.getLogger(__name__)
 
-    _HAS_STATSMODELS = True
-except Exception:
-    _HAS_STATSMODELS = False
+# plotly express imports statsmodels itself when trendline="ols" is requested;
+# we only need to know whether it's installed to decide whether to ask for one.
+_HAS_STATSMODELS = importlib.util.find_spec("statsmodels") is not None
 
 
 class DataJanitorAgent(Agent):
@@ -116,8 +118,15 @@ class HypothesisBotAgent(Agent):
                             f"{a} and {b} are {direction} correlated (r={r:.2f}) — "
                             f"higher {a} tends to mean {'higher' if r > 0 else 'lower'} {b}."
                         )
-                except Exception:
-                    pass
+                except Exception as e:
+                    # Correlation can fail on non-numeric-looking columns (e.g. all-NaN
+                    # after coercion) — skip that pair and keep collecting hypotheses.
+                    logger.debug(
+                        "Skipping correlation for %s/%s: %s",
+                        safe_log_value(a),
+                        safe_log_value(b),
+                        safe_log_value(e),
+                    )
 
         deduped: list[str] = list(dict.fromkeys(hypotheses))[:8]
         if not deduped:
