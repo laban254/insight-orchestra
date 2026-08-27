@@ -1,6 +1,11 @@
 
 x-logging: &default-logging
   driver: local
+  # Without explicit caps a single oversized entry (a dumped dataframe or plotly payload)
+  # can grow past what `docker logs` will read back, making the whole stream unfilterable.
+  options:
+    max-size: "10m"
+    max-file: "5"
 
 services:
   backend:
