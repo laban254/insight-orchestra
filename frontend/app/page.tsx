@@ -16,7 +16,7 @@ import { DatasetInfoPanel } from "@/components/upload/DatasetInfoPanel";
 import { Workspace } from "@/components/workspace/Workspace";
 import { HistoryDrawer } from "@/components/workspace/HistoryDrawer";
 import { api } from "@/lib/api";
-import { DemoDataset } from "@/lib/types";
+import { DemoDataset, ParseAssumptions } from "@/lib/types";
 import { exportReport } from "@/lib/exportReport";
 import {
     listWorkspaces,
@@ -37,6 +37,7 @@ export interface DatasetInfo {
     columns: number | string;
     description?: string;
     use_cases?: string[];
+    assumptions?: ParseAssumptions;
 }
 
 const newId = () => crypto.randomUUID();
@@ -100,7 +101,26 @@ export default function Home() {
         setCost({ tokens: 0, cost: 0 });
     };
 
-    const handleUploadSuccess = (path: string, info: DatasetInfo) => startWorkspace(path, info);
+    const describeAssumptions = (a?: ParseAssumptions): string | null => {
+        if (!a) return null;
+        const notes: string[] = [];
+        if (a.delimiter && a.delimiter !== ",") {
+            notes.push(`"${a.delimiter === "\t" ? "tab" : a.delimiter}" separator`);
+        }
+        if (a.encoding && !a.encoding.startsWith("utf-8")) notes.push(`${a.encoding} encoding`);
+        if (a.datetime_columns?.length) {
+            notes.push(
+                `${a.datetime_columns.length} date column${a.datetime_columns.length === 1 ? "" : "s"}`
+            );
+        }
+        return notes.length ? `Detected ${notes.join(", ")}` : null;
+    };
+
+    const handleUploadSuccess = (path: string, info: DatasetInfo) => {
+        const note = describeAssumptions(info.assumptions);
+        if (note) toast(note, "info");
+        startWorkspace(path, info);
+    };
 
     const handleNew = () => {
         setFilePath(null);
@@ -359,16 +379,7 @@ export default function Home() {
                                     availableDatasets ? (
                                         <DatasetSelector onUploadSuccess={handleUploadSuccess} datasets={availableDatasets} />
                                     ) : (
-                                        <FileUpload
-                                            onUploadSuccess={(path) =>
-                                                handleUploadSuccess(path, {
-                                                    name: "Uploaded File",
-                                                    type: "uploaded",
-                                                    rows: "Unknown",
-                                                    columns: "Unknown",
-                                                })
-                                            }
-                                        />
+                                        <FileUpload onUploadSuccess={handleUploadSuccess} />
                                     )
                                 ) : (
                                     <DatabaseConnect onDataReady={handleUploadSuccess} />

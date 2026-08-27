@@ -27,14 +27,22 @@ Charlie,35,Engineering,85000
 
 class TestEndpoints:
     @pytest.mark.asyncio
-    async def test_upload_csv_success(self):
+    async def test_upload_csv_success(self, tmp_path):
+        # /upload now parses what it stored, so the path has to be real.
+        stored = tmp_path / "test_uploaded.csv"
+        stored.write_text("name,age\nAlice,25\nBob,30\n")
         with patch("app.api.endpoints.save_upload_file") as mock_save:
-            mock_save.return_value = "/tmp/test_uploaded.csv"
+            mock_save.return_value = str(stored)
             upload = UploadFile(filename="test.csv", file=BytesIO(b"name,age\nAlice,25\nBob,30"))
             response = await endpoints.upload_csv(upload)
 
-        assert "file_path" in response
-        assert response["file_path"] == "/tmp/test_uploaded.csv"
+        assert response["file_path"] == str(stored)
+        # The upload response describes the data, so the UI never has to
+        # show "Unknown rows / Unknown cols".
+        assert response["rows"] == 2
+        assert response["columns"] == 2
+        assert response["column_names"] == ["name", "age"]
+        assert len(response["preview"]) == 2
 
     @pytest.mark.asyncio
     async def test_upload_non_csv_rejected(self):

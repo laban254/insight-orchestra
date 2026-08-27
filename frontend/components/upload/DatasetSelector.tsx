@@ -3,7 +3,7 @@
 import { useState, useCallback } from "react";
 import { api } from "@/lib/api";
 import { ChevronDown, UploadCloud, Database, Loader2 } from "lucide-react";
-import { DemoDataset } from "@/lib/types";
+import { DemoDataset, ParseAssumptions } from "@/lib/types";
 
 interface UploadInfo {
     type: "uploaded" | "demo";
@@ -12,6 +12,7 @@ interface UploadInfo {
     columns: number | string;
     description?: string;
     use_cases?: string[];
+    assumptions?: ParseAssumptions;
 }
 
 export function DatasetSelector({
@@ -42,10 +43,11 @@ export function DatasetSelector({
             try {
                 const result = await api.uploadFile(file);
                 onUploadSuccess(result.file_path, {
-                    name: file.name,
+                    name: result.name || file.name,
                     type: "uploaded",
-                    rows: result.rows || "Unknown",
-                    columns: result.columns || "Unknown",
+                    rows: result.rows,
+                    columns: result.columns,
+                    assumptions: result.assumptions,
                 });
             } catch (err: unknown) {
                 setError(getErrorMessage(err, "Upload failed"));

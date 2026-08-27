@@ -16,8 +16,8 @@ from app.services.nlq_agent import NaturalLanguageQueryAgent
 from app.services.report_agent import ReportGeneratorAgent
 from app.services.session_manager import get_session_manager
 from app.services.summarizer_agent import InsightSummarizerAgent
-from app.utils.dataset_io import read_dataset
-from app.utils.file_utils import UPLOAD_DIR, save_upload_file
+from app.utils.dataset_io import describe_dataset, read_dataset
+from app.utils.file_utils import UPLOAD_DIR, discard_upload, save_upload_file
 from app.utils.json_sanitize import sanitize_json
 
 logger = logging.getLogger(__name__)
@@ -74,14 +74,31 @@ def get_df(file_path: str) -> pd.DataFrame:
 
 @router.post("/upload")
 async def upload_csv(file: UploadFile = File(...)):
-    """Upload CSV file."""
+    """Upload a CSV, returning its shape, column types and a preview."""
     try:
         file_path = save_upload_file(file)
-        return {"file_path": file_path}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         raise HTTPException(status_code=500, detail="File upload failed.") from e
+
+    # Parse now rather than at analysis time. A file that can't be read is a
+    # failed upload, and reporting it later — after the UI has said the
+    # upload succeeded — is the worst version of that error.
+    try:
+        result = read_dataset(file_path)
+    except ValueError as e:
+        discard_upload(file_path)
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    return sanitize_json(
+        {
+            "file_path": file_path,
+            "name": file.filename,
+            **describe_dataset(result.df),
+            "assumptions": result.assumptions,
+        }
+    )
 
 
 @router.post("/process")

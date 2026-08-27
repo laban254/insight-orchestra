@@ -3,8 +3,23 @@
 import { useState, useCallback } from "react";
 import { UploadCloud, Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
+import { ParseAssumptions } from "@/lib/types";
 
-export function FileUpload({ onUploadSuccess }: { onUploadSuccess: (filePath: string) => void }) {
+interface UploadInfo {
+    type: "uploaded" | "demo";
+    name: string;
+    rows: number | string;
+    columns: number | string;
+    description?: string;
+    use_cases?: string[];
+    assumptions?: ParseAssumptions;
+}
+
+export function FileUpload({
+    onUploadSuccess,
+}: {
+    onUploadSuccess: (filePath: string, info: UploadInfo) => void;
+}) {
     const [isDragging, setIsDragging] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -30,7 +45,13 @@ export function FileUpload({ onUploadSuccess }: { onUploadSuccess: (filePath: st
         setIsUploading(true);
         try {
             const result = await api.uploadFile(file);
-            onUploadSuccess(result.file_path);
+            onUploadSuccess(result.file_path, {
+                name: result.name || file.name,
+                type: "uploaded",
+                rows: result.rows,
+                columns: result.columns,
+                assumptions: result.assumptions,
+            });
         } catch (err: unknown) {
             setError(getErrorMessage(err, "Upload failed"));
         } finally {
@@ -70,7 +91,14 @@ export function FileUpload({ onUploadSuccess }: { onUploadSuccess: (filePath: st
         setIsUploading(true);
         try {
             const result = await api.loadDemoData();
-            onUploadSuccess(result.file_path);
+            onUploadSuccess(result.file_path, {
+                name: result.dataset_name,
+                type: "demo",
+                rows: result.row_count,
+                columns: result.column_count,
+                description: result.description,
+                use_cases: result.use_cases,
+            });
         } catch (err: unknown) {
             setError(getErrorMessage(err, "Failed to load demo"));
         } finally {

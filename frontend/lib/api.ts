@@ -10,6 +10,7 @@ import {
     DemoDatasetLoadResponse,
     ProcessResponse,
     AppConfig,
+    UploadResponse,
 } from './types';
 // Type-only import — erased at compile time, so no runtime cycle with workspaces.ts.
 import type { SavedState, WorkspaceMeta, WorkspaceRecord } from './workspaces';
@@ -45,10 +46,10 @@ export const api = {
     },
 
     // DATA
-    uploadFile: async (file: File) => {
+    uploadFile: async (file: File): Promise<UploadResponse> => {
         const formData = new FormData();
         formData.append('file', file);
-        const response = await apiClient.post('/upload', formData, {
+        const response = await apiClient.post<UploadResponse>('/upload', formData, {
             headers: { 'Content-Type': 'multipart/form-data' },
         });
         return response.data;

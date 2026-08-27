@@ -27,6 +27,25 @@ export interface LoadTableResponse {
   columns: string[];
 }
 
+/** What the reader had to assume to parse the file, so we can tell the user. */
+export interface ParseAssumptions {
+  encoding: string;
+  delimiter: string;
+  datetime_columns: string[];
+}
+
+export interface UploadResponse {
+  file_path: string;
+  name: string;
+  rows: number;
+  columns: number;
+  column_names: string[];
+  dtypes: Record<string, string>;
+  null_counts: Record<string, number>;
+  preview: Record<string, unknown>[];
+  assumptions: ParseAssumptions;
+}
+
 export interface NLQRequest {
   file_path: string;
   question: string;
