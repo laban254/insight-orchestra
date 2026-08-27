@@ -20,7 +20,7 @@ export interface LoadTableRequest {
 }
 
 export interface LoadTableResponse {
-  file_path: string;
+  dataset_id: string;
   table_name: string;
   row_count: number;
   column_count: number;
@@ -35,7 +35,7 @@ export interface ParseAssumptions {
 }
 
 export interface UploadResponse {
-  file_path: string;
+  dataset_id: string;
   name: string;
   rows: number;
   columns: number;
@@ -57,7 +57,7 @@ export interface LocalDatabaseFilesResponse {
 }
 
 export interface NLQRequest {
-  file_path: string;
+  dataset_id: string;
   question: string;
   session_id?: string;
 }
@@ -98,8 +98,8 @@ export interface DemoDatasetListResponse {
 }
 
 export interface DemoDatasetLoadResponse {
-  file_path: string;
   dataset_id: string;
+  demo_id: string;
   dataset_name: string;
   columns: string[];
   row_count: number;

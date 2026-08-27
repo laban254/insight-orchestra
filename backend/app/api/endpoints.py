@@ -11,13 +11,18 @@ from sse_starlette.sse import EventSourceResponse
 from app.agent_progress import close_queue, get_queue, push_event, push_sentinel
 from app.config import settings
 from app.services.adk_agents import DataJanitorAgent, HypothesisBotAgent, InsightOrchestraWorkflow
+from app.services.dataset_registry import (
+    DATASET_DIR,
+    DatasetMissingError,
+    get_dataset_registry,
+)
 from app.services.explain_agent import ExplainabilityAgent
 from app.services.nlq_agent import NaturalLanguageQueryAgent
 from app.services.report_agent import ReportGeneratorAgent
 from app.services.session_manager import get_session_manager
 from app.services.summarizer_agent import InsightSummarizerAgent
 from app.utils.dataset_io import describe_dataset, read_dataset, sample_for_analysis
-from app.utils.file_utils import UPLOAD_DIR, discard_upload, save_upload_file
+from app.utils.file_utils import discard_upload, save_upload_file
 from app.utils.json_sanitize import sanitize_json
 
 logger = logging.getLogger(__name__)
@@ -28,15 +33,16 @@ router = APIRouter()
 
 # Session manager (Redis-backed with in-memory fallback)
 _session_manager = get_session_manager()
+_datasets = get_dataset_registry()
 
 
 class ProcessRequest(BaseModel):
-    file_path: str
+    dataset_id: str
     session_id: str | None = None
 
 
 class NLQRequest(BaseModel):
-    file_path: str
+    dataset_id: str
     question: str
     session_id: str | None = None
 
@@ -46,27 +52,20 @@ class BigQueryRequest(BaseModel):
     query: str
 
 
-def get_df(file_path: str) -> pd.DataFrame:
-    """Load DataFrame from file path."""
-    # Security: Resolve and validate the path against allowed directories
-    # before touching the filesystem, to prevent path traversal. Paths
-    # outside the sandbox are reported as "not found" (rather than a
-    # distinct "access denied") so we don't confirm the existence of
-    # files outside it.
-    real_path = os.path.realpath(file_path)
-    allowed_dirs = ["/tmp", UPLOAD_DIR]
-    in_allowed_dir = any(
-        real_path == allowed_dir or real_path.startswith(allowed_dir + os.sep)
-        for allowed_dir in allowed_dirs
-    )
-    if not in_allowed_dir:
-        raise HTTPException(status_code=404, detail="File not found.")
+def get_df(dataset_id: str) -> pd.DataFrame:
+    """Load the DataFrame for a registered dataset.
 
-    if not os.path.isfile(real_path):
-        raise HTTPException(status_code=404, detail="File not found.")
+    The client holds an opaque id, never a path, so there is no
+    caller-supplied path to validate — the registry is the only thing that
+    can name a file, and it only ever names files the server wrote.
+    """
+    try:
+        path = _datasets.resolve_path(dataset_id)
+    except DatasetMissingError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
     try:
-        return read_dataset(real_path).df
+        return read_dataset(path).df
     except ValueError as e:
         # read_dataset raises ValueError with a user-facing message.
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -91,10 +90,13 @@ async def upload_csv(file: UploadFile = File(...)):
         discard_upload(file_path)
         raise HTTPException(status_code=400, detail=str(e)) from e
 
+    name = file.filename or "Uploaded file"
+    dataset_id = _datasets.register(file_path, name=name, source="upload")
+
     return sanitize_json(
         {
-            "file_path": file_path,
-            "name": file.filename,
+            "dataset_id": dataset_id,
+            "name": name,
             **describe_dataset(result.df),
             "assumptions": result.assumptions,
         }
@@ -104,7 +106,7 @@ async def upload_csv(file: UploadFile = File(...)):
 @router.post("/process")
 async def process_data(request: ProcessRequest):
     """Run full Insight Orchestra workflow with real-time agent progress events."""
-    df = get_df(request.file_path)
+    df = get_df(request.dataset_id)
     df, sampling = sample_for_analysis(df)
     workflow = InsightOrchestraWorkflow()
     sid = request.session_id
@@ -228,7 +230,7 @@ async def process_data(request: ProcessRequest):
 async def natural_language_query(request: NLQRequest):
     """Natural language query with LLM-powered code generation."""
     sid = request.session_id
-    df = get_df(request.file_path)
+    df = get_df(request.dataset_id)
     df, sampling = sample_for_analysis(df)
 
     try:
@@ -376,9 +378,14 @@ async def bigquery_fetch(request: BigQueryRequest):
 
     try:
         df = run_bigquery_query(request.credentials_json, request.query)
-        temp_path = f"/tmp/bq_{os.urandom(8).hex()}.csv"
-        df.to_csv(temp_path, index=False)
-        return {"file_path": temp_path, "columns": df.columns.tolist(), "row_count": len(df)}
+        path = os.path.join(DATASET_DIR, f"bq_{os.urandom(8).hex()}.csv")
+        df.to_csv(path, index=False)
+        dataset_id = _datasets.register(path, name="BigQuery result", source="bigquery")
+        return {
+            "dataset_id": dataset_id,
+            "columns": df.columns.tolist(),
+            "row_count": len(df),
+        }
     except BigQueryUnavailableError as e:
         # Optional dependency absent — not a server fault, and not something
         # the caller can fix by changing the request.
@@ -439,6 +446,44 @@ async def update_config(update: ConfigUpdate):
     return runtime_config.current()
 
 
+@router.get("/datasets/{dataset_id}")
+async def get_dataset(dataset_id: str):
+    """Whether a dataset is still usable, and what it looks like.
+
+    The UI calls this when reopening a saved workspace so it can say the
+    data is gone up front, instead of restoring the charts and then failing
+    on the user's next question.
+    """
+    try:
+        path = _datasets.resolve_path(dataset_id)
+    except DatasetMissingError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+    record = _datasets.get(dataset_id)
+    try:
+        result = read_dataset(path)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    return sanitize_json(
+        {
+            "dataset_id": dataset_id,
+            "name": (record or {}).get("name", ""),
+            "source": (record or {}).get("source", ""),
+            **describe_dataset(result.df),
+            "assumptions": result.assumptions,
+        }
+    )
+
+
+@router.delete("/datasets/{dataset_id}")
+async def delete_dataset(dataset_id: str):
+    """Forget a dataset and remove its file."""
+    if not _datasets.delete(dataset_id):
+        raise HTTPException(status_code=404, detail="Dataset not found.")
+    return {"status": "deleted"}
+
+
 @router.get("/sessions/{session_id}")
 async def get_session(session_id: str):
     """Get session context."""
@@ -484,12 +529,15 @@ async def load_demo_data(dataset_id: str = "sales"):
 
     try:
         df, metadata = get_demo_dataset(dataset_id)
-        temp_path = f"/tmp/demo_{dataset_id}_{os.urandom(8).hex()}.csv"
-        df.to_csv(temp_path, index=False)
+        path = os.path.join(DATASET_DIR, f"demo_{dataset_id}_{os.urandom(8).hex()}.csv")
+        df.to_csv(path, index=False)
+        # Recording the demo id lets the registry rebuild this file if it is
+        # ever lost, so an old workspace reopens instead of dead-ending.
+        registered_id = _datasets.register(path, name=metadata["name"], source=f"demo:{dataset_id}")
 
         return {
-            "file_path": temp_path,
-            "dataset_id": metadata["dataset_id"],
+            "dataset_id": registered_id,
+            "demo_id": metadata["dataset_id"],
             "dataset_name": metadata["name"],
             "columns": metadata["column_names"],
             "row_count": metadata["rows"],

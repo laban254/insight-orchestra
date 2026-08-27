@@ -57,7 +57,7 @@ export default function Home() {
     const theme = useTheme();
     const toast = useToast();
 
-    const [filePath, setFilePath] = useState<string | null>(null);
+    const [datasetId, setDatasetId] = useState<string | null>(null);
     const [datasetInfo, setDatasetInfo] = useState<DatasetInfo | null>(null);
     const [uploadMode, setUploadMode] = useState<"file" | "db">("file");
     const [availableDatasets, setAvailableDatasets] = useState<Record<string, DemoDataset> | null>(null);
@@ -89,9 +89,9 @@ export default function Home() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const startWorkspace = (path: string, info: DatasetInfo) => {
+    const startWorkspace = (dataset: string, info: DatasetInfo) => {
         const id = newId();
-        setFilePath(path);
+        setDatasetId(dataset);
         setDatasetInfo(info);
         setWorkspaceId(id);
         setLastWorkspaceId(id);
@@ -123,7 +123,7 @@ export default function Home() {
     };
 
     const handleNew = () => {
-        setFilePath(null);
+        setDatasetId(null);
         setDatasetInfo(null);
         setWorkspaceId(null);
         setRestore(null);
@@ -135,7 +135,7 @@ export default function Home() {
     const handleSwitchDataset = async (datasetId: string) => {
         try {
             const result = await api.loadDemoData(datasetId);
-            startWorkspace(result.file_path, {
+            startWorkspace(result.dataset_id, {
                 name: result.dataset_name,
                 type: "demo",
                 rows: result.row_count,
@@ -158,13 +158,13 @@ export default function Home() {
                 {
                     id: workspaceId,
                     datasetName: datasetInfo?.name ?? "Dataset",
-                    filePath: filePath ?? "",
+                    datasetId: datasetId ?? "",
                     createdAt: createdAt.current,
                 },
                 state
             ).then(() => listWorkspaces().then(setWorkspaces));
         },
-        [workspaceId, datasetInfo, filePath]
+        [workspaceId, datasetInfo, datasetId]
     );
 
     const reopen = async (id: string) => {
@@ -174,8 +174,25 @@ export default function Home() {
             clearLastWorkspaceId(); // stale pointer — target no longer exists
             return;
         }
+        // Check the data is still there before restoring. Previously the
+        // charts came back from Redis and the workspace looked healthy, then
+        // the next question 404'd — the dataset had been written to /tmp and
+        // lost on a container recreate.
+        if (!record.datasetId) {
+            toast("This analysis predates dataset tracking — load the data again", "error");
+            clearLastWorkspaceId();
+            return;
+        }
+        try {
+            await api.getDataset(record.datasetId);
+        } catch {
+            toast(`The data behind "${record.datasetName}" is no longer available`, "error");
+            clearLastWorkspaceId();
+            return;
+        }
+
         const shape = record.state.analysisResult?.cleaner.report.final_shape;
-        setFilePath(record.filePath);
+        setDatasetId(record.datasetId);
         setDatasetInfo({
             name: record.datasetName,
             type: "demo",
@@ -247,7 +264,7 @@ export default function Home() {
         <>
             <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} commands={commands} />
 
-            {filePath && workspaceId ? (
+            {datasetId && workspaceId ? (
                 <main className="flex h-screen w-full flex-col bg-bg">
                     <HistoryDrawer
                         open={historyOpen}
@@ -303,7 +320,7 @@ export default function Home() {
                     <Workspace
                         key={workspaceId}
                         workspaceId={workspaceId}
-                        filePath={filePath}
+                        datasetId={datasetId}
                         datasetName={datasetInfo?.name ?? "Dataset"}
                         restore={restore}
                         onPersist={onPersist}

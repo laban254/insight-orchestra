@@ -7,7 +7,7 @@ import { LocalDatabaseFile, Schema } from "@/lib/types";
 import type { DatasetInfo } from "@/app/page";
 
 interface DatabaseConnectProps {
-    onDataReady: (filePath: string, info: DatasetInfo) => void;
+    onDataReady: (datasetId: string, info: DatasetInfo) => void;
 }
 
 export function DatabaseConnect({ onDataReady }: DatabaseConnectProps) {
@@ -95,7 +95,7 @@ export function DatabaseConnect({ onDataReady }: DatabaseConnectProps) {
 
         try {
             const result = await api.loadTable({ connection_id: connectionId, table_name: tableName });
-            onDataReady(result.file_path, {
+            onDataReady(result.dataset_id, {
                 name: tableName,
                 type: "database",
                 rows: result.row_count,

@@ -18,7 +18,7 @@ interface UploadInfo {
 export function FileUpload({
     onUploadSuccess,
 }: {
-    onUploadSuccess: (filePath: string, info: UploadInfo) => void;
+    onUploadSuccess: (datasetId: string, info: UploadInfo) => void;
 }) {
     const [isDragging, setIsDragging] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
@@ -45,7 +45,7 @@ export function FileUpload({
         setIsUploading(true);
         try {
             const result = await api.uploadFile(file);
-            onUploadSuccess(result.file_path, {
+            onUploadSuccess(result.dataset_id, {
                 name: result.name || file.name,
                 type: "uploaded",
                 rows: result.rows,
@@ -91,7 +91,7 @@ export function FileUpload({
         setIsUploading(true);
         try {
             const result = await api.loadDemoData();
-            onUploadSuccess(result.file_path, {
+            onUploadSuccess(result.dataset_id, {
                 name: result.dataset_name,
                 type: "demo",
                 rows: result.row_count,

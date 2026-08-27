@@ -12,14 +12,14 @@ import type { SavedState } from "@/lib/workspaces";
 
 interface WorkspaceProps {
     workspaceId: string;
-    filePath: string;
+    datasetId: string;
     datasetName: string;
     restore?: SavedState | null;
     onPersist: (state: SavedState) => void;
     onCost?: (delta: { tokens: number; cost: number }) => void;
 }
 
-export function Workspace({ workspaceId, filePath, datasetName, restore, onPersist, onCost }: WorkspaceProps) {
+export function Workspace({ workspaceId, datasetId, datasetName, restore, onPersist, onCost }: WorkspaceProps) {
     const sessionId = workspaceId;
     const reopened = !!restore?.analysisResult;
 
@@ -57,7 +57,7 @@ export function Workspace({ workspaceId, filePath, datasetName, restore, onPersi
         let cancelled = false;
         setAnalysisLoading(true);
         setAnalysisError(null);
-        api.processData(filePath, sessionId)
+        api.processData(datasetId, sessionId)
             .then((result) => {
                 if (!cancelled) setAnalysisResult(result);
             })
@@ -71,7 +71,7 @@ export function Workspace({ workspaceId, filePath, datasetName, restore, onPersi
             cancelled = true;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [filePath]);
+    }, [datasetId]);
 
     useEffect(() => {
         scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -104,7 +104,7 @@ export function Workspace({ workspaceId, filePath, datasetName, restore, onPersi
 
             try {
                 const res = await api.naturalLanguageQuery({
-                    file_path: filePath,
+                    dataset_id: datasetId,
                     question,
                     session_id: sessionId,
                 });
@@ -139,7 +139,7 @@ export function Workspace({ workspaceId, filePath, datasetName, restore, onPersi
                 setIsLoading(false);
             }
         },
-        [filePath, sessionId, isLoading, analysisLoading]
+        [datasetId, sessionId, isLoading, analysisLoading]
     );
 
     const refineResult = useCallback(

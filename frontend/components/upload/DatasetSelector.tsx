@@ -19,7 +19,7 @@ export function DatasetSelector({
     onUploadSuccess,
     datasets,
 }: {
-    onUploadSuccess: (filePath: string, info: UploadInfo) => void;
+    onUploadSuccess: (datasetId: string, info: UploadInfo) => void;
     datasets: Record<string, DemoDataset>;
 }) {
     const [isDragging, setIsDragging] = useState(false);
@@ -42,7 +42,7 @@ export function DatasetSelector({
             setIsUploading(true);
             try {
                 const result = await api.uploadFile(file);
-                onUploadSuccess(result.file_path, {
+                onUploadSuccess(result.dataset_id, {
                     name: result.name || file.name,
                     type: "uploaded",
                     rows: result.rows,
@@ -84,7 +84,7 @@ export function DatasetSelector({
         setSelectedDataset(datasetId);
         try {
             const result = await api.loadDemoData(datasetId);
-            onUploadSuccess(result.file_path, {
+            onUploadSuccess(result.dataset_id, {
                 name: result.dataset_name,
                 type: "demo",
                 rows: result.row_count,

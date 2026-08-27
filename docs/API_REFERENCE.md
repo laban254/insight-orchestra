@@ -55,14 +55,35 @@ curl -X POST http://localhost:8000/upload \
 **Response** `200 OK`:
 ```json
 {
-  "file_path": "/tmp/abc123_data.csv"
+  "dataset_id": "8f14e45fceea167a5a36dedd4bea2543",
+  "name": "data.csv",
+  "rows": 995,
+  "columns": 15,
+  "column_names": ["date", "region", "revenue"],
+  "dtypes": {"date": "datetime64[ns]", "region": "str", "revenue": "float64"},
+  "null_counts": {"date": 0, "region": 2, "revenue": 0},
+  "preview": [{"date": "2024-01-01T00:00:00", "region": "North", "revenue": 100.0}],
+  "assumptions": {
+    "encoding": "utf-8",
+    "delimiter": ",",
+    "datetime_columns": ["date"]
+  }
 }
 ```
+
+The file is parsed during upload, so a file that cannot be read fails here
+rather than later during analysis. `assumptions` reports what had to be
+detected — a non-comma delimiter, a non-UTF-8 encoding, or columns parsed as
+dates — so the client can tell the user what was inferred.
+
+The client receives an opaque `dataset_id`, never a server path.
 
 **Errors**:
 | Status | Detail |
 |--------|--------|
-| `400` | `File size exceeds 50 MB limit` |
+| `400` | `Only CSV files are allowed (.csv or .tsv).` |
+| `400` | `File too large. Maximum is 50 MB.` |
+| `400` | `This looks like a spreadsheet or archive rather than a CSV...` |
 | `500` | `File upload failed.` |
 
 ---
@@ -76,7 +97,7 @@ Run the complete 4-agent pipeline (Data Janitor → Hypothesis Bot → Debate Ma
 **Request Body**:
 ```json
 {
-  "file_path": "/tmp/abc123_data.csv"
+  "dataset_id": "8f14e45fceea167a5a36dedd4bea2543"
 }
 ```
 
@@ -86,14 +107,13 @@ Run the complete 4-agent pipeline (Data Janitor → Hypothesis Bot → Debate Ma
 ```bash
 curl -X POST http://localhost:8000/process \
   -H "Content-Type: application/json" \
-  -d '{"file_path": "/tmp/abc123_data.csv"}'
+  -d '{"dataset_id": "8f14e45fceea167a5a36dedd4bea2543"}'
 ```
 
 **Response** `200 OK`:
 ```json
 {
   "cleaner": {
-    "cleaned_data": [...],
     "report": {
       "initial_shape": [1000, 15],
       "duplicates_removed": 5,
@@ -134,8 +154,8 @@ curl -X POST http://localhost:8000/process \
 **Errors**:
 | Status | Detail |
 |--------|--------|
-| `404` | `File not found.` |
-| `400` | `Failed to read CSV: ...` |
+| `404` | `That dataset is no longer available. Upload it again to continue.` |
+| `400` | `Could not read the file: ...` |
 
 ---
 
@@ -148,7 +168,7 @@ Convert a natural language question into pandas code, execute it in the sandbox,
 **Request Body**:
 ```json
 {
-  "file_path": "/tmp/abc123_data.csv",
+  "dataset_id": "8f14e45fceea167a5a36dedd4bea2543",
   "question": "What's the average salary by department?",
   "session_id": "optional-sse-session-id"
 }
@@ -159,7 +179,7 @@ Convert a natural language question into pandas code, execute it in the sandbox,
 curl -X POST http://localhost:8000/nlq \
   -H "Content-Type: application/json" \
   -d '{
-    "file_path": "/tmp/abc123_data.csv",
+    "dataset_id": "8f14e45fceea167a5a36dedd4bea2543",
     "question": "Show me top 5 departments by average salary"
   }'
 ```
@@ -182,8 +202,39 @@ curl -X POST http://localhost:8000/nlq \
 **Errors**:
 | Status | Detail |
 |--------|--------|
-| `400` | `Failed to read CSV: ...` |
-| `404` | `File not found.` |
+| `400` | `Could not read the file: ...` |
+| `404` | `That dataset is no longer available. Upload it again to continue.` |
+
+---
+
+### Datasets
+
+Every ingestion path (`/upload`, `/demo/load`, `/connectors/load-table`,
+`/bigquery`) registers the data it materializes and returns an opaque
+`dataset_id`. The client never receives or sends a filesystem path, so
+`/process` and `/nlq` have no caller-supplied path to validate. Files live
+on the mounted uploads volume, so they survive a container recreate.
+
+#### `GET /datasets/{dataset_id}`
+
+Whether a dataset is still usable, plus its shape and a preview. The UI
+calls this when reopening a saved analysis so it can report missing data up
+front instead of failing on the next question.
+
+**Response** `200 OK`: same body as `/upload`, plus the `source` it came
+from (`upload`, `demo:<id>`, `database`, `bigquery`).
+
+Demo datasets are regenerated on demand if their file has been removed, so
+an old workspace built on demo data reopens normally.
+
+**Errors**:
+| Status | Detail |
+|--------|--------|
+| `404` | `That dataset is no longer available. Upload it again to continue.` |
+
+#### `DELETE /datasets/{dataset_id}`
+
+Forget a dataset and delete its file.
 
 ---
 
@@ -285,7 +336,7 @@ Run a SQL query against Google BigQuery using service account credentials.
 **Response** `200 OK`:
 ```json
 {
-  "file_path": "/tmp/bq_abc123.csv",
+  "dataset_id": "8f14e45fceea167a5a36dedd4bea2543",
   "columns": ["id", "name", "created_at"],
   "row_count": 100
 }
@@ -372,14 +423,14 @@ Materialize a table from a connected database into a CSV, using the
 **Response** `200 OK`:
 ```json
 {
-  "file_path": "/tmp/dbtable_e3643ffa9da84b5b8a5a6a82c1b0d2ab.csv",
+  "dataset_id": "8f14e45fceea167a5a36dedd4bea2543",
   "table_name": "users",
   "row_count": 1000,
   "column_count": 6,
   "columns": ["id", "email", "..."]
 }
 ```
-Pass `file_path` to `/process` or `/nlq` just like an uploaded file's path.
+Pass `dataset_id` to `/process` or `/nlq` just like an uploaded file's id.
 
 **Errors**:
 | Status | Detail |
@@ -537,7 +588,7 @@ Load a demo dataset by ID. Disabled when `DEMO_MODE=false`.
 **Response** `200 OK`:
 ```json
 {
-  "file_path": "/tmp/demo_sales_abc123.csv",
+  "dataset_id": "8f14e45fceea167a5a36dedd4bea2543",
   "dataset_id": "sales",
   "dataset_name": "Sales Dataset",
   "columns": ["product", "region", "sales", "quarter"],
@@ -619,7 +670,7 @@ Content-Type: application/json
 UPLOAD_RESPONSE=$(curl -s -X POST http://localhost:8000/upload \
   -F "file=@sales_data.csv")
 
-FILE_PATH=$(echo $UPLOAD_RESPONSE | jq -r '.file_path')
+DATASET_ID=$(echo $UPLOAD_RESPONSE | jq -r '.dataset_id')
 
 # 2. Create a session ID for SSE streaming
 SESSION_ID="test-session-1"
@@ -630,13 +681,13 @@ SESSION_ID="test-session-1"
 # 3. Process data through full pipeline
 curl -s -X POST "http://localhost:8000/process?session_id=$SESSION_ID" \
   -H "Content-Type: application/json" \
-  -d "{\"file_path\": \"$FILE_PATH\"}"
+  -d "{\"dataset_id\": \"$DATASET_ID\"}"
 
 # 4. Ask a question
 curl -s -X POST http://localhost:8000/nlq \
   -H "Content-Type: application/json" \
   -d "{
-    \"file_path\": \"$FILE_PATH\",
+    \"dataset_id\": \"$DATASET_ID\",
     \"question\": \"Sales by region this quarter?\",
     \"session_id\": \"$SESSION_ID\"
   }"
@@ -654,15 +705,15 @@ CONNECTION_ID=$(curl -s -X POST http://localhost:8000/connectors/connect \
   }' | jq -r '.connection_id')
 
 # 2. Load a table — materializes it as a CSV
-FILE_PATH=$(curl -s -X POST http://localhost:8000/connectors/load-table \
+DATASET_ID=$(curl -s -X POST http://localhost:8000/connectors/load-table \
   -H "Content-Type: application/json" \
   -d "{\"connection_id\": \"$CONNECTION_ID\", \"table_name\": \"users\"}" \
-  | jq -r '.file_path')
+  | jq -r '.dataset_id')
 
 # 3. Run it through the normal pipeline
 curl -s -X POST http://localhost:8000/process \
   -H "Content-Type: application/json" \
-  -d "{\"file_path\": \"$FILE_PATH\"}"
+  -d "{\"dataset_id\": \"$DATASET_ID\"}"
 
 # Optional: disconnect early instead of waiting for the TTL
 curl -X DELETE http://localhost:8000/connectors/$CONNECTION_ID

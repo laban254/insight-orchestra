@@ -71,11 +71,15 @@ export const api = {
     },
 
     // ANALYSIS
-    processData: async (filePath: string, sessionId?: string): Promise<ProcessResponse> => {
+    processData: async (datasetId: string, sessionId?: string): Promise<ProcessResponse> => {
         const response = await apiClient.post<ProcessResponse>('/process', {
-            file_path: filePath,
+            dataset_id: datasetId,
             session_id: sessionId,
         });
+        return response.data;
+    },
+    getDataset: async (datasetId: string): Promise<UploadResponse> => {
+        const response = await apiClient.get<UploadResponse>(`/datasets/${datasetId}`);
         return response.data;
     },
     naturalLanguageQuery: async (data: NLQRequest): Promise<NLQResponse> => {
@@ -99,7 +103,7 @@ export const api = {
     },
     saveWorkspace: async (
         id: string,
-        payload: { datasetName: string; filePath: string; createdAt: number; state: SavedState }
+        payload: { datasetName: string; datasetId: string; createdAt: number; state: SavedState }
     ): Promise<WorkspaceMeta> => {
         const response = await apiClient.put<WorkspaceMeta>(`/workspaces/${id}`, payload);
         return response.data;

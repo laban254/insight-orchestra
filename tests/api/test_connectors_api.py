@@ -136,8 +136,17 @@ class TestLoadTable:
         assert result["table_name"] == "users"
         assert result["row_count"] == 2
         assert result["column_count"] == 2
-        loaded = pd.read_csv(result["file_path"])
-        assert list(loaded["name"]) == ["Alice", "Bob"]
+        # The table is materialized under an opaque dataset id; the client
+        # never receives a server path.
+        assert "file_path" not in result
+        from app.services.dataset_registry import get_dataset_registry
+
+        registry = get_dataset_registry()
+        try:
+            loaded = pd.read_csv(registry.resolve_path(result["dataset_id"]))
+            assert list(loaded["name"]) == ["Alice", "Bob"]
+        finally:
+            registry.delete(result["dataset_id"])
 
         query = fake_connector.execute_query.call_args[0][0]
         assert '"users"' in query

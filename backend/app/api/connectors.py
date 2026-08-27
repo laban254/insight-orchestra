@@ -7,11 +7,13 @@ from pydantic import BaseModel
 
 from app.connectors import DuckDBConnector, MySQLConnector, PostgreSQLConnector, SQLiteConnector
 from app.services.connection_store import get_connection_store
+from app.services.dataset_registry import DATASET_DIR, get_dataset_registry
 from app.utils.file_utils import UPLOAD_DIR
 
 router = APIRouter(prefix="/connectors", tags=["connectors"])
 
 _store = get_connection_store()
+_datasets = get_dataset_registry()
 
 CONNECTOR_MAP = {
     "postgresql": PostgreSQLConnector,
@@ -155,11 +157,14 @@ async def load_table(req: LoadTableRequest):
     finally:
         connector.disconnect()
 
-    file_path = f"/tmp/dbtable_{uuid.uuid4().hex}.csv"
+    # Written into the managed dataset directory (on the mounted volume)
+    # rather than /tmp, which does not survive a container recreate.
+    file_path = os.path.join(DATASET_DIR, f"dbtable_{uuid.uuid4().hex}.csv")
     df.to_csv(file_path, index=False)
+    dataset_id = _datasets.register(file_path, name=req.table_name, source="database")
 
     return {
-        "file_path": file_path,
+        "dataset_id": dataset_id,
         "table_name": req.table_name,
         "row_count": len(df),
         "column_count": len(df.columns),

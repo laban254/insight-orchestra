@@ -37,7 +37,8 @@ class TestEndpoints:
             upload = UploadFile(filename="test.csv", file=BytesIO(b"name,age\nAlice,25\nBob,30"))
             response = await endpoints.upload_csv(upload)
 
-        assert response["file_path"] == str(stored)
+        assert response["dataset_id"]
+        assert "file_path" not in response, "the client must never receive a server path"
         # The upload response describes the data, so the UI never has to
         # show "Unknown rows / Unknown cols".
         assert response["rows"] == 2
@@ -53,16 +54,16 @@ class TestEndpoints:
         assert exc.value.status_code == 400
 
     @pytest.mark.asyncio
-    async def test_process_endpoint_requires_file(self):
+    async def test_process_endpoint_rejects_unknown_dataset(self):
         with pytest.raises(HTTPException) as exc:
-            await endpoints.process_data(ProcessRequest(file_path="/nonexistent/file.csv"))
+            await endpoints.process_data(ProcessRequest(dataset_id="does-not-exist"))
         assert exc.value.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_nlq_endpoint_requires_file(self):
+    async def test_nlq_endpoint_rejects_unknown_dataset(self):
         with pytest.raises(HTTPException) as exc:
             await endpoints.natural_language_query(
-                NLQRequest(file_path="/nonexistent/file.csv", question="What is the average age?")
+                NLQRequest(dataset_id="does-not-exist", question="What is the average age?")
             )
         assert exc.value.status_code == 404
 
@@ -90,13 +91,16 @@ class TestEndpoints:
 
 class TestEndpointsIntegration:
     @pytest.fixture
-    def temp_csv(self, sample_csv_content):
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
-            f.write(sample_csv_content)
-            temp_path = f.name
-        yield temp_path
-        if os.path.exists(temp_path):
-            os.unlink(temp_path)
+    def temp_csv(self, sample_csv_content, tmp_path):
+        """A registered dataset id — endpoints no longer take paths."""
+        from app.services.dataset_registry import get_dataset_registry
+
+        path = tmp_path / "integration.csv"
+        path.write_text(sample_csv_content)
+        registry = get_dataset_registry()
+        dataset_id = registry.register(str(path), name="integration.csv", source="upload")
+        yield dataset_id
+        registry.delete(dataset_id, remove_file=False)
 
     @pytest.mark.asyncio
     @patch("app.api.endpoints.InsightOrchestraWorkflow")
@@ -114,7 +118,7 @@ class TestEndpointsIntegration:
         mock_instance.viz.run.return_value = {"chart_info": {"plots": []}}
         mock_workflow.return_value = mock_instance
 
-        response = await endpoints.process_data(ProcessRequest(file_path=temp_csv))
+        response = await endpoints.process_data(ProcessRequest(dataset_id=temp_csv))
         assert "cleaner" in response
         mock_instance.cleaner.run.assert_called_once()
         mock_instance.hypothesis.run.assert_called_once()
@@ -148,7 +152,7 @@ class TestEndpointsIntegration:
             "suggested_questions": ["What drives x?"],
         }
 
-        response = await endpoints.process_data(ProcessRequest(file_path=temp_csv))
+        response = await endpoints.process_data(ProcessRequest(dataset_id=temp_csv))
 
         # Would raise ValueError before the sanitize_json fix, matching the
         # real crash from Starlette's JSONResponse renderer.
@@ -175,7 +179,7 @@ class TestEndpointsIntegration:
         mock_agent_class.return_value = mock_instance
 
         response = await endpoints.natural_language_query(
-            NLQRequest(file_path=temp_csv, question="What is the average age?")
+            NLQRequest(dataset_id=temp_csv, question="What is the average age?")
         )
         assert response["answer"] == "Test answer"
         mock_instance.run.assert_called_once()
@@ -192,14 +196,8 @@ class TestEndpointsErrorHandling:
         assert exc.value.status_code == 400
 
     @pytest.mark.asyncio
-    async def test_process_handles_csv_read_error(self):
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
-            f.write("name,age\nAlice,25")
-            temp_path = f.name
-        try:
-            with patch("app.utils.dataset_io.pd.read_csv", side_effect=Exception("read failed")):
-                with pytest.raises(HTTPException) as exc:
-                    await endpoints.process_data(ProcessRequest(file_path=temp_path))
-            assert exc.value.status_code == 400
-        finally:
-            os.unlink(temp_path)
+    async def test_process_handles_csv_read_error(self, registered_dataset):
+        with patch("app.utils.dataset_io.pd.read_csv", side_effect=Exception("read failed")):
+            with pytest.raises(HTTPException) as exc:
+                await endpoints.process_data(ProcessRequest(dataset_id=registered_dataset))
+        assert exc.value.status_code == 400
