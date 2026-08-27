@@ -54,6 +54,16 @@ class DataJanitorAgent(Agent):
                     # rather than leaving NaN, which isn't valid JSON and
                     # crashes response serialization downstream.
                     df[col] = df[col].fillna(median if pd.notna(median) else 0)
+                elif pd.api.types.is_datetime64_any_dtype(df[col]):
+                    # Dates have no meaningful mode to fall back on, and
+                    # filling one with the "MISSING" sentinel below would
+                    # upcast the column to object — silently undoing the type
+                    # detection every time-series check depends on. Use the
+                    # median timestamp; an all-empty column stays NaT, which
+                    # sanitize_json renders as null.
+                    median_ts = df[col].median()
+                    if pd.notna(median_ts):
+                        df[col] = df[col].fillna(median_ts)
                 else:
                     mode = df[col].mode()
                     df[col] = df[col].fillna(mode[0] if not mode.empty else "MISSING")
@@ -96,8 +106,31 @@ class HypothesisBotAgent(Agent):
             for c in df.select_dtypes(include=["object", "string", "category"]).columns
             if c.lower() not in id_like
         ]
+        datetime_cols = list(df.select_dtypes(include="datetime").columns)
 
         hypotheses: list[str] = []
+
+        # Trends first: on a dataset with a time axis, "what changed over
+        # time" is the question a reader actually has, and it used to be
+        # unaskable because dates arrived as text.
+        for date_col in datetime_cols[:1]:
+            ordered = df.dropna(subset=[date_col]).sort_values(date_col)
+            if len(ordered) < 4:
+                continue
+            span = ordered[date_col].iloc[-1] - ordered[date_col].iloc[0]
+            half = len(ordered) // 2
+            for num in numeric_cols:
+                first = ordered[num].iloc[:half].mean()
+                second = ordered[num].iloc[half:].mean()
+                if pd.isna(first) or pd.isna(second) or abs(first) < 1e-9:
+                    continue
+                change = (second - first) / abs(first) * 100
+                if abs(change) >= 10:
+                    hypotheses.append(
+                        f"{num} {'rose' if change > 0 else 'fell'} {abs(change):.0f}% "
+                        f"between the first and second half of the {span.days}-day period "
+                        f"covered by {date_col} (mean {first:,.1f} → {second:,.1f})."
+                    )
         for cat in categorical_cols:
             for num in numeric_cols:
                 top = df.groupby(cat)[num].mean().sort_values(ascending=False)
@@ -165,6 +198,19 @@ class HypothesisBotAgent(Agent):
                         raw_r = numeric.corr().loc[a, b]
                         direction = "positive" if raw_r > 0 else "negative"
                         lines.append(f"  {a} ↔ {b}: r={raw_r:.2f} ({direction})")
+
+        datetimes = df.select_dtypes(include="datetime")
+        if not datetimes.empty:
+            lines.append("\nTime coverage:")
+            for col in datetimes.columns[:3]:
+                values = df[col].dropna()
+                if values.empty:
+                    continue
+                lo, hi = values.min(), values.max()
+                lines.append(
+                    f"  {col}: {lo:%Y-%m-%d} to {hi:%Y-%m-%d} "
+                    f"({(hi - lo).days} days, {values.nunique()} distinct values)"
+                )
 
         categorical = df.select_dtypes(include=["object", "string", "category"])
         if not categorical.empty:
@@ -397,8 +443,59 @@ class VizWhizAgent(Agent):
                     or isinstance(df[c].dtype, pd.CategoricalDtype)
                 )
 
+            def is_dt(c):
+                return pd.api.types.is_datetime64_any_dtype(df[c])
+
+            def time_series(date_col, value_col=None):
+                """Line chart over time, aggregated to a readable granularity.
+
+                Plotting a thousand raw daily points renders as noise, so the
+                span decides the bucket: daily inside a quarter, weekly inside
+                two years, monthly beyond that.
+                """
+                cols = [date_col] + ([value_col] if value_col else [])
+                frame = df[cols].dropna(subset=[date_col]).sort_values(date_col)
+                if frame.empty:
+                    return []
+                span_days = (frame[date_col].max() - frame[date_col].min()).days
+                rule = "D" if span_days <= 90 else "W" if span_days <= 730 else "ME"
+
+                indexed = frame.set_index(date_col)
+                if value_col:
+                    agg = indexed[value_col].resample(rule).mean().dropna().reset_index()
+                    title = f"{value_col} over time"
+                    y_col = value_col
+                else:
+                    agg = indexed.resample(rule).size().reset_index(name="count")
+                    title = f"Records over time by {date_col}"
+                    y_col = "count"
+
+                if len(agg) < 2:
+                    return []
+                return [
+                    {
+                        "type": "line",
+                        "title": title,
+                        "plotly_json": px.line(
+                            agg, x=date_col, y=y_col, markers=len(agg) <= 30, title=title
+                        ).to_json(),
+                    }
+                ]
+
             if x and y:
-                if pd.api.types.is_numeric_dtype(df[x]) and pd.api.types.is_numeric_dtype(df[y]):
+                # A date axis paired with a measure is a time series. This has
+                # to come first: a datetime column matches neither the numeric
+                # nor the categorical branch below, so before this existed a
+                # (date, revenue) pair silently produced no chart at all —
+                # and once dates were still text, a bar chart of 15 arbitrary
+                # days sorted by value.
+                if is_dt(x) and pd.api.types.is_numeric_dtype(df[y]):
+                    plots.extend(time_series(x, y))
+                elif is_dt(y) and pd.api.types.is_numeric_dtype(df[x]):
+                    plots.extend(time_series(y, x))
+                elif is_dt(x) or is_dt(y):
+                    plots.extend(time_series(x if is_dt(x) else y))
+                elif pd.api.types.is_numeric_dtype(df[x]) and pd.api.types.is_numeric_dtype(df[y]):
                     r = abs(df[[x, y]].corr().iloc[0, 1])
                     if r > 0.2:
                         # OLS trendline needs statsmodels; degrade gracefully if absent.
@@ -480,7 +577,9 @@ class VizWhizAgent(Agent):
                             }
                         )
             elif x:
-                if pd.api.types.is_numeric_dtype(df[x]):
+                if is_dt(x):
+                    plots.extend(time_series(x))
+                elif pd.api.types.is_numeric_dtype(df[x]):
                     plots.append(
                         {
                             "type": "histogram",
@@ -546,6 +645,16 @@ class VizWhizAgent(Agent):
                 for c in df.select_dtypes(include=["object", "string", "category"]).columns
                 if is_valid_col(c)
             ]
+            date_cols = [c for c in df.select_dtypes(include="datetime").columns if is_valid_col(c)]
+
+            # On a dataset with a time axis, lead with the trend rather than
+            # a category breakdown — it's the chart a reader looks for first.
+            for date_col in date_cols[:1]:
+                for num in numeric_cols[:2]:
+                    possible_plots.extend(choose_plot_types(date_col, num))
+                if not numeric_cols:
+                    possible_plots.extend(choose_plot_types(date_col, None))
+
             for cat in cat_cols[:3]:
                 for num in numeric_cols[:3]:
                     possible_plots.extend(choose_plot_types(cat, num))
