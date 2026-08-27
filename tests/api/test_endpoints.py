@@ -185,7 +185,7 @@ class TestEndpointsErrorHandling:
             f.write("name,age\nAlice,25")
             temp_path = f.name
         try:
-            with patch("app.api.endpoints.pd.read_csv", side_effect=Exception("read failed")):
+            with patch("app.utils.dataset_io.pd.read_csv", side_effect=Exception("read failed")):
                 with pytest.raises(HTTPException) as exc:
                     await endpoints.process_data(ProcessRequest(file_path=temp_path))
             assert exc.value.status_code == 400

@@ -16,6 +16,7 @@ from app.services.nlq_agent import NaturalLanguageQueryAgent
 from app.services.report_agent import ReportGeneratorAgent
 from app.services.session_manager import get_session_manager
 from app.services.summarizer_agent import InsightSummarizerAgent
+from app.utils.dataset_io import read_dataset
 from app.utils.file_utils import UPLOAD_DIR, save_upload_file
 from app.utils.json_sanitize import sanitize_json
 
@@ -65,9 +66,10 @@ def get_df(file_path: str) -> pd.DataFrame:
         raise HTTPException(status_code=404, detail="File not found.")
 
     try:
-        return pd.read_csv(real_path)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to read CSV: {e}") from e
+        return read_dataset(real_path).df
+    except ValueError as e:
+        # read_dataset raises ValueError with a user-facing message.
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.post("/upload")
