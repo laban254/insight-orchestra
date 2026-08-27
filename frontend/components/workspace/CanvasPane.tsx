@@ -102,7 +102,20 @@ function Stat({ icon: Icon, label, value, tint }: { icon: typeof Rows3; label: s
     );
 }
 
-function Meter({ label, value, color }: { label: string; value: number; color: string }) {
+function Meter({ label, value, color }: { label: string; value: number | null; color: string }) {
+    // A null score means nothing assessed this claim. Showing an empty bar would read as
+    // "scored zero", so say so in words and drop the bar entirely.
+    if (value == null || Number.isNaN(value)) {
+        return (
+            <div>
+                <div className="mb-1 flex items-center justify-between text-[11px]">
+                    <span className="text-faint">{label}</span>
+                    <span className="font-mono font-medium text-faint">not assessed</span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full border border-dashed border-border-soft bg-transparent" />
+            </div>
+        );
+    }
     const pct = Math.round(value * 100);
     return (
         <div>
