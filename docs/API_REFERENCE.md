@@ -266,6 +266,12 @@ Generate an HTML report from workflow results.
 
 #### `POST /bigquery`
 
+> **Experimental — not enabled by default.** `google-cloud-bigquery` is an
+> optional dependency and is *not* installed in the published images, so this
+> endpoint returns `501` until an operator runs
+> `pip install google-cloud-bigquery` in the backend environment. There is no
+> UI for it; it is reachable over the API only.
+
 Run a SQL query against Google BigQuery using service account credentials.
 
 **Request Body**:
@@ -290,6 +296,7 @@ Run a SQL query against Google BigQuery using service account credentials.
 |--------|--------|
 | `400` | Validation error (e.g., empty credentials) |
 | `500` | `BigQuery error: ...` |
+| `501` | Dependency not installed (the default state) |
 
 ---
 

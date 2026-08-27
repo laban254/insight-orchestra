@@ -102,7 +102,7 @@ Each stage streams real-time progress to the UI via SSE. See the [Agent Pipeline
 
 - **Natural Language Queries** — the NLQ agent generates pandas code, executes it in the RestrictedPython sandbox, and returns results + optional Plotly charts
 - **Four LLM Providers** — OpenAI, Anthropic, DeepSeek, or Ollama (any locally-hosted model); switch provider/model at runtime, no restart needed
-- **Multi-Database Support** — PostgreSQL, MySQL, SQLite, DuckDB, BigQuery, and CSV — all read-only with SQL injection protection
+- **Multi-Database Support** — PostgreSQL, MySQL, SQLite, DuckDB, and CSV — all read-only, connected through the UI (BigQuery has an experimental endpoint; see the [API Reference](docs/API_REFERENCE.md))
 - **Sandboxed Code Execution** — no file I/O, no network access, no dangerous imports; configurable timeout
 - **Real-Time Agent Progress** — SSE streaming shows each agent's status, output, and duration
 - **Workspace, Share & Export** — pin and compare charts, workspace history saved server-side (reopen past runs from any browser), one-click read-only share links (72 h TTL), export as HTML / Markdown / CSV with embedded interactive charts

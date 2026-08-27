@@ -358,14 +358,23 @@ async def generate_report(payload: dict):
 
 @router.post("/bigquery")
 async def bigquery_fetch(request: BigQueryRequest):
-    """Fetch data from BigQuery."""
-    from app.utils.bigquery_utils import run_bigquery_query
+    """Fetch data from BigQuery.
+
+    Experimental: `google-cloud-bigquery` is an optional dependency and is
+    not installed in the published images, so this returns 501 until an
+    operator installs it. There is no UI for it yet either.
+    """
+    from app.utils.bigquery_utils import BigQueryUnavailableError, run_bigquery_query
 
     try:
         df = run_bigquery_query(request.credentials_json, request.query)
         temp_path = f"/tmp/bq_{os.urandom(8).hex()}.csv"
         df.to_csv(temp_path, index=False)
         return {"file_path": temp_path, "columns": df.columns.tolist(), "row_count": len(df)}
+    except BigQueryUnavailableError as e:
+        # Optional dependency absent — not a server fault, and not something
+        # the caller can fix by changing the request.
+        raise HTTPException(status_code=501, detail=str(e)) from e
     except ValueError as e:
         # Validation errors - return 400
         raise HTTPException(status_code=400, detail=str(e)) from e

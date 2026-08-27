@@ -105,7 +105,7 @@ POST   /nlq                    → Natural language → code → execution (emit
 POST   /summarize              → Summarize workflow results
 POST   /explain                → Explain a visualization
 POST   /report                 → Generate HTML report
-POST   /bigquery               → Query Google BigQuery
+POST   /bigquery               → Query Google BigQuery (experimental, optional dep)
 POST   /connectors/connect     → Establish DB connection, return connection_id + schema
 POST   /connectors/load-table  → Materialize a table into a CSV (feeds /process, /nlq)
 DELETE /connectors/{id}        → Disconnect a database connection
@@ -336,7 +336,7 @@ class BaseConnector(ABC):
 | MySQL | [`mysql.py`](backend/app/connectors/mysql.py) | `pymysql` |
 | SQLite | [`sqlite.py`](backend/app/connectors/sqlite.py) | `sqlite3` (stdlib) |
 | DuckDB | [`duckdb.py`](backend/app/connectors/duckdb.py) | `duckdb` |
-| BigQuery | [`bigquery_utils.py`](backend/app/utils/bigquery_utils.py) | `google.cloud.bigquery` (via API) |
+| BigQuery *(experimental)* | [`bigquery_utils.py`](backend/app/utils/bigquery_utils.py) | `google.cloud.bigquery` — optional, not installed by default |
 
 **Safety**: All connectors enforce read-only queries (SELECT only). SQL injection is mitigated via blocked keyword patterns.
 
