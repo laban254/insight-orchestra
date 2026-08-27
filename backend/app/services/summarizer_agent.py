@@ -25,17 +25,22 @@ class InsightSummarizerAgent:
         parts = []
         report = cleaner.get("report", {})
         rows = report.get("final_shape", [0])[0]
-        parts.append(f"Analysed {rows:,} rows.")
+        parts.append(
+            f"No language model was available, so this is a statistical summary only — "
+            f"no interpretation was performed. Analysed {rows:,} rows."
+        )
         if report.get("duplicates_removed", 0):
             parts.append(f"Removed {report['duplicates_removed']} duplicate rows.")
 
         hyps = hypothesis.get("hypotheses", [])
         if hyps:
-            parts.append(f"Found {len(hyps)} insights in your data.")
+            # "Insights" overstates what the heuristic pass produces: these are unranked
+            # descriptive patterns, not findings anything actually judged to be meaningful.
+            parts.append(f"Surfaced {len(hyps)} descriptive pattern(s) from column statistics.")
 
         consensus = debate.get("summary", {}).get("consensus")
         if consensus:
-            parts.append(f"Top insight: {consensus.get('hypothesis', '')}")
+            parts.append(f"Strongest pattern: {consensus.get('hypothesis', '')}")
 
         plots = viz.get("chart_info", {}).get("plots", [])
         if plots:
@@ -56,7 +61,11 @@ class InsightSummarizerAgent:
             questions.append(f"What is the distribution of {num_cols[0]}?")
         questions.append("What are the key trends in this dataset?")
 
-        return {"narrative": narrative, "suggested_questions": questions[:5]}
+        return {
+            "narrative": narrative,
+            "suggested_questions": questions[:5],
+            "llm_used": False,
+        }
 
     def run(self, workflow_results: dict[str, Any]) -> dict[str, Any]:
         cleaner = workflow_results.get("cleaner", {})
@@ -75,14 +84,21 @@ class InsightSummarizerAgent:
         if self.llm is None:
             return self._fallback_summary(workflow_results)
 
+        # Scores are None when the debate stage had no LLM to score with — `.get(k, 0)` does
+        # not help there, the key exists and holds None. Say "not scored" rather than "0%",
+        # which would tell the model the top insight was judged worthless.
+        def _score(key: str) -> str:
+            value = consensus.get(key)
+            return "not scored" if value is None else f"{value:.0%}"
+
         context = (
             f"Dataset: {rows:,} rows\n"
             f"Duplicates removed: {report.get('duplicates_removed', 0)}\n"
             f"Missing values handled: {report.get('total_missing', 0)}\n"
             f"Charts generated: {len(plots)}\n\n"
             f"Top insight (consensus):\n{consensus.get('hypothesis', 'None')}\n"
-            f"Confidence: {consensus.get('confidence', 0):.0%}, "
-            f"Business value: {consensus.get('business_value', 0):.0%}\n\n"
+            f"Confidence: {_score('confidence')}, "
+            f"Business value: {_score('business_value')}\n\n"
             f"All insights found:\n" + "\n".join(f"- {h}" for h in hyps[:6]) + "\n\n"
             f"Numeric columns: {num_cols}\n"
             f"Categorical columns: {cat_cols}"
@@ -108,6 +124,7 @@ OUTPUT (JSON only):
             return {
                 "narrative": narrative,
                 "suggested_questions": questions[:5],
+                "llm_used": True,
             }
         except Exception as e:
             logger.warning(f"LLM summarizer failed: {e}, using fallback")
