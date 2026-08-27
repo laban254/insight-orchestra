@@ -46,7 +46,7 @@ cd insight-orchestra
 ./setup.sh
 ```
 
-This prompts for an LLM provider (Ollama by default — local, no API key), writes `backend/.env`, runs `docker compose up -d --build` with the right service set, and pulls the Ollama model if needed. It's safe to re-run — it won't overwrite an existing `backend/.env` without asking first.
+This prompts for an LLM provider (Ollama by default — local, no API key), writes `backend/.env`, runs `docker compose up -d` with the right service set, and pulls the Ollama model if needed. It's safe to re-run — it won't overwrite an existing `backend/.env` without asking first.
 
 Non-interactive:
 
@@ -56,6 +56,52 @@ Non-interactive:
 ```
 
 Troubleshooting: `./setup.sh doctor` checks Docker, ports, `backend/.env`, and whether the backend/Ollama model are actually up.
+
+### Images
+
+`docker-compose.yml` refers to prebuilt images published to GitHub Container
+Registry on each release, for `linux/amd64` and `linux/arm64`:
+
+- `ghcr.io/laban254/insight-orchestra-backend`
+- `ghcr.io/laban254/insight-orchestra-frontend`
+
+Both default to `latest`. Pin a release with the `IO_IMAGE_TAG` variable:
+
+```bash
+IO_IMAGE_TAG=v1.0.0 docker compose up -d
+```
+
+To build from source instead — for development, or on a platform without a
+published image — layer in the dev override, which swaps the pulls for local
+builds:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+```
+
+`./setup.sh --build` is a shortcut for exactly that. Expect several minutes on a
+first build: the backend compiles pandas and statsmodels.
+
+### Running it on a different machine
+
+The defaults assume you browse from the same machine that runs Docker. If the
+stack lives on a homelab box, NAS, or VPS and you open the UI from a laptop,
+two settings have to point at the host's real address — the frontend calls the
+backend **from your browser**, so `localhost` would resolve to the laptop:
+
+```bash
+PUBLIC_API_URL=http://192.168.1.50:8000 \
+ALLOWED_ORIGINS=http://192.168.1.50:8501 \
+docker compose up -d
+```
+
+- `PUBLIC_API_URL` — where the browser should reach the backend.
+- `ALLOWED_ORIGINS` — the backend's CORS allowlist, which must contain the
+  origin you're browsing from, or those requests are rejected.
+
+They have to agree. Setting only the first produces requests that reach the
+backend and are refused by CORS; setting only the second leaves the browser
+still trying `localhost`.
 
 The rest of this guide covers the manual, step-by-step path — useful if you want full control over each step, or are configuring for production.
 
@@ -202,6 +248,7 @@ Or run all of the above (plus Docker, port, and Ollama model checks) in one shot
 | `BACKEND_HOST` | `0.0.0.0` | Backend bind address |
 | `BACKEND_PORT` | `8000` | Backend port |
 | `FRONTEND_PORT` | `8501` | Frontend port |
+| `PUBLIC_API_URL` | `http://localhost:8000` | Backend URL used by the **browser** — must be reachable from wherever you open the UI. Pair with `ALLOWED_ORIGINS` |
 | `ENVIRONMENT` | `development` | `development` or `production` |
 | `DEMO_MODE` | `true` | Enable demo endpoints (disable in production) |
 | `LOG_LEVEL` | `INFO` | Logging level: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
@@ -311,17 +358,39 @@ If you see `Read timed out` errors, the model is taking too long for your hardwa
 
 If the backend is using the wrong model after you change `OLLAMA_MODEL`:
 ```bash
-# Rebuild the backend container to pick up the new env value
-docker compose build --no-cache backend
-docker compose up -d backend
+# backend/.env is read when the container is created, not on restart —
+# recreate it to pick up the new value
+docker compose up -d --force-recreate backend
+```
+
+### Backend takes a long time to start
+
+Expected on a first run, and on any run with a cold page cache. `uvicorn` binds
+port 8000 almost immediately, but each worker then imports pandas, statsmodels
+and the agent SDK before it can serve a request — a measured cold start was
+**64 seconds**. Until that finishes, requests to the backend simply hang, and
+`docker compose ps` reports the container as `health: starting`.
+
+The frontend waits on the backend's healthcheck, so the whole stack looks idle
+during this window. `./setup.sh` shows elapsed time while it waits.
+
+If it's still unresponsive after a few minutes, that's no longer startup:
+
+```bash
+docker compose logs -f backend
 ```
 
 ### Frontend connection refused
 
 - Ensure the backend is running: `docker compose ps`
-- Check CORS origin matches your frontend URL: `CORS_ORIGIN=http://localhost:8501`
+- Check the CORS allowlist contains your frontend URL: `ALLOWED_ORIGINS=http://localhost:8501`
 - Verify network: `curl -v http://localhost:8000/health`
 - Frontend runs on port **8501** by default (not 3000).
+
+If the UI loads but every request fails, and you're browsing from a *different*
+machine than the one running Docker, the browser is most likely still calling
+`http://localhost:8000` — which is itself, not the server. See
+[Running it on a different machine](#running-it-on-a-different-machine).
 
 ### Connecting to a database on your host machine
 

@@ -80,8 +80,9 @@ export interface DemoDatasetLoadResponse {
 
 export interface ScoredHypothesis {
   hypothesis: string;
-  confidence: number;
-  business_value: number;
+  /** null when no LLM was available to score the claim — render "not assessed", never 0%. */
+  confidence: number | null;
+  business_value: number | null;
   statistical_argument: string;
   business_argument: string;
 }
@@ -129,4 +130,8 @@ export interface ProcessResponse {
     columns: string[];
     rows: Record<string, unknown>[];
   };
+  /** True when one or more LLM stages fell back to statistics-only output. */
+  degraded?: boolean;
+  degraded_stages?: string[];
+  degraded_reason?: string | null;
 }

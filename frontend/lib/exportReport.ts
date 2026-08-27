@@ -12,6 +12,17 @@ const esc = (s: unknown) =>
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;");
 
+/**
+ * Render a 0–1 score as a percentage, or say it was never assessed.
+ * An exported report outlives the session it came from, so an unscored claim must not
+ * silently print as "0%" — a reader has no way to tell that apart from a real low score.
+ */
+const pctLabel = (value: number | null | undefined, label: string, labelFirst = false) => {
+    if (value == null || Number.isNaN(value)) return `${esc(label)} not assessed`;
+    const pct = Math.round(value * 100);
+    return labelFirst ? `${esc(label)} ${pct}%` : `${pct}% ${esc(label)}`;
+};
+
 export function exportReport(datasetName: string, analysis: ProcessResponse | null, results: QueryResult[]) {
     if (!analysis) return;
 
@@ -63,6 +74,7 @@ export function exportReport(datasetName: string, analysis: ProcessResponse | nu
   .kpi .v{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
   .kpi .l{font-size:11px;color:#9aa7c2;text-transform:uppercase;letter-spacing:.05em}
   .top{border-color:rgba(34,211,238,.3);background:rgba(34,211,238,.06)}
+  .warn{border-color:rgba(251,191,36,.4);background:rgba(251,191,36,.08);color:#fbbf24}
   .top .tag{color:#22d3ee;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em}
   .muted{color:#9aa7c2;font-size:13px}
   .chart{width:100%;height:420px}
@@ -71,6 +83,14 @@ export function exportReport(datasetName: string, analysis: ProcessResponse | nu
 <body><div class="wrap">
   <h1>${esc(datasetName)}</h1>
   <p class="sub">Insight Orchestra report · generated ${new Date().toLocaleString()}</p>
+
+  ${
+      analysis.degraded
+          ? `<div class="card warn"><strong>Statistics only — not interpreted.</strong><p class="muted" style="margin:6px 0 0">${esc(
+                analysis.degraded_reason ?? "No language model was available for this run."
+            )}</p></div>`
+          : ""
+  }
 
   <div class="card"><p style="margin:0">${esc(analysis.narrative)}</p></div>
 
@@ -81,7 +101,7 @@ export function exportReport(datasetName: string, analysis: ProcessResponse | nu
   ${
       consensus
           ? `<h2>Top insight</h2><div class="card top">
-      <div class="tag">Top insight · ${Math.round(consensus.confidence * 100)}% confidence</div>
+      <div class="tag">Top insight · ${pctLabel(consensus.confidence, "confidence")}</div>
       <p style="margin:8px 0 0;font-size:15px">${esc(consensus.hypothesis)}</p>
       ${consensus.statistical_argument ? `<p class="muted" style="margin-top:6px">${esc(consensus.statistical_argument)}</p>` : ""}
     </div>`
@@ -93,7 +113,7 @@ export function exportReport(datasetName: string, analysis: ProcessResponse | nu
   ${
       others.length
           ? `<h2>Other patterns</h2>${others
-                .map((h) => `<div class="card"><p style="margin:0">${esc(h.hypothesis)}</p><p class="muted" style="margin:6px 0 0">Confidence ${Math.round(h.confidence * 100)}% · Value ${Math.round(h.business_value * 100)}%</p></div>`)
+                .map((h) => `<div class="card"><p style="margin:0">${esc(h.hypothesis)}</p><p class="muted" style="margin:6px 0 0">${pctLabel(h.confidence, "Confidence", true)} · ${pctLabel(h.business_value, "Value", true)}</p></div>`)
                 .join("")}`
           : ""
   }

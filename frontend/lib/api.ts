@@ -13,8 +13,11 @@ import {
 } from './types';
 // Type-only import — erased at compile time, so no runtime cycle with workspaces.ts.
 import type { SavedState, WorkspaceMeta, WorkspaceRecord } from './workspaces';
+import { getApiBaseUrl } from './runtimeEnv';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// Resolved when this module first loads. In the browser that is after the
+// inline script in app/layout.tsx has run, so the injected value wins.
+const API_BASE_URL = getApiBaseUrl();
 
 const apiClient = axios.create({
     baseURL: API_BASE_URL,

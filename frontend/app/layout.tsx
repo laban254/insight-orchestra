@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Inter, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
 import { Providers } from './providers'
+import { DEFAULT_API_BASE_URL } from '@/lib/runtimeEnv'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -33,15 +34,27 @@ const themeInit = `
 })();
 `
 
+// The API base URL below has to be read per request, not baked in at build
+// time — otherwise the published image hardcodes the host it was built with.
+// See lib/runtimeEnv.ts.
+export const dynamic = 'force-dynamic'
+
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const apiBaseUrl =
+    process.env.PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_URL || DEFAULT_API_BASE_URL
+  // `<` is escaped so a stray "</script>" in the value can't close this tag.
+  const envInit = `window.__IO_ENV__=${JSON.stringify({ apiBaseUrl }).replace(/</g, '\\u003c')};`
+
   return (
     <html lang="en" suppressHydrationWarning className={`${inter.variable} ${jetbrains.variable}`}>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
+        {/* Must precede the app bundle so the value is present on first import. */}
+        <script dangerouslySetInnerHTML={{ __html: envInit }} />
       </head>
       <body className="bg-bg text-fg">
         <Providers>{children}</Providers>

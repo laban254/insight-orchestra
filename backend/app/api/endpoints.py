@@ -4,6 +4,7 @@ import os
 import time
 
 import pandas as pd
+import requests
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
@@ -47,20 +48,24 @@ class BigQueryRequest(BaseModel):
 
 def get_df(file_path: str) -> pd.DataFrame:
     """Load DataFrame from file path."""
-    # Security: Validate file path to prevent path traversal
-    if not os.path.isfile(file_path):
+    # Security: Resolve and validate the path against allowed directories
+    # before touching the filesystem, to prevent path traversal. Paths
+    # outside the sandbox are reported as "not found" (rather than a
+    # distinct "access denied") so we don't confirm the existence of
+    # files outside it.
+    real_path = os.path.realpath(file_path)
+    if not (
+        real_path == "/tmp"
+        or real_path.startswith("/tmp" + os.sep)
+        or real_path == UPLOAD_DIR
+        or real_path.startswith(UPLOAD_DIR + os.sep)
+    ):
         raise HTTPException(status_code=404, detail="File not found.")
 
-    # Ensure the file is within allowed directories (absolute paths only)
-    allowed_dirs = ["/tmp", UPLOAD_DIR]
-    real_path = os.path.realpath(file_path)
-    if not any(real_path.startswith(allowed_dir) for allowed_dir in allowed_dirs):
-        raise HTTPException(
-            status_code=403, detail="Access denied: file outside allowed directories."
-        )
-
     try:
-        return pd.read_csv(file_path)
+        return pd.read_csv(real_path)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="File not found.") from None
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to read CSV: {e}") from e
 
@@ -108,7 +113,11 @@ async def process_data(request: ProcessRequest):
             sid,
             agent_id="hypothesis",
             status="done",
-            output=f"Found {len(hypotheses)} insights.",
+            output=(
+                f"Found {len(hypotheses)} insights."
+                if hypothesis_result.get("llm_used")
+                else f"Surfaced {len(hypotheses)} descriptive pattern(s) — no LLM available."
+            ),
             duration=int((time.monotonic() - t0) * 1000),
         )
 
@@ -181,6 +190,18 @@ async def process_data(request: ProcessRequest):
         "rows": _json.loads(preview_df.head(20).to_json(orient="records")),
     }
 
+    from app import runtime_config
+
+    # Each LLM-backed stage reports whether it actually reached the model. Surface that at the
+    # top level: previously an LLM outage produced a normal 200 with heuristic output and no
+    # way for any caller to tell the difference.
+    stage_llm_used = {
+        "hypothesis": hypothesis_result.get("llm_used", False),
+        "debate": debate_result.get("llm_used", False),
+        "narrative": summary_result.get("llm_used", False),
+    }
+    degraded_stages = sorted(name for name, used in stage_llm_used.items() if not used)
+
     return sanitize_json(
         {
             "cleaner": cleaner_result,
@@ -190,6 +211,15 @@ async def process_data(request: ProcessRequest):
             "narrative": summary_result.get("narrative", ""),
             "suggested_questions": summary_result.get("suggested_questions", []),
             "preview": preview,
+            "degraded": bool(degraded_stages),
+            "degraded_stages": degraded_stages,
+            "degraded_reason": (
+                f"The {runtime_config.get_provider()} provider was unreachable or rejected the "
+                f"request, so these stages fell back to statistics only: "
+                f"{', '.join(degraded_stages)}. Results are descriptive, not interpreted."
+                if degraded_stages
+                else None
+            ),
         }
     )
 
@@ -355,23 +385,52 @@ class ConfigUpdate(BaseModel):
     model: str | None = None
 
 
+# Values shipped in .env.example that mean "unset". Kept in one place so the readiness
+# report and the switch guard cannot drift apart — they previously used different checks,
+# so GET /config advertised openai as ready while POST /config rejected it with a 400.
+_PLACEHOLDER_KEYS = frozenset(
+    {"sk-...", "sk-ant-...", "your-openai-api-key-here", "your-api-key-here"}
+)
+
+
+def _api_key_configured(key: str | None) -> bool:
+    """True if `key` is a real credential rather than blank or a template placeholder."""
+    if not key:
+        return False
+    k = key.strip()
+    return bool(k) and k not in _PLACEHOLDER_KEYS and "your-" not in k.lower()
+
+
+def _ollama_reachable(timeout: float = 1.0) -> bool:
+    """Probe the Ollama daemon. Reported readiness used to be hardcoded True, so the UI
+    offered Ollama even with no daemon running and the pipeline silently degraded."""
+    try:
+        resp = requests.get(f"{settings.ollama_base_url}/api/tags", timeout=timeout)
+        return resp.status_code == 200
+    except requests.RequestException:
+        return False
+
+
+def _provider_readiness() -> dict[str, bool]:
+    """Single source of truth for which providers can actually serve a request."""
+    return {
+        "openai": _api_key_configured(settings.openai_api_key),
+        "anthropic": _api_key_configured(settings.anthropic_api_key),
+        "deepseek": _api_key_configured(settings.deepseek_api_key),
+        "ollama": _ollama_reachable(),
+    }
+
+
 @router.get("/config")
 async def get_config():
     """Current LLM provider/model and what's switchable."""
     from app import runtime_config
 
-    keymap = {
-        "openai": bool(settings.openai_api_key and "your-" not in settings.openai_api_key),
-        "anthropic": bool(
-            settings.anthropic_api_key and settings.anthropic_api_key != "sk-ant-..."
-        ),
-        "deepseek": bool(settings.deepseek_api_key and settings.deepseek_api_key != "sk-..."),
-        "ollama": True,
-    }
+    ready = await asyncio.to_thread(_provider_readiness)
     return {
         **runtime_config.current(),
         "available": runtime_config.PROVIDERS,
-        "ready": keymap,
+        "ready": ready,
     }
 
 
@@ -383,17 +442,14 @@ async def update_config(update: ConfigUpdate):
     if update.provider and update.provider not in runtime_config.PROVIDERS:
         raise HTTPException(status_code=400, detail=f"Unknown provider '{update.provider}'.")
     prov = update.provider or runtime_config.get_provider()
-    keymap = {
-        "openai": settings.openai_api_key,
-        "anthropic": settings.anthropic_api_key,
-        "deepseek": settings.deepseek_api_key,
-    }
-    if prov in keymap and (
-        not keymap[prov] or keymap[prov] in ("sk-...", "sk-ant-...", "your-openai-api-key-here")
-    ):
-        raise HTTPException(
-            status_code=400, detail=f"No API key configured for '{prov}' on the server."
+    ready = await asyncio.to_thread(_provider_readiness)
+    if not ready.get(prov, False):
+        detail = (
+            f"Ollama is not reachable at {settings.ollama_base_url}."
+            if prov == "ollama"
+            else f"No API key configured for '{prov}' on the server."
         )
+        raise HTTPException(status_code=400, detail=detail)
     runtime_config.set_override(update.provider, update.model)
     return runtime_config.current()
 

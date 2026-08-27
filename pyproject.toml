@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "insight-orchestra"
-version = "0.1.0"
+version = "1.0.0"
 description = "Open-source AI data analyst you can self-host — multi-agent pipeline, NL querying, your choice of LLM"
 readme = "README.md"
 requires-python = ">=3.11"

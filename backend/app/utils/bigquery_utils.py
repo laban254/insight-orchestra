@@ -13,7 +13,9 @@ class BigQueryRequest(BaseModel):
 def _strip_sql_comments(query: str) -> str:
     """Remove -- line comments and /* block comments */ from SQL."""
     query = re.sub(r"--[^\n]*", " ", query)
-    query = re.sub(r"/\*.*?\*/", " ", query, flags=re.DOTALL)
+    # [^*]|\*(?!/) instead of a DOTALL .*? avoids catastrophic/polynomial
+    # backtracking on inputs with many repeated '*' that never close the comment.
+    query = re.sub(r"/\*(?:[^*]|\*(?!/))*\*/", " ", query)
     return query
 
 

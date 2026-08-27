@@ -1,0 +1,159 @@
+name: publish-images
+
+# Builds and pushes the backend/frontend images to GHCR on every release tag,
+# so users pull a ready-made image instead of compiling pandas/statsmodels
+# locally (a multi-minute build on a first run).
+#
+# amd64 and arm64 are built on native runners rather than under QEMU: the
+# backend has no prebuilt wheels for some pins and falls back to compiling
+# from source, which is tolerable natively and pathological under emulation.
+# Each platform is pushed by digest, then a merge job stitches the digests
+# into one multi-platform manifest per component.
+
+# Releases reach this workflow by dispatch, not by the tag push: release-please
+# tags with GITHUB_TOKEN, whose events GitHub suppresses. See the dispatch step
+# in release-please.yml. The tag trigger below still covers tags pushed by hand.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [backend, frontend]
+        platform: [linux/amd64, linux/arm64]
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # linux/amd64 -> linux-amd64, for artifact names (slashes aren't allowed).
+      - name: Normalise platform name
+        run: echo "PLATFORM_PAIR=${PLATFORM//\//-}" >> "$GITHUB_ENV"
+        env:
+          PLATFORM: ${{ matrix.platform }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Only the labels are wanted here — the tags are applied later, by the
+      # merge job, to the manifest list. org.opencontainers.image.source is
+      # the one that matters: without it GHCR shows the package orphaned,
+      # with no link back to this repo and no README on the package page.
+      - name: Derive image labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ./${{ matrix.component }}
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Must stay on one line — buildx parses this as CSV and folded YAML
+          # would inject spaces into the values.
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.component }}-${{ env.PLATFORM_PAIR }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.component }}-${{ env.PLATFORM_PAIR }}
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${DIGEST#sha256:}"
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.component }}-${{ env.PLATFORM_PAIR }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    runs-on: ubuntu-latest
+    needs: [build]
+    strategy:
+      matrix:
+        component: [backend, frontend]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          pattern: digests-${{ matrix.component }}-*
+          merge-multiple: true
+          path: /tmp/digests
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # `latest` comes from metadata-action's default flavor: it's applied to
+      # semver tags automatically, and withheld from prereleases (v1.0.0-rc1).
+      - name: Derive tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component }}
+          # The semver patterns only match tag refs, so a manual
+          # workflow_dispatch would otherwise resolve to no tags at all and
+          # fail the push. `edge` gives that run something to publish, and is
+          # a way to smoke-test this pipeline before cutting a real release.
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=edge,enable=${{ github.ref_type != 'tag' }}
+
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        run: |
+          # shellcheck disable=SC2046
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf "${REGISTRY}/${REPO}-${COMPONENT}@sha256:%s " *)
+        env:
+          REGISTRY: ${{ env.REGISTRY }}
+          REPO: ${{ github.repository }}
+          COMPONENT: ${{ matrix.component }}
+
+      - name: Inspect
+        run: |
+          docker buildx imagetools inspect "${REGISTRY}/${REPO}-${COMPONENT}:${VERSION}"
+        env:
+          REGISTRY: ${{ env.REGISTRY }}
+          REPO: ${{ github.repository }}
+          COMPONENT: ${{ matrix.component }}
+          VERSION: ${{ steps.meta.outputs.version }}

@@ -1,12 +1,18 @@
 
 x-logging: &default-logging
   driver: local
+  # Without explicit caps a single oversized entry (a dumped dataframe or plotly payload)
+  # can grow past what `docker logs` will read back, making the whole stream unfilterable.
+  options:
+    max-size: "10m"
+    max-file: "5"
 
 services:
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    # Prebuilt image from GHCR — no local compile on first run. Pin a release
+    # with IO_IMAGE_TAG=v1.0.0, or build from source with docker-compose.dev.yml
+    # (see CONTRIBUTING.md).
+    image: ghcr.io/laban254/insight-orchestra-backend:${IO_IMAGE_TAG:-latest}
     logging: *default-logging
     ports:
       - "8000:8000"
@@ -31,18 +37,26 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      # A measured cold start was 64s — uvicorn binds the port immediately,
+      # then each worker imports pandas, statsmodels and the agent SDK. With
+      # the old 10s start_period a slower machine would be marked unhealthy
+      # while still legitimately booting, and the frontend below waits on
+      # this condition, so the whole stack would appear to hang.
+      start_period: 120s
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
+    image: ghcr.io/laban254/insight-orchestra-frontend:${IO_IMAGE_TAG:-latest}
     logging: *default-logging
     ports:
       - "8501:8501"
     environment:
-      - API_BASE_URL=http://backend:8000
       - FRONTEND_PORT=8501
+      # The URL the *browser* uses to reach the backend — so it must be
+      # resolvable from wherever you open the UI, not from inside this
+      # container. Override it when the stack runs on a different machine
+      # than the one you browse from, e.g.
+      #   PUBLIC_API_URL=http://192.168.1.50:8000 docker compose up -d
+      - PUBLIC_API_URL=${PUBLIC_API_URL:-http://localhost:8000}
     depends_on:
       backend:
         condition: service_healthy

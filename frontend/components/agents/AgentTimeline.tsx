@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, X, Loader2, Minus } from "lucide-react";
 import { metaFor } from "@/lib/agents";
+import { getApiBaseUrl } from "@/lib/runtimeEnv";
 
 export type AgentStatus = "waiting" | "running" | "done" | "error" | "skipped";
 
@@ -13,7 +14,7 @@ export interface Agent {
     duration?: number;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE = getApiBaseUrl();
 
 interface Props {
     sessionId: string;
