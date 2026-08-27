@@ -46,6 +46,16 @@ export interface UploadResponse {
   assumptions: ParseAssumptions;
 }
 
+export interface LocalDatabaseFile {
+  name: string;
+  path: string;
+}
+
+export interface LocalDatabaseFilesResponse {
+  host_directory: string;
+  files: LocalDatabaseFile[];
+}
+
 export interface NLQRequest {
   file_path: string;
   question: string;

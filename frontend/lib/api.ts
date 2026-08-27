@@ -11,6 +11,7 @@ import {
     ProcessResponse,
     AppConfig,
     UploadResponse,
+    LocalDatabaseFilesResponse,
 } from './types';
 // Type-only import — erased at compile time, so no runtime cycle with workspaces.ts.
 import type { SavedState, WorkspaceMeta, WorkspaceRecord } from './workspaces';
@@ -39,6 +40,10 @@ export const api = {
     },
     loadTable: async (data: LoadTableRequest): Promise<LoadTableResponse> => {
         const response = await apiClient.post<LoadTableResponse>('/connectors/load-table', data);
+        return response.data;
+    },
+    listLocalDatabaseFiles: async (): Promise<LocalDatabaseFilesResponse> => {
+        const response = await apiClient.get<LocalDatabaseFilesResponse>('/connectors/local-files');
         return response.data;
     },
     disconnectDatabase: async (connectionId: string): Promise<void> => {

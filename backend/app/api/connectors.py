@@ -1,3 +1,4 @@
+import os
 import uuid
 from urllib.parse import urlparse
 
@@ -6,6 +7,7 @@ from pydantic import BaseModel
 
 from app.connectors import DuckDBConnector, MySQLConnector, PostgreSQLConnector, SQLiteConnector
 from app.services.connection_store import get_connection_store
+from app.utils.file_utils import UPLOAD_DIR
 
 router = APIRouter(prefix="/connectors", tags=["connectors"])
 
@@ -26,9 +28,32 @@ _URL_SCHEMES = {
 }
 
 
+# File-backed databases the user can drop into the mounted uploads directory.
+_DB_FILE_SUFFIXES = (".db", ".sqlite", ".sqlite3", ".duckdb", ".ddb")
+
+
 class ConnectRequest(BaseModel):
     type: str  # "postgresql", "mysql", "sqlite", "duckdb"
     connection_string: str  # Standard connection string
+
+
+@router.get("/local-files")
+async def list_local_database_files():
+    """SQLite/DuckDB files the backend can actually reach.
+
+    The backend runs in a container, so a path from the user's own machine
+    means nothing to it — the old UI placeholder ("/path/to/database.db")
+    could never resolve. The uploads directory is bind-mounted, so it is the
+    one place a user can put a database file and have it be openable.
+    """
+    try:
+        names = sorted(f for f in os.listdir(UPLOAD_DIR) if f.lower().endswith(_DB_FILE_SUFFIXES))
+    except OSError:
+        names = []
+    return {
+        "host_directory": "./backend/uploads",
+        "files": [{"name": name, "path": os.path.join(UPLOAD_DIR, name)} for name in names],
+    }
 
 
 def _validate_connection_string(db_type: str, connection_string: str) -> None:
@@ -59,6 +84,9 @@ async def connect_database(req: ConnectRequest):
     connector = CONNECTOR_MAP[req.type]()  # type: ignore[abstract]
     try:
         connector.connect(req.connection_string)
+    except ValueError as e:
+        # Connectors raise ValueError with a message written for the user.
+        raise HTTPException(400, str(e)) from e
     except Exception as e:
         raise HTTPException(400, f"Failed to connect: {str(e)}") from e
 
