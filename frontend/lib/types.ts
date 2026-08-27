@@ -63,6 +63,7 @@ export interface NLQRequest {
 }
 
 export interface NLQResponse {
+  sampling?: SamplingNotice | null;
   answer: string;
   code: string;
   reasoning: string;
@@ -158,4 +159,12 @@ export interface ProcessResponse {
     columns: string[];
     rows: Record<string, unknown>[];
   };
+  sampling?: SamplingNotice | null;
+}
+
+/** Present when the dataset exceeded the analysis row cap. */
+export interface SamplingNotice {
+  sampled: boolean;
+  analyzed_rows: number;
+  total_rows: number;
 }

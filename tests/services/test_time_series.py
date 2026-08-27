@@ -51,7 +51,7 @@ def test_janitor_preserves_datetime_dtype(trending_frame):
     frame.loc[5:9, "date"] = pd.NaT
 
     result = DataJanitorAgent(name="j").run(frame.to_dict(orient="records"))
-    cleaned = pd.DataFrame(result["cleaned_data"])
+    cleaned = result["cleaned_df"]
 
     assert pd.api.types.is_datetime64_any_dtype(cleaned["date"])
     assert cleaned["date"].isna().sum() == 0
@@ -61,7 +61,7 @@ def test_janitor_leaves_all_null_datetime_as_nat():
     """No median exists, and inventing a date would be worse than a gap."""
     frame = pd.DataFrame({"when": [pd.NaT, pd.NaT], "v": [1, 2]})
     result = DataJanitorAgent(name="j").run(frame.to_dict(orient="records"))
-    cleaned = pd.DataFrame(result["cleaned_data"])
+    cleaned = result["cleaned_df"]
     assert cleaned["when"].isna().all()
 
 

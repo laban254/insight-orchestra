@@ -16,7 +16,7 @@ from app.services.nlq_agent import NaturalLanguageQueryAgent
 from app.services.report_agent import ReportGeneratorAgent
 from app.services.session_manager import get_session_manager
 from app.services.summarizer_agent import InsightSummarizerAgent
-from app.utils.dataset_io import describe_dataset, read_dataset
+from app.utils.dataset_io import describe_dataset, read_dataset, sample_for_analysis
 from app.utils.file_utils import UPLOAD_DIR, discard_upload, save_upload_file
 from app.utils.json_sanitize import sanitize_json
 
@@ -105,14 +105,15 @@ async def upload_csv(file: UploadFile = File(...)):
 async def process_data(request: ProcessRequest):
     """Run full Insight Orchestra workflow with real-time agent progress events."""
     df = get_df(request.file_path)
+    df, sampling = sample_for_analysis(df)
     workflow = InsightOrchestraWorkflow()
     sid = request.session_id
 
     try:
         push_event(sid, agent_id="janitor", status="running")
         t0 = time.monotonic()
-        cleaner_result = await asyncio.to_thread(workflow.cleaner.run, df.to_dict(orient="records"))
-        cleaned_data = cleaner_result["cleaned_data"]
+        cleaner_result = await asyncio.to_thread(workflow.cleaner.run, df)
+        cleaned_df = cleaner_result["cleaned_df"]
         r = cleaner_result["report"]
         push_event(
             sid,
@@ -125,9 +126,9 @@ async def process_data(request: ProcessRequest):
 
         push_event(sid, agent_id="hypothesis", status="running")
         t0 = time.monotonic()
-        hypothesis_result = await asyncio.to_thread(workflow.hypothesis.run, cleaned_data)
+        hypothesis_result = await asyncio.to_thread(workflow.hypothesis.run, cleaned_df)
         hypotheses = hypothesis_result["hypotheses"]
-        stats_summary = HypothesisBotAgent._build_stats_summary(pd.DataFrame(cleaned_data))
+        stats_summary = HypothesisBotAgent._build_stats_summary(cleaned_df)
         push_event(
             sid,
             agent_id="hypothesis",
@@ -152,7 +153,7 @@ async def process_data(request: ProcessRequest):
         push_event(sid, agent_id="viz", status="running")
         t0 = time.monotonic()
         viz_result = await asyncio.to_thread(
-            workflow.viz.run, cleaned_data, consensus, hypotheses=hypotheses
+            workflow.viz.run, cleaned_df, consensus, hypotheses=hypotheses
         )
         num_plots = len(viz_result.get("chart_info", {}).get("plots", []))
         push_event(
@@ -197,23 +198,28 @@ async def process_data(request: ProcessRequest):
         )
 
     # Small sample of the cleaned data so the UI can show a preview table.
+    # The full cleaned dataset is deliberately not returned: nothing in the
+    # UI reads it, and on a large file it dominates the response body.
     import json as _json
 
-    preview_df = pd.DataFrame(cleaned_data)
     preview = {
-        "columns": preview_df.columns.tolist(),
-        "rows": _json.loads(preview_df.head(20).to_json(orient="records")),
+        "columns": cleaned_df.columns.tolist(),
+        "rows": _json.loads(cleaned_df.head(20).to_json(orient="records", date_format="iso")),
     }
+    cleaner_response = {"report": cleaner_result["report"]}
+    if sampling:
+        cleaner_response["sampling"] = sampling
 
     return sanitize_json(
         {
-            "cleaner": cleaner_result,
+            "cleaner": cleaner_response,
             "hypothesis": hypothesis_result,
             "debate": debate_result,
             "viz": viz_result,
             "narrative": summary_result.get("narrative", ""),
             "suggested_questions": summary_result.get("suggested_questions", []),
             "preview": preview,
+            "sampling": sampling,
         }
     )
 
@@ -223,14 +229,15 @@ async def natural_language_query(request: NLQRequest):
     """Natural language query with LLM-powered code generation."""
     sid = request.session_id
     df = get_df(request.file_path)
+    df, sampling = sample_for_analysis(df)
 
     try:
         # --- Phase 1: Data Janitor ---
         push_event(sid, agent_id="janitor", status="running")
         t0 = time.monotonic()
         janitor = DataJanitorAgent(name="nlq_cleaner")
-        cleaned_result = await asyncio.to_thread(janitor.run, df.to_dict(orient="records"))
-        df = pd.DataFrame(cleaned_result["cleaned_data"])
+        cleaned_result = await asyncio.to_thread(janitor.run, df)
+        df = cleaned_result["cleaned_df"]
         report = cleaned_result["report"]
         janitor_summary = (
             f"Removed {report.get('duplicates_removed', 0)} duplicates, "
@@ -313,6 +320,7 @@ async def natural_language_query(request: NLQRequest):
             "execution_success": response.execution_success,
             "error": response.error,
             "session_id": sid,
+            "sampling": sampling,
         }
     )
 

@@ -38,6 +38,12 @@ class Settings(BaseSettings):
     # Feature flags
     demo_mode: bool = Field(True, alias="DEMO_MODE")
 
+    # Largest number of rows fed to the agent pipeline. The agents compute
+    # summary statistics and aggregated charts, so past this point extra
+    # rows cost time and memory without changing the conclusions. Set to 0
+    # to disable the cap.
+    max_analysis_rows: int = Field(250_000, alias="MAX_ANALYSIS_ROWS")
+
     # Session storage
     session_ttl_seconds: int = Field(3600, alias="SESSION_TTL_SECONDS")
     redis_url: str = Field("redis://localhost:6379", alias="REDIS_URL")

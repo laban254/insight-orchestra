@@ -194,6 +194,22 @@ export function Workspace({ workspaceId, filePath, datasetName, restore, onPersi
                         />
                     )}
 
+                    {/* Sampling notice — never imply the analysis covered
+                        rows it never saw. */}
+                    {analysisResult?.sampling?.sampled && (
+                        <div className="rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-xs text-muted">
+                            Analysed the first{" "}
+                            <span className="font-medium text-fg">
+                                {analysisResult.sampling.analyzed_rows.toLocaleString()}
+                            </span>{" "}
+                            of{" "}
+                            <span className="font-medium text-fg">
+                                {analysisResult.sampling.total_rows.toLocaleString()}
+                            </span>{" "}
+                            rows. Raise <code className="font-mono">MAX_ANALYSIS_ROWS</code> to cover the whole file.
+                        </div>
+                    )}
+
                     {/* Suggested questions */}
                     {suggested.length > 0 && messages.length === 0 && !isLoading && (
                         <div className="space-y-2">

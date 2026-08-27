@@ -11,6 +11,18 @@ from app.utils.log_utils import safe_log_value
 
 logger = logging.getLogger(__name__)
 
+
+def _as_frame(data: Any) -> pd.DataFrame:
+    """Accept either a DataFrame or the legacy list-of-dicts.
+
+    The pipeline passes DataFrames between agents — converting to records
+    and back cost ~7x the dataset's memory and several seconds per step on
+    a mid-sized file. The list form is still accepted so callers (and
+    tests) that hand over records keep working.
+    """
+    return data if isinstance(data, pd.DataFrame) else pd.DataFrame(data)
+
+
 # plotly express imports statsmodels itself when trendline="ols" is requested;
 # we only need to know whether it's installed to decide whether to ask for one.
 _HAS_STATSMODELS = importlib.util.find_spec("statsmodels") is not None
@@ -18,7 +30,7 @@ _HAS_STATSMODELS = importlib.util.find_spec("statsmodels") is not None
 
 class DataJanitorAgent(Agent):
     def run(self, data, **kwargs):
-        df = pd.DataFrame(data)
+        df = _as_frame(data).copy()
         report = {}
         report["initial_shape"] = df.shape
 
@@ -82,7 +94,7 @@ class DataJanitorAgent(Agent):
         report["constant_columns"] = [c for c in df.columns if df[c].nunique() == 1]
         report["final_shape"] = df.shape
         report["missing_values_imputed"] = report["total_missing"] > 0
-        return {"cleaned_data": df.to_dict(orient="records"), "report": report}
+        return {"cleaned_df": df, "report": report}
 
 
 class HypothesisBotAgent(Agent):
@@ -222,7 +234,7 @@ class HypothesisBotAgent(Agent):
         return "\n".join(lines)
 
     def run(self, cleaned_data, **kwargs):
-        df = pd.DataFrame(cleaned_data)
+        df = _as_frame(cleaned_data)
         schema_prompt = DataFrameSchema.to_prompt(DataFrameSchema.from_dataframe(df))
         stats_summary = self._build_stats_summary(df)
         fallback = self._generate_fallback_hypotheses(df)
@@ -412,7 +424,7 @@ class VizWhizAgent(Agent):
 
         import plotly.express as px
 
-        df = pd.DataFrame(cleaned_data)
+        df = _as_frame(cleaned_data)
         hypotheses = kwargs.get("hypotheses", [])
 
         def is_valid_col(col):
@@ -697,13 +709,12 @@ class InsightOrchestraWorkflow:
 
     def run(self, data):
         cleaner_result = self.cleaner.run(data)
-        cleaned_data = cleaner_result["cleaned_data"]
-        df = pd.DataFrame(cleaned_data)
+        df = cleaner_result["cleaned_df"]
 
         # Build stats once — shared by Hypothesis Bot and Debate Manager
         stats_summary = HypothesisBotAgent._build_stats_summary(df)
 
-        hypothesis_result = self.hypothesis.run(cleaned_data)
+        hypothesis_result = self.hypothesis.run(df)
         hypotheses = hypothesis_result["hypotheses"]
         hypothesis_result["revised"] = True
         hypothesis_result["revised_hypotheses"] = hypotheses
@@ -712,7 +723,7 @@ class InsightOrchestraWorkflow:
         debate_result = self.debate.run(hypotheses, data_stats=stats_summary)
         consensus = debate_result["summary"].get("consensus")
 
-        viz_result = self.viz.run(cleaned_data, consensus, hypotheses=hypotheses)
+        viz_result = self.viz.run(df, consensus, hypotheses=hypotheses)
 
         report = cleaner_result["report"]
         n_plots = len(viz_result.get("chart_info", {}).get("plots", []))

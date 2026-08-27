@@ -8,6 +8,7 @@ import tempfile
 from io import BytesIO
 from unittest.mock import MagicMock, Mock, patch
 
+import pandas as pd
 import pytest
 from app.api import endpoints
 from app.api.endpoints import BigQueryRequest, NLQRequest, ProcessRequest
@@ -102,7 +103,7 @@ class TestEndpointsIntegration:
     async def test_process_workflow_called(self, mock_workflow, temp_csv):
         mock_instance = MagicMock()
         mock_instance.cleaner.run.return_value = {
-            "cleaned_data": [{"x": 1}],
+            "cleaned_df": pd.DataFrame([{"x": 1}]),
             "report": {"duplicates_removed": 0, "total_missing": 0},
         }
         mock_instance.hypothesis.run.return_value = {"hypotheses": ["h1"]}
@@ -127,12 +128,12 @@ class TestEndpointsIntegration:
         self, mock_workflow, mock_summarizer, temp_csv
     ):
         """Real databases routinely have all-null numeric columns, which
-        (pre-fix) left NaN in cleaned_data and crashed response
-        serialization with Starlette's allow_nan=False JSONResponse. The
-        endpoint's own response should never contain a raw NaN/Infinity."""
+        (pre-fix) left NaN in the response and crashed serialization with
+        Starlette's allow_nan=False JSONResponse. The endpoint's own
+        response should never contain a raw NaN/Infinity."""
         mock_instance = MagicMock()
         mock_instance.cleaner.run.return_value = {
-            "cleaned_data": [{"x": 1, "processed_at": float("nan")}],
+            "cleaned_df": pd.DataFrame([{"x": 1, "processed_at": float("nan")}]),
             "report": {"duplicates_removed": 0, "total_missing": 1},
         }
         mock_instance.hypothesis.run.return_value = {"hypotheses": ["h1"]}
@@ -152,7 +153,10 @@ class TestEndpointsIntegration:
         # Would raise ValueError before the sanitize_json fix, matching the
         # real crash from Starlette's JSONResponse renderer.
         json.dumps(response, allow_nan=False)
-        assert response["cleaner"]["cleaned_data"][0]["processed_at"] is None
+        # The full cleaned dataset is no longer returned (nothing in the UI
+        # read it); the preview carries the same guarantee.
+        assert response["preview"]["rows"][0]["processed_at"] is None
+        assert "cleaned_data" not in response["cleaner"]
 
     @pytest.mark.asyncio
     @patch("app.api.endpoints.NaturalLanguageQueryAgent")

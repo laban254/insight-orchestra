@@ -164,3 +164,47 @@ def test_describe_dataset_serializes_datetimes():
     info = describe_dataset(df)
     assert info["dtypes"]["date"].startswith("datetime64")
     assert info["preview"][0]["date"].startswith("2024-01-01")
+
+
+# --- analysis row cap ---------------------------------------------------
+
+
+def test_sample_for_analysis_passes_small_frames_through(monkeypatch):
+    from app.utils import dataset_io
+
+    monkeypatch.setattr(dataset_io.settings, "max_analysis_rows", 100)
+    df = pd.DataFrame({"a": range(10)})
+    out, notice = dataset_io.sample_for_analysis(df)
+    assert out is df
+    assert notice is None
+
+
+def test_sample_for_analysis_caps_and_reports(monkeypatch):
+    from app.utils import dataset_io
+
+    monkeypatch.setattr(dataset_io.settings, "max_analysis_rows", 50)
+    df = pd.DataFrame({"a": range(500)})
+    out, notice = dataset_io.sample_for_analysis(df)
+    assert len(out) == 50
+    assert notice == {"sampled": True, "analyzed_rows": 50, "total_rows": 500}
+
+
+def test_sample_for_analysis_is_deterministic(monkeypatch):
+    """A re-run of the same dataset must give the same answer."""
+    from app.utils import dataset_io
+
+    monkeypatch.setattr(dataset_io.settings, "max_analysis_rows", 20)
+    df = pd.DataFrame({"a": range(200)})
+    first, _ = dataset_io.sample_for_analysis(df)
+    second, _ = dataset_io.sample_for_analysis(df)
+    assert first.equals(second)
+
+
+def test_cap_can_be_disabled(monkeypatch):
+    from app.utils import dataset_io
+
+    monkeypatch.setattr(dataset_io.settings, "max_analysis_rows", 0)
+    df = pd.DataFrame({"a": range(1000)})
+    out, notice = dataset_io.sample_for_analysis(df)
+    assert len(out) == 1000
+    assert notice is None

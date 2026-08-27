@@ -30,6 +30,8 @@ from typing import Any
 
 import pandas as pd
 
+from app.config import settings
+
 logger = logging.getLogger(__name__)
 
 # Bytes read to sniff encoding and delimiter. Large enough to cover a header
@@ -248,6 +250,27 @@ def read_dataset(path: str, nrows: int | None = None) -> DatasetReadResult:
     return DatasetReadResult(
         df=df, encoding=encoding, delimiter=delimiter, datetime_columns=datetime_columns
     )
+
+
+def sample_for_analysis(df: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, Any] | None]:
+    """Cap the rows fed to the agent pipeline, reporting when it bites.
+
+    The pipeline runs correlations, group-bys and chart aggregations over
+    every row, and the LLM only ever sees summary statistics — so beyond a
+    point extra rows cost time and memory without changing the answer. The
+    cap is a deterministic head slice rather than a random sample so a
+    re-run of the same dataset gives the same result, and it returns a
+    notice so the UI can say the analysis is based on a subset rather than
+    quietly implying it covered everything.
+    """
+    limit = settings.max_analysis_rows
+    if limit <= 0 or len(df) <= limit:
+        return df, None
+    return df.head(limit), {
+        "sampled": True,
+        "analyzed_rows": int(limit),
+        "total_rows": int(len(df)),
+    }
 
 
 def describe_dataset(df: pd.DataFrame, preview_rows: int = 20) -> dict[str, Any]:

@@ -62,7 +62,7 @@ class TestDataJanitorAgent:
         result = agent.run(dirty_data.to_dict(orient="records"))
 
         # Age should be imputed with mean (28)
-        cleaned_df = pd.DataFrame(result["cleaned_data"])
+        cleaned_df = result["cleaned_df"]
         assert cleaned_df["age"].isnull().sum() == 0
 
     def test_impute_categorical_missing(self, agent, dirty_data):
@@ -70,7 +70,7 @@ class TestDataJanitorAgent:
         result = agent.run(dirty_data.to_dict(orient="records"))
 
         # Name should be imputed with mode (Alice)
-        cleaned_df = pd.DataFrame(result["cleaned_data"])
+        cleaned_df = result["cleaned_df"]
         assert cleaned_df["name"].isnull().sum() == 0
 
     def test_detect_constant_columns(self, agent, dirty_data):
@@ -91,7 +91,7 @@ class TestDataJanitorAgent:
         )
         result = agent.run(data.to_dict(orient="records"))
 
-        cleaned_df = pd.DataFrame(result["cleaned_data"])
+        cleaned_df = result["cleaned_df"]
         assert cleaned_df["processed_at"].isnull().sum() == 0
         assert (cleaned_df["processed_at"] == 0).all()
 
@@ -448,7 +448,7 @@ class TestInsightOrchestraWorkflow:
         """Test cleaner output structure."""
         result = workflow.run(sample_data.to_dict(orient="records"))
 
-        assert "cleaned_data" in result["cleaner"]
+        assert "cleaned_df" in result["cleaner"]
         assert "report" in result["cleaner"]
 
     def test_hypothesis_output_structure(self, workflow, sample_data):
