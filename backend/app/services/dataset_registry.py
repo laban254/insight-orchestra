@@ -54,6 +54,10 @@ class DatasetRecord(TypedDict):
     name: str
     source: str  # "upload" | "demo:<dataset_id>" | "database" | "bigquery"
     created_at: float
+    # Bumped on resolve_path() (sliding expiry, like ConnectionStore) so a
+    # workspace someone keeps coming back to never gets reaped, while one
+    # abandoned for DATASET_TTL_SECONDS does.
+    last_accessed_at: float
 
 
 class DatasetMissingError(Exception):
@@ -88,15 +92,24 @@ class DatasetRegistry:
 
     def register(self, path: str, name: str, source: str = "upload") -> str:
         dataset_id = uuid.uuid4().hex
+        now = time.time()
         record: DatasetRecord = {
             "id": dataset_id,
             "path": path,
             "name": name,
             "source": source,
-            "created_at": time.time(),
+            "created_at": now,
+            "last_accessed_at": now,
         }
         self._write(record)
         return dataset_id
+
+    def touch(self, dataset_id: str) -> None:
+        """Mark a dataset as just used, resetting its idle clock."""
+        record = self.get(dataset_id)
+        if record is not None:
+            record["last_accessed_at"] = time.time()
+            self._write(record)
 
     def _write(self, record: DatasetRecord) -> None:
         if self._use_redis and self._redis_client:
@@ -175,6 +188,7 @@ class DatasetRegistry:
             )
 
         if os.path.isfile(record["path"]):
+            self.touch(dataset_id)
             return record["path"]
 
         # A demo dataset is generated, not uploaded, so it can be rebuilt
@@ -193,6 +207,7 @@ class DatasetRegistry:
                 df, _ = get_demo_dataset(demo_id)
                 df.to_csv(record["path"], index=False)
                 logger.info("Regenerated missing demo dataset %s", demo_id)
+                self.touch(dataset_id)
                 return record["path"]
             except Exception as e:
                 logger.warning("Could not regenerate demo dataset %s: %s", demo_id, e)
@@ -201,6 +216,22 @@ class DatasetRegistry:
             f"The data behind '{record['name']}' is no longer on disk. "
             f"Load the dataset again to continue."
         )
+
+    def reap_expired(self, ttl_seconds: int) -> list[str]:
+        """Delete datasets idle past `ttl_seconds`; return the ids removed.
+
+        `ttl_seconds <= 0` disables age-based reaping (the registry then
+        only shrinks via explicit delete()). A workspace referencing a
+        reaped dataset simply reports the data as gone on reopen — the same
+        path already used for a dataset lost to any other cause.
+        """
+        if ttl_seconds <= 0:
+            return []
+        now = time.time()
+        expired = [r["id"] for r in self.all() if now - r.get("last_accessed_at", 0) > ttl_seconds]
+        for dataset_id in expired:
+            self.delete(dataset_id)
+        return expired
 
 
 _registry: DatasetRegistry | None = None

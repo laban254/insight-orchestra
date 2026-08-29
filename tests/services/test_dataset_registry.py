@@ -116,3 +116,78 @@ def test_datasets_live_on_the_mounted_volume():
     """Not /tmp: those files do not survive a container recreate."""
     assert not DATASET_DIR.startswith("/tmp")
     assert DATASET_DIR.endswith(os.path.join("uploads", "datasets"))
+
+
+# --- retention: sliding TTL ----------------------------------------------
+
+
+def test_register_sets_last_accessed_at(registry, csv_file):
+    dataset_id = registry.register(csv_file, name="data.csv")
+    record = registry.get(dataset_id)
+    assert record["last_accessed_at"] == record["created_at"]
+
+
+def test_resolve_path_touches_the_dataset(registry, csv_file):
+    dataset_id = registry.register(csv_file, name="data.csv")
+
+    # Force a stale timestamp so a resolution deterministically bumps it.
+    # The in-memory backend hands back the same dict it stores, so the
+    # comparison value is copied out as a plain float rather than kept as a
+    # dict reference — otherwise both sides of the assertion mutate together.
+    stale = registry.get(dataset_id)
+    stale["last_accessed_at"] -= 100
+    registry._write(stale)
+    stale_value = stale["last_accessed_at"]
+
+    registry.resolve_path(dataset_id)
+    assert registry.get(dataset_id)["last_accessed_at"] > stale_value
+
+
+def test_touch_updates_last_accessed_at(registry, csv_file):
+    dataset_id = registry.register(csv_file, name="data.csv")
+    record = registry.get(dataset_id)
+    record["last_accessed_at"] -= 1000
+    registry._write(record)
+    old_value = record["last_accessed_at"]
+
+    registry.touch(dataset_id)
+    assert registry.get(dataset_id)["last_accessed_at"] > old_value
+
+
+def test_touch_unknown_id_is_a_noop(registry):
+    registry.touch("does-not-exist")  # must not raise
+
+
+def test_reap_expired_removes_idle_datasets(registry, csv_file):
+    dataset_id = registry.register(csv_file, name="data.csv")
+    record = registry.get(dataset_id)
+    record["last_accessed_at"] = 0  # arbitrarily long ago
+    registry._write(record)
+
+    removed = registry.reap_expired(ttl_seconds=3600)
+    assert removed == [dataset_id]
+    assert registry.get(dataset_id) is None
+    assert not os.path.exists(csv_file)
+
+
+def test_reap_expired_keeps_recently_used_datasets(registry, csv_file):
+    dataset_id = registry.register(csv_file, name="data.csv")
+    try:
+        removed = registry.reap_expired(ttl_seconds=3600)
+        assert removed == []
+        assert registry.get(dataset_id) is not None
+    finally:
+        registry.delete(dataset_id, remove_file=False)
+
+
+def test_reap_expired_disabled_at_zero(registry, csv_file):
+    dataset_id = registry.register(csv_file, name="data.csv")
+    record = registry.get(dataset_id)
+    record["last_accessed_at"] = 0
+    registry._write(record)
+
+    try:
+        assert registry.reap_expired(ttl_seconds=0) == []
+        assert registry.get(dataset_id) is not None
+    finally:
+        registry.delete(dataset_id, remove_file=False)

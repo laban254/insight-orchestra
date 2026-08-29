@@ -54,6 +54,19 @@ class Settings(BaseSettings):
     # the user has to reconnect.
     db_connection_ttl_seconds: int = Field(600, alias="DB_CONNECTION_TTL_SECONDS")
 
+    # How long an unused dataset (upload, materialized DB table, BigQuery
+    # result, demo data) is kept before the retention sweep deletes it and
+    # its file. Sliding: touched every time the dataset is resolved, so a
+    # workspace someone keeps reopening is never reaped. Default 30 days —
+    # long enough that "I'll get back to this analysis next week" still
+    # works. 0 disables age-based reaping (orphan cleanup still runs).
+    dataset_ttl_seconds: int = Field(30 * 24 * 3600, alias="DATASET_TTL_SECONDS")
+
+    # How often the retention sweep runs. It does two cheap, idempotent
+    # things — reap expired datasets, delete orphaned files — so a modest
+    # cadence is fine even on a small deployment.
+    retention_sweep_interval_seconds: int = Field(3600, alias="RETENTION_SWEEP_INTERVAL_SECONDS")
+
     # CORS: comma-separated allowed origins (use "*" to allow all, dev only)
     allowed_origins: str = Field(
         "http://localhost:8501,http://localhost:3000", alias="ALLOWED_ORIGINS"

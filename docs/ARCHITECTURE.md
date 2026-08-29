@@ -352,8 +352,10 @@ with an in-memory fallback, same pattern as `session_manager.py` and
 `workspace_store.py` — keyed by a `connection_id` with a sliding TTL
 (`DB_CONNECTION_TTL_SECONDS`, default 10 min). `/connectors/load-table`
 reconnects fresh from that metadata each time it's called, runs `SELECT *
-FROM <table> LIMIT n`, and writes the result to a CSV under `/tmp` so it can
-flow through `/process`/`/nlq` exactly like an uploaded file.
+FROM <table> LIMIT n`, and writes the result to a CSV under the managed
+dataset directory, registering it with the [dataset
+registry](backend/app/services/dataset_registry.py) so it flows through
+`/process`/`/nlq` exactly like an uploaded file.
 
 ---
 
@@ -370,6 +372,30 @@ flow through `/process`/`/nlq` exactly like an uploaded file.
 **Session Data**: Each session stores a list of interaction dictionaries (`{question, answer, code}`) appended during NLQ requests.
 
 **Session Sharing**: Token-based share links created via `POST /sessions/share` with 72-hour TTL.
+
+---
+
+### 5b. Dataset Registry & Retention
+
+**Location**: [`dataset_registry.py`](backend/app/services/dataset_registry.py), [`retention.py`](backend/app/services/retention.py)
+
+Every ingestion path (`/upload`, `/demo/load`, `/connectors/load-table`,
+`/bigquery`) registers the file it writes and hands the client an opaque
+`dataset_id` — never a filesystem path. `/process` and `/nlq` resolve that id
+through the registry, so there is no caller-supplied path for those
+endpoints to validate. Records live in Redis (in-memory fallback), same
+pattern as sessions, workspaces and DB connections; the files themselves
+live under `backend/uploads/datasets/` on the mounted volume, not `/tmp`, so
+they survive a container recreate. A demo dataset additionally records which
+demo it came from and is regenerated on demand if its file is ever lost.
+
+A background sweep (started from `app/main.py`'s lifespan, run on
+`RETENTION_SWEEP_INTERVAL_SECONDS`) does two things every pass: reaps
+datasets idle past `DATASET_TTL_SECONDS` (sliding — resolving a dataset
+resets its clock, so a workspace someone keeps reopening is never reaped),
+and deletes any `.csv`/`.tsv` file in the uploads or dataset directories
+that no registry record points at and that has sat unreferenced for over an
+hour (long enough to never touch a file mid-upload or mid-registration).
 
 ---
 
@@ -397,19 +423,20 @@ The frontend [`AgentPipeline`](frontend/components/agents/AgentPipeline.tsx) com
     ↓
     POST /upload  (multipart/form-data)
     ↓
-    File saved to backend/uploads/{uuid}_{filename}.csv
+    File saved to backend/uploads/{uuid}_{filename}.csv, parsed, registered
     ↓
-    Return {"file_path": "/tmp/...csv"}
+    Return {"dataset_id": "...", "rows": ..., "columns": ..., "preview": [...]}
 
-[2] Frontend displays upload confirmation
+[2] Frontend displays upload confirmation (real shape, not "Unknown rows")
     ↓
     User types question in chat
     ↓
     Frontend opens SSE connection to /agents/stream/{session_id}
     ↓
-    POST /nlq with {file_path, question, session_id}
+    POST /nlq with {dataset_id, question, session_id}
     ↓
-    API loads DataFrame from file
+    API resolves dataset_id to a path via the dataset registry, loads the
+    DataFrame (or reuses it from the cleaned-frame cache if unchanged)
     ↓
     Data Janitor Agent runs (SSE: janitor → done)
     ↓
@@ -456,7 +483,7 @@ User sessions are keyed by ID and stored in Redis (or in-memory). The `/sessions
 | Code execution exploits | RestrictedPython sandbox + pre-execution safety scans |
 | Data exfiltration via sandbox | Blocked network imports (`requests`, `urllib`, `socket`) |
 | Resource exhaustion | Execution timeout (30 s default) |
-| Path traversal | File path validation — only `/tmp/` and `uploads/` allowed |
+| Path traversal / arbitrary file read | Datasets are addressed by an opaque `dataset_id` resolved through the [dataset registry](backend/app/services/dataset_registry.py) — the client never supplies a filesystem path |
 | Credential exposure | Environment variables only; `.env` excluded from version control |
 | CORS | Configurable allowed origins (`CORS_ORIGIN` env var) |
 
