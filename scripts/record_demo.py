@@ -15,9 +15,13 @@ a video of an error banner.
 
 Usage:
     ./scripts/record_demo.py                          # Sales dataset, ~30s
+    ./scripts/record_demo.py --theme dark             # writes demo-dark.*
     ./scripts/record_demo.py --dataset Customers
     ./scripts/record_demo.py --target-seconds 25
     ./scripts/record_demo.py --headed --no-post       # watch it, skip ffmpeg
+
+Both themes are wanted: the README and the website each pick one to match the
+reader, and a light recording on a dark page reads as a pasted-in screenshot.
 """
 
 from __future__ import annotations
@@ -197,6 +201,13 @@ def record(args) -> Path:
             record_video_size={"width": args.width, "height": args.height},
             # A fresh context means no restored workspace from a previous run.
             storage_state=None,
+            color_scheme=args.theme,
+        )
+        # The app reads `io-theme` first and only falls back to the system
+        # preference, so seed both -- setting one alone leaves the result
+        # dependent on whichever the app happens to check first.
+        context.add_init_script(
+            f"try {{ localStorage.setItem('io-theme', '{args.theme}'); }} catch (e) {{}}"
         )
         page = context.new_page()
 
@@ -272,12 +283,12 @@ def probe_duration(path: Path) -> float:
 
 
 def post_process(
-    raw: Path, out_dir: Path, target_s: float, gif_width: int
+    raw: Path, out_dir: Path, target_s: float, gif_width: int, stem: str = "demo"
 ) -> tuple[Path, Path, Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
-    mp4 = out_dir / "demo.mp4"
-    webm = out_dir / "demo.webm"
-    gif = out_dir / "demo.gif"
+    mp4 = out_dir / f"{stem}.mp4"
+    webm = out_dir / f"{stem}.webm"
+    gif = out_dir / f"{stem}.gif"
 
     duration = probe_duration(raw)
     # Compress dead time, but never so much that the pipeline is a blur.
@@ -390,6 +401,12 @@ def main() -> None:
     p.add_argument("--width", type=int, default=1280)
     p.add_argument("--height", type=int, default=800)
     p.add_argument("--gif-width", type=int, default=800)
+    p.add_argument(
+        "--theme",
+        choices=["light", "dark"],
+        default="light",
+        help="which app theme to record. 'dark' writes demo-dark.* so both can coexist.",
+    )
     p.add_argument("--headed", action="store_true", help="show the browser while recording")
     p.add_argument("--no-post", action="store_true", help="keep the raw webm, skip ffmpeg")
     p.add_argument(
@@ -413,7 +430,8 @@ def main() -> None:
         print(f"\nDone. Raw video: {raw}")
         return
 
-    mp4, webm, gif = post_process(raw, Path(args.out), args.target_seconds, args.gif_width)
+    stem = "demo" if args.theme == "light" else f"demo-{args.theme}"
+    mp4, webm, gif = post_process(raw, Path(args.out), args.target_seconds, args.gif_width, stem)
     shutil.rmtree(raw.parent, ignore_errors=True)
 
     print("\nDone.")

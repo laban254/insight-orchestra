@@ -135,14 +135,24 @@ Nothing is published to a package registry or container registry as part of this
 
 ## Re-recording the demo
 
-`docs/assets/demo.gif` (README) and `demo.mp4` (website) are generated, not hand-captured. Re-record them whenever the workspace UI changes noticeably:
+The demo assets are generated, not hand-captured. Re-record them whenever the workspace UI changes noticeably:
 
 ```bash
 pip install playwright && playwright install chromium   # once
-./scripts/record_demo.py
+./scripts/record_demo.py                 # light theme -> demo.{gif,mp4,webm}
+./scripts/record_demo.py --theme dark    # dark theme  -> demo-dark.{gif,mp4,webm}
 ```
 
-It drives a real browser against a running stack, waits for the agents to finish and the charts to paint, then writes both files via ffmpeg. Useful flags: `--dataset Customers` to change the story, `--target-seconds 40` for a longer cut, `--headed` to watch it work.
+Record **both** themes. The README picks one via `prefers-color-scheme` and the website follows its own theme toggle, so a missing take leaves half the readers looking at a recording that fights the page around it.
+
+The script drives a real browser against a running stack, waits for the agents to finish and the charts to paint, then writes each format via ffmpeg. Useful flags: `--dataset Customers` to change the story, `--target-seconds 40` for a longer cut, `--headed` to watch it work.
+
+The files are gitignored — a 30s GIF is around 8.5MB, well past the 500KB `check-added-large-files` limit. Publish them as release assets instead, which is where the README points:
+
+```bash
+gh release upload v1.0.0 docs/assets/demo.gif docs/assets/demo-dark.gif \
+  docs/assets/demo.mp4 docs/assets/demo-dark.mp4 --clobber
+```
 
 The pipeline needs a working LLM — the script checks `/config` first and refuses to record if no provider is ready, or if the run falls back to statistics-only (which produces a video full of "not assessed" scores). Verify with:
 
