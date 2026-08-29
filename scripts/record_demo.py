@@ -15,9 +15,13 @@ a video of an error banner.
 
 Usage:
     ./scripts/record_demo.py                          # Sales dataset, ~30s
+    ./scripts/record_demo.py --theme dark             # writes demo-dark.*
     ./scripts/record_demo.py --dataset Customers
     ./scripts/record_demo.py --target-seconds 25
     ./scripts/record_demo.py --headed --no-post       # watch it, skip ffmpeg
+
+Both themes are wanted: the README and the website each pick one to match the
+reader, and a light recording on a dark page reads as a pasted-in screenshot.
 """
 
 from __future__ import annotations
@@ -38,7 +42,9 @@ try:
     from playwright.sync_api import TimeoutError as PlaywrightTimeout
     from playwright.sync_api import sync_playwright
 except ImportError:  # pragma: no cover - dependency hint
-    sys.exit("playwright is not installed. Run: pip install playwright && playwright install chromium")
+    sys.exit(
+        "playwright is not installed. Run: pip install playwright && playwright install chromium"
+    )
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -154,7 +160,9 @@ def wait_for_pipeline(page, timeout_s: int, allow_degraded: bool = False) -> Non
             break
         page.wait_for_timeout(500)
     else:
-        sys.exit(f"No chart appeared within {timeout_s}s. Re-run with --headed to watch what happened.")
+        sys.exit(
+            f"No chart appeared within {timeout_s}s. Re-run with --headed to watch what happened."
+        )
 
     page.wait_for_function(CHARTS_PAINTED, timeout=30_000)
     log(f"charts painted after {time.monotonic() - started:.0f}s")
@@ -193,6 +201,13 @@ def record(args) -> Path:
             record_video_size={"width": args.width, "height": args.height},
             # A fresh context means no restored workspace from a previous run.
             storage_state=None,
+            color_scheme=args.theme,
+        )
+        # The app reads `io-theme` first and only falls back to the system
+        # preference, so seed both -- setting one alone leaves the result
+        # dependent on whichever the app happens to check first.
+        context.add_init_script(
+            f"try {{ localStorage.setItem('io-theme', '{args.theme}'); }} catch (e) {{}}"
         )
         page = context.new_page()
 
@@ -250,20 +265,30 @@ def record(args) -> Path:
 
 def probe_duration(path: Path) -> float:
     out = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-         "-of", "default=nw=1:nk=1", str(path)],
-        capture_output=True, text=True, check=True,
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=nw=1:nk=1",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
     )
     return float(out.stdout.strip())
 
 
 def post_process(
-    raw: Path, out_dir: Path, target_s: float, gif_width: int
+    raw: Path, out_dir: Path, target_s: float, gif_width: int, stem: str = "demo"
 ) -> tuple[Path, Path, Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
-    mp4 = out_dir / "demo.mp4"
-    webm = out_dir / "demo.webm"
-    gif = out_dir / "demo.gif"
+    mp4 = out_dir / f"{stem}.mp4"
+    webm = out_dir / f"{stem}.webm"
+    gif = out_dir / f"{stem}.gif"
 
     duration = probe_duration(raw)
     # Compress dead time, but never so much that the pipeline is a blur.
@@ -271,20 +296,58 @@ def post_process(
     log(f"raw capture {duration:.1f}s -> {duration / speed:.1f}s (speed x{speed:.2f})")
 
     subprocess.run(
-        ["ffmpeg", "-y", "-loglevel", "error", "-i", str(raw),
-         "-vf", f"setpts=PTS/{speed:.4f},scale=1280:-2:flags=lanczos",
-         "-an", "-c:v", "libx264", "-preset", "slow", "-crf", "23",
-         "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(mp4)],
+        [
+            "ffmpeg",
+            "-y",
+            "-loglevel",
+            "error",
+            "-i",
+            str(raw),
+            "-vf",
+            f"setpts=PTS/{speed:.4f},scale=1280:-2:flags=lanczos",
+            "-an",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "slow",
+            "-crf",
+            "23",
+            "-pix_fmt",
+            "yuv420p",
+            "-movflags",
+            "+faststart",
+            str(mp4),
+        ],
         check=True,
     )
 
     # H.264 covers Safari and mainstream browsers; VP9 covers Chromium builds
     # compiled without proprietary codecs, which otherwise show a dead player.
     subprocess.run(
-        ["ffmpeg", "-y", "-loglevel", "error", "-i", str(raw),
-         "-vf", f"setpts=PTS/{speed:.4f},scale=1280:-2:flags=lanczos",
-         "-an", "-c:v", "libvpx-vp9", "-crf", "34", "-b:v", "0",
-         "-row-mt", "1", "-deadline", "good", "-cpu-used", "2", str(webm)],
+        [
+            "ffmpeg",
+            "-y",
+            "-loglevel",
+            "error",
+            "-i",
+            str(raw),
+            "-vf",
+            f"setpts=PTS/{speed:.4f},scale=1280:-2:flags=lanczos",
+            "-an",
+            "-c:v",
+            "libvpx-vp9",
+            "-crf",
+            "34",
+            "-b:v",
+            "0",
+            "-row-mt",
+            "1",
+            "-deadline",
+            "good",
+            "-cpu-used",
+            "2",
+            str(webm),
+        ],
         check=True,
     )
 
@@ -292,14 +355,33 @@ def post_process(
     palette = out_dir / "_palette.png"
     gif_filters = f"setpts=PTS/{speed:.4f},fps=12,scale={gif_width}:-1:flags=lanczos"
     subprocess.run(
-        ["ffmpeg", "-y", "-loglevel", "error", "-i", str(raw),
-         "-vf", f"{gif_filters},palettegen=stats_mode=diff:max_colors=128", str(palette)],
+        [
+            "ffmpeg",
+            "-y",
+            "-loglevel",
+            "error",
+            "-i",
+            str(raw),
+            "-vf",
+            f"{gif_filters},palettegen=stats_mode=diff:max_colors=128",
+            str(palette),
+        ],
         check=True,
     )
     subprocess.run(
-        ["ffmpeg", "-y", "-loglevel", "error", "-i", str(raw), "-i", str(palette),
-         "-lavfi", f"{gif_filters}[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=3",
-         str(gif)],
+        [
+            "ffmpeg",
+            "-y",
+            "-loglevel",
+            "error",
+            "-i",
+            str(raw),
+            "-i",
+            str(palette),
+            "-lavfi",
+            f"{gif_filters}[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=3",
+            str(gif),
+        ],
         check=True,
     )
     palette.unlink(missing_ok=True)
@@ -307,7 +389,9 @@ def post_process(
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     p.add_argument("--url", default="http://localhost:8501", help="running frontend")
     p.add_argument("--api-url", default="http://localhost:8000", help="running backend")
     p.add_argument("--dataset", default="Sales", help="demo dataset to pick, by visible name")
@@ -317,6 +401,12 @@ def main() -> None:
     p.add_argument("--width", type=int, default=1280)
     p.add_argument("--height", type=int, default=800)
     p.add_argument("--gif-width", type=int, default=800)
+    p.add_argument(
+        "--theme",
+        choices=["light", "dark"],
+        default="light",
+        help="which app theme to record. 'dark' writes demo-dark.* so both can coexist.",
+    )
     p.add_argument("--headed", action="store_true", help="show the browser while recording")
     p.add_argument("--no-post", action="store_true", help="keep the raw webm, skip ffmpeg")
     p.add_argument(
@@ -340,7 +430,8 @@ def main() -> None:
         print(f"\nDone. Raw video: {raw}")
         return
 
-    mp4, webm, gif = post_process(raw, Path(args.out), args.target_seconds, args.gif_width)
+    stem = "demo" if args.theme == "light" else f"demo-{args.theme}"
+    mp4, webm, gif = post_process(raw, Path(args.out), args.target_seconds, args.gif_width, stem)
     shutil.rmtree(raw.parent, ignore_errors=True)
 
     print("\nDone.")
