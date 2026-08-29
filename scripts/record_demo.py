@@ -257,9 +257,12 @@ def probe_duration(path: Path) -> float:
     return float(out.stdout.strip())
 
 
-def post_process(raw: Path, out_dir: Path, target_s: float, gif_width: int) -> tuple[Path, Path]:
+def post_process(
+    raw: Path, out_dir: Path, target_s: float, gif_width: int
+) -> tuple[Path, Path, Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     mp4 = out_dir / "demo.mp4"
+    webm = out_dir / "demo.webm"
     gif = out_dir / "demo.gif"
 
     duration = probe_duration(raw)
@@ -272,6 +275,16 @@ def post_process(raw: Path, out_dir: Path, target_s: float, gif_width: int) -> t
          "-vf", f"setpts=PTS/{speed:.4f},scale=1280:-2:flags=lanczos",
          "-an", "-c:v", "libx264", "-preset", "slow", "-crf", "23",
          "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(mp4)],
+        check=True,
+    )
+
+    # H.264 covers Safari and mainstream browsers; VP9 covers Chromium builds
+    # compiled without proprietary codecs, which otherwise show a dead player.
+    subprocess.run(
+        ["ffmpeg", "-y", "-loglevel", "error", "-i", str(raw),
+         "-vf", f"setpts=PTS/{speed:.4f},scale=1280:-2:flags=lanczos",
+         "-an", "-c:v", "libvpx-vp9", "-crf", "34", "-b:v", "0",
+         "-row-mt", "1", "-deadline", "good", "-cpu-used", "2", str(webm)],
         check=True,
     )
 
@@ -290,7 +303,7 @@ def post_process(raw: Path, out_dir: Path, target_s: float, gif_width: int) -> t
         check=True,
     )
     palette.unlink(missing_ok=True)
-    return mp4, gif
+    return mp4, webm, gif
 
 
 def main() -> None:
@@ -327,11 +340,12 @@ def main() -> None:
         print(f"\nDone. Raw video: {raw}")
         return
 
-    mp4, gif = post_process(raw, Path(args.out), args.target_seconds, args.gif_width)
+    mp4, webm, gif = post_process(raw, Path(args.out), args.target_seconds, args.gif_width)
     shutil.rmtree(raw.parent, ignore_errors=True)
 
     print("\nDone.")
     print(f"  MP4 (site):   {mp4}  ({mp4.stat().st_size / 1e6:.1f} MB)")
+    print(f"  WebM (site):  {webm}  ({webm.stat().st_size / 1e6:.1f} MB)")
     print(f"  GIF (README): {gif}  ({gif.stat().st_size / 1e6:.1f} MB)")
     if gif.stat().st_size > 10e6:
         print("  Note: GitHub renders GIFs over ~10MB slowly -- consider --gif-width 800.")
