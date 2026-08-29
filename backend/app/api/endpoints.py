@@ -11,6 +11,7 @@ from sse_starlette.sse import EventSourceResponse
 from app.agent_progress import close_queue, get_queue, push_event, push_sentinel
 from app.config import settings
 from app.services.adk_agents import DataJanitorAgent, HypothesisBotAgent, InsightOrchestraWorkflow
+from app.services.dataset_cache import get_cleaned
 from app.services.dataset_registry import (
     DATASET_DIR,
     DatasetMissingError,
@@ -52,23 +53,30 @@ class BigQueryRequest(BaseModel):
     query: str
 
 
-def get_df(dataset_id: str) -> pd.DataFrame:
-    """Load the DataFrame for a registered dataset.
+def resolve_dataset_path(dataset_id: str) -> str:
+    """Path for a registered dataset, or a 404 written for the user.
 
     The client holds an opaque id, never a path, so there is no
     caller-supplied path to validate — the registry is the only thing that
     can name a file, and it only ever names files the server wrote.
     """
     try:
-        path = _datasets.resolve_path(dataset_id)
+        return _datasets.resolve_path(dataset_id)
     except DatasetMissingError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
 
+
+def read_frame(path: str) -> pd.DataFrame:
     try:
         return read_dataset(path).df
     except ValueError as e:
         # read_dataset raises ValueError with a user-facing message.
         raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+def get_df(dataset_id: str) -> pd.DataFrame:
+    """Load the DataFrame for a registered dataset."""
+    return read_frame(resolve_dataset_path(dataset_id))
 
 
 @router.post("/upload")
@@ -106,17 +114,29 @@ async def upload_csv(file: UploadFile = File(...)):
 @router.post("/process")
 async def process_data(request: ProcessRequest):
     """Run full Insight Orchestra workflow with real-time agent progress events."""
-    df = get_df(request.dataset_id)
-    df, sampling = sample_for_analysis(df)
+    path = resolve_dataset_path(request.dataset_id)
     workflow = InsightOrchestraWorkflow()
     sid = request.session_id
 
     try:
         push_event(sid, agent_id="janitor", status="running")
         t0 = time.monotonic()
-        cleaner_result = await asyncio.to_thread(workflow.cleaner.run, df)
-        cleaned_df = cleaner_result["cleaned_df"]
-        r = cleaner_result["report"]
+
+        # Shares the cache with /nlq, so the first follow-up question after
+        # an analysis doesn't re-read and re-clean the same file.
+        def _clean():
+            frame, notice = sample_for_analysis(read_frame(path))
+            result = workflow.cleaner.run(frame)
+            result["sampling"] = notice
+            return result
+
+        cleaned, _from_cache = await asyncio.to_thread(
+            get_cleaned, request.dataset_id, path, _clean
+        )
+        cleaned_df = cleaned.df
+        sampling = cleaned.sampling
+        cleaner_result = {"cleaned_df": cleaned_df, "report": cleaned.report}
+        r = cleaned.report
         push_event(
             sid,
             agent_id="janitor",
@@ -230,20 +250,29 @@ async def process_data(request: ProcessRequest):
 async def natural_language_query(request: NLQRequest):
     """Natural language query with LLM-powered code generation."""
     sid = request.session_id
-    df = get_df(request.dataset_id)
-    df, sampling = sample_for_analysis(df)
+    path = resolve_dataset_path(request.dataset_id)
 
     try:
         # --- Phase 1: Data Janitor ---
+        # Cleaning is deterministic, so a follow-up question reuses the
+        # previous result instead of re-reading and re-cleaning the file.
         push_event(sid, agent_id="janitor", status="running")
         t0 = time.monotonic()
-        janitor = DataJanitorAgent(name="nlq_cleaner")
-        cleaned_result = await asyncio.to_thread(janitor.run, df)
-        df = cleaned_result["cleaned_df"]
-        report = cleaned_result["report"]
+
+        def _clean():
+            frame, notice = sample_for_analysis(read_frame(path))
+            result = DataJanitorAgent(name="nlq_cleaner").run(frame)
+            result["sampling"] = notice
+            return result
+
+        cleaned, from_cache = await asyncio.to_thread(get_cleaned, request.dataset_id, path, _clean)
+        df = cleaned.df
+        report = cleaned.report
+        sampling = cleaned.sampling
         janitor_summary = (
             f"Removed {report.get('duplicates_removed', 0)} duplicates, "
             f"imputed {report.get('total_missing', 0)} missing values."
+            + (" (cached)" if from_cache else "")
         )
         push_event(
             sid,
