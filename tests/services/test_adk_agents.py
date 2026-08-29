@@ -224,6 +224,58 @@ class TestHypothesisBotAgent:
         assert len(hypotheses) == len(set(hypotheses))
 
 
+class TestHypothesisBotColumnCap:
+    """The fallback's groupby/correlation loops are O(categorical x numeric)
+    and O(numeric^2) respectively — uncapped, a 200-column wide table (not
+    unusual for an exported warehouse table) turned generating a handful of
+    heuristic hypotheses into a 78-second stall before the LLM was ever
+    reached. This caps the columns those loops iterate; the LLM-authored
+    path (the common case) sees every column via the schema prompt and is
+    unaffected."""
+
+    @pytest.fixture
+    def agent(self):
+        return HypothesisBotAgent(name="HypothesisBotAgent")
+
+    @pytest.fixture
+    def wide_data(self):
+        rng = np.random.RandomState(0)
+        n_rows = 50
+        numeric = {f"num{i}": rng.rand(n_rows) for i in range(60)}
+        categorical = {f"cat{i}": rng.choice(list("AB"), n_rows) for i in range(30)}
+        return pd.DataFrame({**numeric, **categorical})
+
+    def test_columns_fed_to_the_fallback_loops_are_capped(self, agent, wide_data):
+        from app.services.adk_agents import (
+            _MAX_HYPOTHESIS_CATEGORICAL_COLS,
+            _MAX_HYPOTHESIS_NUMERIC_COLS,
+        )
+
+        result = agent._generate_fallback_hypotheses(wide_data)
+
+        assert len(result["summary"]["numeric_columns"]) == _MAX_HYPOTHESIS_NUMERIC_COLS
+        assert (
+            len(result["summary"]["categorical_columns"]) == _MAX_HYPOTHESIS_CATEGORICAL_COLS
+        )
+
+    def test_a_wide_dataset_still_produces_hypotheses(self, agent, wide_data):
+        """The cap bounds cost; it must not silently produce nothing."""
+        result = agent._generate_fallback_hypotheses(wide_data)
+        assert len(result["hypotheses"]) > 0
+
+    def test_narrow_dataset_is_unaffected_by_the_cap(self, agent):
+        data = pd.DataFrame(
+            {
+                "age": [25, 30, 35, 40, 45],
+                "salary": [50000, 60000, 70000, 80000, 90000],
+                "department": ["Sales", "Engineering", "Sales", "Engineering", "HR"],
+            }
+        )
+        result = agent._generate_fallback_hypotheses(data)
+        assert result["summary"]["numeric_columns"] == ["age", "salary"]
+        assert result["summary"]["categorical_columns"] == ["department"]
+
+
 class TestDebateManagerAgent:
     """Test cases for DebateManagerAgent."""
 

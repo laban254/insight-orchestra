@@ -97,6 +97,18 @@ class DataJanitorAgent(Agent):
         return {"cleaned_df": df, "report": report}
 
 
+# Caps on the columns fed into the fallback's groupby/correlation loops
+# (used when no LLM is configured, or the LLM call fails). Uncapped, a
+# categorical x numeric double loop of full-frame groupbys, plus a pairwise
+# O(numeric^2) correlation loop, turns a wide CSV (a couple hundred columns,
+# not unusual for an exported data warehouse table) into thousands of
+# full-frame passes before a single hypothesis is produced. The LLM-authored
+# path, which is what actually runs whenever a provider is configured, sees
+# every column via the schema prompt regardless of this cap.
+_MAX_HYPOTHESIS_NUMERIC_COLS = 20
+_MAX_HYPOTHESIS_CATEGORICAL_COLS = 20
+
+
 class HypothesisBotAgent(Agent):
     def __init__(self, name: str, llm_service: LLMService | None = None):
         super().__init__(name=name)
@@ -119,6 +131,9 @@ class HypothesisBotAgent(Agent):
             if c.lower() not in id_like
         ]
         datetime_cols = list(df.select_dtypes(include="datetime").columns)
+
+        numeric_cols = numeric_cols[:_MAX_HYPOTHESIS_NUMERIC_COLS]
+        categorical_cols = categorical_cols[:_MAX_HYPOTHESIS_CATEGORICAL_COLS]
 
         hypotheses: list[str] = []
 
