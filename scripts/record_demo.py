@@ -38,7 +38,9 @@ try:
     from playwright.sync_api import TimeoutError as PlaywrightTimeout
     from playwright.sync_api import sync_playwright
 except ImportError:  # pragma: no cover - dependency hint
-    sys.exit("playwright is not installed. Run: pip install playwright && playwright install chromium")
+    sys.exit(
+        "playwright is not installed. Run: pip install playwright && playwright install chromium"
+    )
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -154,7 +156,9 @@ def wait_for_pipeline(page, timeout_s: int, allow_degraded: bool = False) -> Non
             break
         page.wait_for_timeout(500)
     else:
-        sys.exit(f"No chart appeared within {timeout_s}s. Re-run with --headed to watch what happened.")
+        sys.exit(
+            f"No chart appeared within {timeout_s}s. Re-run with --headed to watch what happened."
+        )
 
     page.wait_for_function(CHARTS_PAINTED, timeout=30_000)
     log(f"charts painted after {time.monotonic() - started:.0f}s")
@@ -250,9 +254,19 @@ def record(args) -> Path:
 
 def probe_duration(path: Path) -> float:
     out = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-         "-of", "default=nw=1:nk=1", str(path)],
-        capture_output=True, text=True, check=True,
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=nw=1:nk=1",
+            str(path),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
     )
     return float(out.stdout.strip())
 
@@ -271,20 +285,58 @@ def post_process(
     log(f"raw capture {duration:.1f}s -> {duration / speed:.1f}s (speed x{speed:.2f})")
 
     subprocess.run(
-        ["ffmpeg", "-y", "-loglevel", "error", "-i", str(raw),
-         "-vf", f"setpts=PTS/{speed:.4f},scale=1280:-2:flags=lanczos",
-         "-an", "-c:v", "libx264", "-preset", "slow", "-crf", "23",
-         "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(mp4)],
+        [
+            "ffmpeg",
+            "-y",
+            "-loglevel",
+            "error",
+            "-i",
+            str(raw),
+            "-vf",
+            f"setpts=PTS/{speed:.4f},scale=1280:-2:flags=lanczos",
+            "-an",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "slow",
+            "-crf",
+            "23",
+            "-pix_fmt",
+            "yuv420p",
+            "-movflags",
+            "+faststart",
+            str(mp4),
+        ],
         check=True,
     )
 
     # H.264 covers Safari and mainstream browsers; VP9 covers Chromium builds
     # compiled without proprietary codecs, which otherwise show a dead player.
     subprocess.run(
-        ["ffmpeg", "-y", "-loglevel", "error", "-i", str(raw),
-         "-vf", f"setpts=PTS/{speed:.4f},scale=1280:-2:flags=lanczos",
-         "-an", "-c:v", "libvpx-vp9", "-crf", "34", "-b:v", "0",
-         "-row-mt", "1", "-deadline", "good", "-cpu-used", "2", str(webm)],
+        [
+            "ffmpeg",
+            "-y",
+            "-loglevel",
+            "error",
+            "-i",
+            str(raw),
+            "-vf",
+            f"setpts=PTS/{speed:.4f},scale=1280:-2:flags=lanczos",
+            "-an",
+            "-c:v",
+            "libvpx-vp9",
+            "-crf",
+            "34",
+            "-b:v",
+            "0",
+            "-row-mt",
+            "1",
+            "-deadline",
+            "good",
+            "-cpu-used",
+            "2",
+            str(webm),
+        ],
         check=True,
     )
 
@@ -292,14 +344,33 @@ def post_process(
     palette = out_dir / "_palette.png"
     gif_filters = f"setpts=PTS/{speed:.4f},fps=12,scale={gif_width}:-1:flags=lanczos"
     subprocess.run(
-        ["ffmpeg", "-y", "-loglevel", "error", "-i", str(raw),
-         "-vf", f"{gif_filters},palettegen=stats_mode=diff:max_colors=128", str(palette)],
+        [
+            "ffmpeg",
+            "-y",
+            "-loglevel",
+            "error",
+            "-i",
+            str(raw),
+            "-vf",
+            f"{gif_filters},palettegen=stats_mode=diff:max_colors=128",
+            str(palette),
+        ],
         check=True,
     )
     subprocess.run(
-        ["ffmpeg", "-y", "-loglevel", "error", "-i", str(raw), "-i", str(palette),
-         "-lavfi", f"{gif_filters}[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=3",
-         str(gif)],
+        [
+            "ffmpeg",
+            "-y",
+            "-loglevel",
+            "error",
+            "-i",
+            str(raw),
+            "-i",
+            str(palette),
+            "-lavfi",
+            f"{gif_filters}[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=3",
+            str(gif),
+        ],
         check=True,
     )
     palette.unlink(missing_ok=True)
@@ -307,7 +378,9 @@ def post_process(
 
 
 def main() -> None:
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     p.add_argument("--url", default="http://localhost:8501", help="running frontend")
     p.add_argument("--api-url", default="http://localhost:8000", help="running backend")
     p.add_argument("--dataset", default="Sales", help="demo dataset to pick, by visible name")
