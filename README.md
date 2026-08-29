@@ -23,17 +23,23 @@
 </p>
 
 <!--
-  Hosted as release assets, not committed: at ~8.5MB each these GIFs would dwarf
-  every file in the repo and sit in history forever. Regenerate both takes with
+  Hosted on the "media-assets" release (github.com/laban254/insight-orchestra/releases/tag/media-assets),
+  not committed: at ~8.5MB each these GIFs would dwarf every file in the repo
+  and sit in history forever. That release is a pre-release with a non-version
+  tag on purpose, so it never becomes the repo's "Latest" and version-parsing
+  tools ignore it — a stable home for binaries that doesn't move when a real
+  version ships, unlike a per-version release tag would.
+
+  Regenerate both takes with:
     ./scripts/record_demo.py                 # light
     ./scripts/record_demo.py --theme dark    # dark
   then publish them:
-    gh release upload v1.0.0 docs/assets/demo.gif docs/assets/demo-dark.gif \
+    gh release upload media-assets docs/assets/demo.gif docs/assets/demo-dark.gif \
       docs/assets/demo.mp4 docs/assets/demo-dark.mp4 --clobber
 -->
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/laban254/insight-orchestra/releases/download/v1.0.0/demo-dark.gif">
-  <img alt="Insight Orchestra — four agents cleaning, hypothesising, debating and visualising a dataset" src="https://github.com/laban254/insight-orchestra/releases/download/v1.0.0/demo.gif">
+  <source media="(prefers-color-scheme: dark)" srcset="https://github.com/laban254/insight-orchestra/releases/download/media-assets/demo-dark.gif">
+  <img alt="Insight Orchestra — four agents cleaning, hypothesising, debating and visualising a dataset" src="https://github.com/laban254/insight-orchestra/releases/download/media-assets/demo.gif">
 </picture>
 
 <p align="center"><em>A real run on the bundled Sales dataset — unedited.</em></p>

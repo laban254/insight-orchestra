@@ -147,12 +147,14 @@ Record **both** themes. The README picks one via `prefers-color-scheme` and the 
 
 The script drives a real browser against a running stack, waits for the agents to finish and the charts to paint, then writes each format via ffmpeg. Useful flags: `--dataset Customers` to change the story, `--target-seconds 40` for a longer cut, `--headed` to watch it work.
 
-The files are gitignored — a 30s GIF is around 8.5MB, well past the 500KB `check-added-large-files` limit. Publish them as release assets instead, which is where the README points:
+The files are gitignored — a 30s GIF is around 8.5MB, well past the 500KB `check-added-large-files` limit. Publish them to [`media-assets`](https://github.com/laban254/insight-orchestra/releases/tag/media-assets) instead, which is where the README points:
 
 ```bash
-gh release upload v1.0.0 docs/assets/demo.gif docs/assets/demo-dark.gif \
+gh release upload media-assets docs/assets/demo.gif docs/assets/demo-dark.gif \
   docs/assets/demo.mp4 docs/assets/demo-dark.mp4 --clobber
 ```
+
+`media-assets` is a pre-release with a non-version tag — it exists purely to host binaries and is never picked up as the repo's "Latest" release or by version-parsing tools. Don't upload demo assets to an actual version tag (e.g. `v1.0.0`): the README's links would then need updating on every release.
 
 The pipeline needs a working LLM — the script checks `/config` first and refuses to record if no provider is ready, or if the run falls back to statistics-only (which produces a video full of "not assessed" scores). Verify with:
 
