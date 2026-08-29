@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://insight-orchestra-io.lovable.app">Website</a> ·
+  <a href="https://marketing-insight-orchestra.vercel.app">Website</a> ·
   <a href="docs/">Docs</a> ·
   <a href="https://github.com/laban254/insight-orchestra/issues/new">Report a bug</a>
 </p>
@@ -22,7 +22,15 @@
   <a href="https://codespaces.new/laban254/insight-orchestra"><img src="https://github.com/codespaces/badge.svg" alt="Open in GitHub Codespaces"></a>
 </p>
 
-![Insight Orchestra workspace](docs/assets/workspace.png)
+<!--
+  Hosted as a release asset, not committed: at ~8.7MB the GIF would be twenty
+  times the largest file in the repo and would live in history forever.
+  Regenerate with ./scripts/record_demo.py, then:
+    gh release upload v1.0.0 docs/assets/demo.gif docs/assets/demo.mp4 --clobber
+-->
+![Insight Orchestra — four agents cleaning, hypothesising, debating and visualising a dataset](https://github.com/laban254/insight-orchestra/releases/download/v1.0.0/demo.gif)
+
+<p align="center"><em>A real run on the bundled Sales dataset — unedited, played at 1.5× to fit 30 seconds.</em></p>
 
 ---
 

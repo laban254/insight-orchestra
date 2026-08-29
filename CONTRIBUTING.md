@@ -133,6 +133,25 @@ Nothing is published to a package registry or container registry as part of this
 
 ---
 
+## Re-recording the demo
+
+`docs/assets/demo.gif` (README) and `demo.mp4` (website) are generated, not hand-captured. Re-record them whenever the workspace UI changes noticeably:
+
+```bash
+pip install playwright && playwright install chromium   # once
+./scripts/record_demo.py
+```
+
+It drives a real browser against a running stack, waits for the agents to finish and the charts to paint, then writes both files via ffmpeg. Useful flags: `--dataset Customers` to change the story, `--target-seconds 40` for a longer cut, `--headed` to watch it work.
+
+The pipeline needs a working LLM — the script checks `/config` first and refuses to record if no provider is ready, or if the run falls back to statistics-only (which produces a video full of "not assessed" scores). Verify with:
+
+```bash
+curl -s localhost:8000/config | python3 -m json.tool
+```
+
+---
+
 ## Project Structure
 
 ```

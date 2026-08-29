@@ -45,8 +45,11 @@ def _enqueue(session_id: str, value: Any) -> None:
     """
     queue = _queues.get(session_id)
     if queue is None:
-        logger.debug(
-            "push_event: no queue for session %s, dropping event",
+        # Worth a warning, not a debug line: the usual cause is this process
+        # not being the one holding the SSE connection, which silently empties
+        # the whole agent timeline. See the worker note in backend/Dockerfile.
+        logger.warning(
+            "push_event: no queue for session %s in this process, dropping event",
             safe_log_value(session_id),
         )
         return
