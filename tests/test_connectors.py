@@ -146,3 +146,90 @@ class TestFileBackedConnectorGuards:
     def test_duckdb_memory_is_rejected_as_always_empty(self):
         with pytest.raises(ValueError, match="always empty"):
             DuckDBConnector().connect(":memory:")
+
+
+class TestReadOnlyEnforcement:
+    """The word-boundary keyword check is defense in depth, not the primary
+    control: connect() also puts the session itself into read-only mode, so
+    the database rejects a write regardless of what query-text filtering
+    does or doesn't catch."""
+
+    @patch("psycopg2.connect")
+    def test_postgres_session_is_set_read_only(self, mock_connect):
+        mock_conn = MagicMock()
+        mock_connect.return_value = mock_conn
+
+        PostgreSQLConnector().connect("postgresql://user:pass@localhost:5432/db")
+
+        mock_conn.set_session.assert_called_once_with(readonly=True)
+
+    @patch("psycopg2.connect")
+    def test_postgres_catches_keyword_bypass_via_non_space_whitespace(self, mock_connect):
+        """The old check only matched a literal ' KEYWORD ' substring or a
+        leading match, so a tab or newline in place of a space slipped
+        past it even though SQL treats them identically."""
+        mock_connect.return_value = MagicMock()
+        connector = PostgreSQLConnector()
+        connector.connect("postgresql://user:pass@localhost:5432/db")
+
+        with pytest.raises(ValueError, match="DROP"):
+            connector.execute_query("SELECT 1\tDROP\tTABLE\tusers")
+
+    @patch("psycopg2.connect")
+    def test_postgres_column_name_is_not_a_false_positive(self, mock_connect):
+        mock_connect.return_value = MagicMock()
+        connector = PostgreSQLConnector()
+        connector.connect("postgresql://user:pass@localhost:5432/db")
+
+        # Must not raise: "updated_at" contains "UPDATE" but is one word.
+        connector.execute_query("SELECT id, updated_at FROM events")
+
+    @patch("pymysql.connect")
+    def test_mysql_session_is_set_read_only(self, mock_connect):
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_connect.return_value = mock_conn
+        mock_conn.cursor.return_value = mock_cursor
+
+        MySQLConnector().connect("mysql://user:pass@localhost:3306/db")
+
+        mock_cursor.execute.assert_any_call("SET SESSION TRANSACTION READ ONLY")
+
+    @patch("pymysql.connect")
+    def test_mysql_catches_keyword_bypass_via_non_space_whitespace(self, mock_connect):
+        mock_conn = MagicMock()
+        mock_connect.return_value = mock_conn
+        mock_conn.cursor.return_value = MagicMock()
+        connector = MySQLConnector()
+        connector.connect("mysql://user:pass@localhost:3306/db")
+
+        with pytest.raises(ValueError, match="DELETE"):
+            connector.execute_query("SELECT 1\nDELETE\nFROM\nusers")
+
+    @patch("pymysql.connect")
+    def test_mysql_column_name_is_not_a_false_positive(self, mock_connect):
+        mock_conn = MagicMock()
+        mock_connect.return_value = mock_conn
+        mock_conn.cursor.return_value = MagicMock()
+        connector = MySQLConnector()
+        connector.connect("mysql://user:pass@localhost:3306/db")
+
+        connector.execute_query("SELECT id, created_at FROM events")
+
+    @patch("pymysql.connect")
+    def test_mysql_percent_encoded_credentials_are_decoded(self, mock_connect):
+        """urlparse does not decode userinfo, so a password containing '@',
+        ':' or '/' — correctly percent-encoded when the URL was built —
+        would otherwise reach pymysql still escaped and fail to
+        authenticate."""
+        mock_connect.return_value = MagicMock()
+
+        MySQLConnector().connect("mysql://user:p%40ss%2Fw%3Aord@localhost:3306/db")
+
+        mock_connect.assert_called_with(
+            host="localhost",
+            user="user",
+            password="p@ss/w:ord",
+            database="db",
+            port=3306,
+        )
