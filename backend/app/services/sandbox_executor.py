@@ -123,7 +123,6 @@ class SandboxExecutor:
         "float": float,
         "format": format,
         "frozenset": frozenset,
-        "getattr": getattr,
         "hasattr": hasattr,
         "hash": hash,
         "hex": hex,
@@ -137,7 +136,6 @@ class SandboxExecutor:
         "max": max,
         "min": min,
         "next": next,
-        "object": object,
         "oct": oct,
         "ord": ord,
         "pow": pow,
@@ -147,20 +145,23 @@ class SandboxExecutor:
         "reversed": reversed,
         "round": round,
         "set": set,
-        "setattr": setattr,
         "slice": slice,
         "sorted": sorted,
         "str": str,
         "sum": sum,
         "tuple": tuple,
-        "type": type,
         "zip": zip,
     }
 
-    def __init__(self, timeout_seconds: int = 30, max_memory_mb: float = 256.0):
+    def __init__(self, timeout_seconds: int = 30):
         self.timeout_seconds = timeout_seconds
-        self.max_memory_mb = max_memory_mb
-        # One persistent pool so threads are reused across requests
+        # One persistent pool so threads are reused across requests.
+        # NOTE: a wall-clock timeout on a thread cannot interrupt CPU-bound
+        # code (future.cancel() can't stop a running thread), and per-call
+        # memory cannot be capped while sharing this process. True isolation
+        # needs a subprocess with resource limits; deferred, since running
+        # one worker (see backend/Dockerfile) keeps a wedged query from
+        # starving the whole server.
         self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
     def _check_safety(self, code: str) -> tuple[bool, str]:
@@ -225,7 +226,11 @@ class SandboxExecutor:
     def _create_globals(self, df=None, **additional_globals) -> dict[str, Any]:
         """Create restricted globals dictionary."""
         try:
-            from RestrictedPython.Guards import guarded_iter_unpack_sequence, safe_iter
+            from RestrictedPython.Guards import (
+                guarded_iter_unpack_sequence,
+                safe_iter,
+                safer_getattr,
+            )
         except Exception:
 
             def safe_iter(obj):
@@ -234,9 +239,35 @@ class SandboxExecutor:
             def guarded_iter_unpack_sequence(seq, count=None):
                 return seq
 
+            def safer_getattr(obj, name, *args):
+                # Fallback guard (RestrictedPython absent): block access to
+                # underscore-prefixed names, which is the route to __class__ /
+                # __globals__ and the classic sandbox escape.
+                if not isinstance(name, str):
+                    raise TypeError("attribute name must be a string")
+                if name.startswith("_"):
+                    raise AttributeError(f"access to '{name}' is not allowed")
+                return getattr(obj, name, *args)
+
+        # Restricted builtins: a copy of the allowlist plus an import hook that
+        # honours the module denylist, so legitimate `import plotly.express`
+        # works while os/sys/subprocess/etc. are refused at the import machinery
+        # itself (the AST pass screens import statements too — this is the
+        # runtime backstop).
+        safe_builtins = dict(self.SAFE_BUILTINS)
+        _blocked = self.BLOCKED_MODULES
+
+        def _guarded_import(name, _globals=None, _locals=None, fromlist=(), level=0):
+            root = name.split(".")[0]
+            if root in _blocked:
+                raise ImportError(f"import of '{root}' is not allowed")
+            return __import__(name, _globals, _locals, fromlist, level)
+
+        safe_builtins["__import__"] = _guarded_import
+
         globals_dict = {
             "_print_": print,
-            "_getattr_": getattr,
+            "_getattr_": safer_getattr,
             "_iter_": safe_iter,
             "_iter_unpack_sequence_": guarded_iter_unpack_sequence,
             "_next_": next,
@@ -244,7 +275,10 @@ class SandboxExecutor:
             "_getitem_": lambda obj, index: obj.__getitem__(index),
             "_getiter_": safe_iter,
             "_globals_": {},
-            "_builtins_": self.SAFE_BUILTINS,
+            # Correct key: with the misnamed "_builtins_" Python silently
+            # injected the *real* builtins and the allowlist never applied.
+            # "__builtins__" is what exec actually reads.
+            "__builtins__": safe_builtins,
         }
 
         try:
@@ -320,14 +354,16 @@ class SandboxExecutor:
     def execute_with_retry(
         self, code: str, df=None, max_retries: int = 2, **kwargs
     ) -> ExecutionResult:
-        """Execute code with retry on failure."""
-        last_result: ExecutionResult = self.execute(code, df, **kwargs)
+        """Execute code, retrying on failure up to `max_retries` extra times."""
+        last_result: ExecutionResult | None = None
         for attempt in range(max_retries + 1):
-            last_result = self.execute(code, df, **kwargs)  # noqa: PLR1704
+            last_result = self.execute(code, df, **kwargs)
             if last_result.success:
                 logger.info(f"Code executed successfully on attempt {attempt + 1}")
                 return last_result
             logger.warning(f"Execution failed (attempt {attempt + 1}): {last_result.error}")
 
         logger.error(f"Code failed after {max_retries + 1} attempts")
+        # The loop always runs at least once, so last_result is set here.
+        assert last_result is not None
         return last_result

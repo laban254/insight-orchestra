@@ -17,9 +17,7 @@ from app.services.dataset_registry import (
     DatasetMissingError,
     get_dataset_registry,
 )
-from app.services.explain_agent import ExplainabilityAgent
 from app.services.nlq_agent import NaturalLanguageQueryAgent
-from app.services.report_agent import ReportGeneratorAgent
 from app.services.session_manager import get_session_manager
 from app.services.summarizer_agent import InsightSummarizerAgent
 from app.utils.dataset_io import describe_dataset, read_dataset, sample_for_analysis
@@ -148,9 +146,14 @@ async def process_data(request: ProcessRequest):
 
         push_event(sid, agent_id="hypothesis", status="running")
         t0 = time.monotonic()
-        hypothesis_result = await asyncio.to_thread(workflow.hypothesis.run, cleaned_df)
-        hypotheses = hypothesis_result["hypotheses"]
+        # Build the stats summary once and hand it to the hypothesis agent
+        # (and, below, the debate agent) instead of recomputing describe()/
+        # corr() at each stage.
         stats_summary = HypothesisBotAgent._build_stats_summary(cleaned_df)
+        hypothesis_result = await asyncio.to_thread(
+            workflow.hypothesis.run, cleaned_df, stats_summary
+        )
+        hypotheses = hypothesis_result["hypotheses"]
         push_event(
             sid,
             agent_id="hypothesis",
@@ -356,45 +359,6 @@ async def natural_language_query(request: NLQRequest):
     )
 
 
-@router.post("/summarize")
-async def summarize_insights(payload: dict):
-    """Summarize workflow results."""
-    workflow_results = payload.get("workflow_results", {})
-
-    # Validate input is a dictionary
-    if not isinstance(workflow_results, dict):
-        raise HTTPException(status_code=400, detail="workflow_results must be a dictionary")
-
-    agent = InsightSummarizerAgent()
-    return agent.run(workflow_results)
-
-
-@router.post("/explain")
-async def explain_plot(payload: dict):
-    """Explain a visualization."""
-    plot = payload.get("plot", {})
-
-    # Validate input is a dictionary
-    if not isinstance(plot, dict):
-        raise HTTPException(status_code=400, detail="plot must be a dictionary")
-
-    agent = ExplainabilityAgent()
-    return agent.run(plot)
-
-
-@router.post("/report")
-async def generate_report(payload: dict):
-    """Generate HTML report."""
-    workflow_results = payload.get("workflow_results", {})
-
-    # Validate input is a dictionary
-    if not isinstance(workflow_results, dict):
-        raise HTTPException(status_code=400, detail="workflow_results must be a dictionary")
-
-    agent = ReportGeneratorAgent()
-    return agent.run(workflow_results)
-
-
 @router.post("/bigquery")
 async def bigquery_fetch(request: BigQueryRequest):
     """Fetch data from BigQuery.
@@ -427,6 +391,9 @@ async def bigquery_fetch(request: BigQueryRequest):
         raise HTTPException(status_code=500, detail=f"BigQuery error: {str(e)}") from e
 
 
+# NOTE (F7): unauthenticated by design for single-tenant / localhost use.
+# POST /config switches the live provider/model for everyone; gate it (and
+# the /workspaces routes) behind a shared secret before any public URL.
 class ConfigUpdate(BaseModel):
     provider: str | None = None
     model: str | None = None

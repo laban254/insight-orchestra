@@ -43,6 +43,9 @@ export function Workspace({ workspaceId, datasetId, datasetName, restore, onPers
     persistRef.current = onPersist;
     const costRef = useRef(onCost);
     costRef.current = onCost;
+    // Strictly increasing chart ids. Date.now() alone collides when two
+    // results arrive in the same millisecond, which duplicates React keys.
+    const resultSeq = useRef<number>(Date.now());
 
     const togglePin = useCallback((id: number) => {
         setPinned((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
@@ -111,7 +114,7 @@ export function Workspace({ workspaceId, datasetId, datasetName, restore, onPers
                 if (res.tokens_used || res.cost_usd) {
                     costRef.current?.({ tokens: res.tokens_used ?? 0, cost: res.cost_usd ?? 0 });
                 }
-                const resultId = res.plot_json ? Date.now() : undefined;
+                const resultId = res.plot_json ? (resultSeq.current += 1) : undefined;
                 if (res.plot_json && resultId) {
                     setResults((prev) => [
                         { id: resultId, question, answer: res.answer, plotJson: res.plot_json! },

@@ -248,10 +248,13 @@ class HypothesisBotAgent(Agent):
 
         return "\n".join(lines)
 
-    def run(self, cleaned_data, **kwargs):
+    def run(self, cleaned_data, stats_summary: str | None = None, **kwargs):
         df = _as_frame(cleaned_data)
         schema_prompt = DataFrameSchema.to_prompt(DataFrameSchema.from_dataframe(df))
-        stats_summary = self._build_stats_summary(df)
+        # Reuse a caller-supplied summary when present (the /process and
+        # workflow paths build it once and share it with the Debate Manager).
+        if stats_summary is None:
+            stats_summary = self._build_stats_summary(df)
         fallback = self._generate_fallback_hypotheses(df)
 
         system_prompt = """You are a senior data scientist generating insights for a business audience.
@@ -729,7 +732,7 @@ class InsightOrchestraWorkflow:
         # Build stats once — shared by Hypothesis Bot and Debate Manager
         stats_summary = HypothesisBotAgent._build_stats_summary(df)
 
-        hypothesis_result = self.hypothesis.run(df)
+        hypothesis_result = self.hypothesis.run(df, stats_summary)
         hypotheses = hypothesis_result["hypotheses"]
         hypothesis_result["revised"] = True
         hypothesis_result["revised_hypotheses"] = hypotheses

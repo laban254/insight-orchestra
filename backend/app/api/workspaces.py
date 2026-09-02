@@ -11,6 +11,13 @@ from app.services.workspace_store import get_workspace_store
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
 _store = get_workspace_store()
 
+# Auth posture (F7): Insight Orchestra is single-tenant by design, so these
+# routes — and POST /config — are intentionally unauthenticated for a
+# localhost deployment. Any read/write/list here reaches every workspace.
+# Before exposing the backend on a public URL, gate the mutating routes
+# behind the shared-secret tracked in the launch plan; the /sessions/share
+# size cap (MAX_SHARE_BYTES) is the one hard limit that applies regardless.
+
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
