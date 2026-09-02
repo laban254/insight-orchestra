@@ -8,7 +8,6 @@ left saved workspaces pointing at files that vanish on a container recreate.
 import os
 
 import pytest
-
 from app.services.dataset_registry import (
     DATASET_DIR,
     DatasetMissingError,

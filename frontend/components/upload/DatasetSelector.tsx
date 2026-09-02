@@ -148,6 +148,9 @@ export function DatasetSelector({
                     <button
                         onClick={() => setShowDatasets((v) => !v)}
                         disabled={isUploading}
+                        aria-expanded={showDatasets}
+                        aria-haspopup="listbox"
+                        aria-controls="demo-dataset-list"
                         className="flex w-full items-center justify-between rounded-xl border border-border bg-surface px-4 py-3 text-left transition-colors hover:border-accent/50 disabled:opacity-50"
                     >
                         <span className="flex items-center gap-2 text-sm font-medium text-fg">
@@ -158,10 +161,17 @@ export function DatasetSelector({
                     </button>
 
                     {showDatasets && (
-                        <div className="absolute bottom-full left-0 right-0 z-20 mb-2 max-h-[60vh] overflow-y-auto rounded-xl border border-border bg-surface shadow-[var(--shadow)]">
+                        <div
+                            id="demo-dataset-list"
+                            role="listbox"
+                            aria-label="Demo datasets"
+                            className="absolute bottom-full left-0 right-0 z-20 mb-2 max-h-[60vh] overflow-y-auto rounded-xl border border-border bg-surface shadow-[var(--shadow)]"
+                        >
                             {Object.entries(datasets).map(([id, config]) => (
                                 <button
                                     key={id}
+                                    role="option"
+                                    aria-selected={selectedDataset === id}
                                     onClick={() => loadDemo(id)}
                                     disabled={isUploading}
                                     className="w-full border-b border-border-soft px-4 py-3 text-left transition-colors last:border-0 hover:bg-surface-2 disabled:opacity-50"

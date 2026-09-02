@@ -8,7 +8,6 @@ an ImportError as a generic 500.
 import builtins
 
 import pytest
-
 from app.utils.bigquery_utils import BigQueryUnavailableError, run_bigquery_query
 
 CREDENTIALS = '{"type": "service_account", "project_id": "p"}'

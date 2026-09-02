@@ -8,7 +8,6 @@ none of them ever going away on their own.
 import os
 
 import pytest
-
 from app.services import retention
 from app.services.dataset_registry import get_dataset_registry
 
@@ -84,9 +83,7 @@ class TestOrphanSweep:
         assert counts["orphans"] == 0
         assert fresh.exists()
 
-    def test_registered_file_is_never_swept_as_an_orphan(
-        self, managed_dir, registry, monkeypatch
-    ):
+    def test_registered_file_is_never_swept_as_an_orphan(self, managed_dir, registry, monkeypatch):
         upload_dir, _ = managed_dir
         monkeypatch.setattr(retention.settings, "dataset_ttl_seconds", 3600)
         path = upload_dir / "known.csv"

@@ -44,9 +44,10 @@ export function HistoryDrawer({ open, onClose, workspaces, activeId, onOpen, onD
                     </h2>
                     <button
                         onClick={onClose}
+                        aria-label="Close history"
                         className="grid h-8 w-8 place-items-center rounded-lg text-muted transition-colors hover:text-fg"
                     >
-                        <X size={16} />
+                        <X size={16} aria-hidden="true" />
                     </button>
                 </div>
 
@@ -83,12 +84,16 @@ export function HistoryDrawer({ open, onClose, workspaces, activeId, onOpen, onD
                                             <span className="block text-[11px] text-faint">{timeAgo(w.updatedAt)}</span>
                                         </span>
                                     </button>
+                                    {/* aria-label names the target: a bare "Delete" repeats
+                                        identically down the list and is ambiguous out of
+                                        visual context. */}
                                     <button
                                         onClick={() => onDelete(w.id)}
+                                        aria-label={`Delete analysis: ${w.datasetName}`}
                                         title="Delete"
-                                        className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-faint opacity-0 transition-all hover:text-danger group-hover:opacity-100"
+                                        className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-faint opacity-0 transition-all hover:text-danger group-hover:opacity-100 focus-visible:opacity-100"
                                     >
-                                        <Trash2 size={14} />
+                                        <Trash2 size={14} aria-hidden="true" />
                                     </button>
                                 </div>
                             );

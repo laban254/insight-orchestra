@@ -3,8 +3,6 @@ Unit tests for API endpoint handlers (function-level).
 """
 
 import json
-import os
-import tempfile
 from io import BytesIO
 from unittest.mock import MagicMock, Mock, patch
 
@@ -201,3 +199,61 @@ class TestEndpointsErrorHandling:
             with pytest.raises(HTTPException) as exc:
                 await endpoints.process_data(ProcessRequest(dataset_id=registered_dataset))
         assert exc.value.status_code == 400
+
+
+class TestProviderReadiness:
+    """GET /config and POST /config must agree on which providers are usable.
+
+    They previously used different placeholder checks, so GET advertised openai as ready
+    while POST rejected the same provider with a 400.
+    """
+
+    @pytest.mark.parametrize(
+        "placeholder", ["sk-...", "sk-ant-...", "your-openai-api-key-here", "", "   "]
+    )
+    def test_placeholder_keys_are_not_configured(self, placeholder):
+        assert endpoints._api_key_configured(placeholder) is False
+
+    def test_real_key_is_configured(self):
+        assert endpoints._api_key_configured("sk-proj-abc123realkey") is True
+
+    @pytest.mark.asyncio
+    async def test_get_and_post_agree_when_key_is_a_placeholder(self):
+        """The exact contradiction that shipped: GET said ready, POST said 400."""
+        with (
+            patch.object(endpoints.settings, "openai_api_key", "sk-..."),
+            patch.object(endpoints, "_ollama_reachable", return_value=False),
+        ):
+            config = await endpoints.get_config()
+            assert config["ready"]["openai"] is False
+
+            with pytest.raises(HTTPException) as exc:
+                await endpoints.update_config(endpoints.ConfigUpdate(provider="openai"))
+            assert exc.value.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_ollama_readiness_reflects_the_daemon(self):
+        """Readiness used to be hardcoded True whether or not anything was listening."""
+        with patch.object(endpoints, "_ollama_reachable", return_value=False):
+            config = await endpoints.get_config()
+            assert config["ready"]["ollama"] is False
+
+        with patch.object(endpoints, "_ollama_reachable", return_value=True):
+            config = await endpoints.get_config()
+            assert config["ready"]["ollama"] is True
+
+    @pytest.mark.asyncio
+    async def test_cannot_switch_to_unreachable_ollama(self):
+        with patch.object(endpoints, "_ollama_reachable", return_value=False):
+            with pytest.raises(HTTPException) as exc:
+                await endpoints.update_config(endpoints.ConfigUpdate(provider="ollama"))
+        assert exc.value.status_code == 400
+        assert "not reachable" in exc.value.detail
+
+    def test_unreachable_daemon_reports_false(self):
+        import requests as _requests
+
+        with patch.object(
+            endpoints.requests, "get", side_effect=_requests.RequestException("refused")
+        ):
+            assert endpoints._ollama_reachable() is False

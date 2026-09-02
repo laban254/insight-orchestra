@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import logging
+import re
 from typing import Any
 
 import pandas as pd
@@ -26,6 +27,68 @@ def _as_frame(data: Any) -> pd.DataFrame:
 # plotly express imports statsmodels itself when trendline="ols" is requested;
 # we only need to know whether it's installed to decide whether to ask for one.
 _HAS_STATSMODELS = importlib.util.find_spec("statsmodels") is not None
+
+# Grouping a metric by a near-unique column ("average salary by employee_name") produces
+# one group per row — arithmetically valid, analytically worthless. Cap the group count.
+MAX_GROUP_CARDINALITY = 20
+# Separate, stricter cap for charts: a box plot stops being readable well before 20 categories.
+MAX_CHART_CATEGORIES = 12
+
+_ID_EXACT = {"id", "index", "idx", "rowid", "row_id", "key", "pk", "uuid", "guid", "passengerid"}
+
+
+def _normalize_col(col: str) -> str:
+    """camelCase/PascalCase/spaced -> snake_case, for name-based column heuristics."""
+    s = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", str(col).strip())
+    return re.sub(r"[\s\-]+", "_", s).lower()
+
+
+def is_id_like(col: str, series: pd.Series | None = None) -> bool:
+    """True if a column looks like an identifier rather than a measurable quantity.
+
+    Name-based: exact matches ('id', 'uuid') plus '*_id' / 'id_*' affixes, so real foreign
+    keys like ``employee_id`` or ``customerId`` are caught — the previous exact-match set
+    let every one of those through and they got averaged as if they were metrics.
+
+    Value-based: an integer column that covers a contiguous range with no repeats is a
+    row counter. Uniqueness alone is not enough — salaries and revenues are usually unique
+    too, and excluding them would throw away the only real metrics in the table.
+    """
+    name = _normalize_col(col)
+    if name in _ID_EXACT or name.endswith("_id") or name.startswith("id_"):
+        return True
+    if series is not None and len(series) > 1:
+        try:
+            if not pd.api.types.is_integer_dtype(series):
+                return False
+            if series.nunique(dropna=False) != len(series):
+                return False
+            # A dense 1..N (in any order) is a surrogate key; a spread-out unique column
+            # such as salary is not.
+            span = int(series.max()) - int(series.min()) + 1
+            return span == len(series)
+        except (TypeError, ValueError, OverflowError):
+            return False
+    return False
+
+
+# Below this many rows the distinct/row ratio says more about sample size than about the
+# column, so the cardinality cap alone decides.
+_RATIO_GUARD_MIN_ROWS = 30
+
+
+def is_groupable(series: pd.Series, max_cardinality: int = MAX_GROUP_CARDINALITY) -> bool:
+    """True if a categorical column has few enough distinct values to aggregate over."""
+    n = len(series)
+    if n == 0:
+        return False
+    distinct = int(series.nunique(dropna=False))
+    # Need at least two groups to compare, and few enough that each pools multiple rows.
+    if not (2 <= distinct <= max_cardinality):
+        return False
+    if n >= _RATIO_GUARD_MIN_ROWS and distinct / n > 0.5:
+        return False
+    return distinct < n
 
 
 class DataJanitorAgent(Agent):
@@ -121,19 +184,21 @@ class HypothesisBotAgent(Agent):
         object.__setattr__(self, "llm", llm)
 
     def _generate_fallback_hypotheses(self, df: pd.DataFrame) -> dict[str, Any]:
-        id_like = {"id", "index", "rowid", "passengerid"}
         numeric_cols = [
-            c for c in df.select_dtypes(include="number").columns if c.lower() not in id_like
+            c for c in df.select_dtypes(include="number").columns if not is_id_like(c, df[c])
         ]
         categorical_cols = [
             c
             for c in df.select_dtypes(include=["object", "string", "category"]).columns
-            if c.lower() not in id_like
+            if not is_id_like(c, df[c])
         ]
         datetime_cols = list(df.select_dtypes(include="datetime").columns)
 
         numeric_cols = numeric_cols[:_MAX_HYPOTHESIS_NUMERIC_COLS]
         categorical_cols = categorical_cols[:_MAX_HYPOTHESIS_CATEGORICAL_COLS]
+
+        # Only columns that pool rows into a handful of groups are worth aggregating over.
+        groupable_cols = [c for c in categorical_cols if is_groupable(df[c])]
 
         hypotheses: list[str] = []
 
@@ -158,15 +223,20 @@ class HypothesisBotAgent(Agent):
                         f"between the first and second half of the {span.days}-day period "
                         f"covered by {date_col} (mean {first:,.1f} → {second:,.1f})."
                     )
-        for cat in categorical_cols:
+        for cat in groupable_cols:
             for num in numeric_cols:
                 top = df.groupby(cat)[num].mean().sort_values(ascending=False)
                 if len(top) >= 2:
                     best, worst = top.index[0], top.index[-1]
-                    diff_pct = abs(top.iloc[0] - top.iloc[-1]) / max(abs(top.mean()), 1e-9) * 100
+                    best_val, worst_val = top.iloc[0], top.iloc[-1]
+                    # Express the gap against the overall mean, which stays stable when the
+                    # bottom group sits near zero. Phrasing must match the denominator.
+                    gap_pct = abs(best_val - worst_val) / max(abs(top.mean()), 1e-9) * 100
                     hypotheses.append(
-                        f"'{best}' leads '{cat}' with the highest average {num} "
-                        f"({diff_pct:.0f}% above '{worst}') — worth investigating whether this gap is structural."
+                        f"'{best}' has the highest average {num} in '{cat}' "
+                        f"({best_val:,.2f} vs {worst_val:,.2f} for '{worst}' — "
+                        f"a gap of {gap_pct:.0f}% of the overall mean) — "
+                        f"worth investigating whether this gap is structural."
                     )
         for i, a in enumerate(numeric_cols):
             for b in numeric_cols[i + 1 :]:
@@ -195,11 +265,14 @@ class HypothesisBotAgent(Agent):
             ]
         return {
             "hypotheses": deduped,
+            "llm_used": False,
             "summary": {
                 "num_hypotheses": len(deduped),
-                "reasoning": "Heuristic hypotheses from column statistics.",
+                "reasoning": "Heuristic patterns from column statistics (no LLM).",
                 "numeric_columns": numeric_cols,
-                "categorical_columns": categorical_cols,
+                # Only groupable columns — downstream consumers build "X by Y" prompts from
+                # this list, and a near-unique column makes those meaningless.
+                "categorical_columns": groupable_cols,
             },
         }
 
@@ -288,6 +361,7 @@ OUTPUT (JSON only):
             hypotheses = list(dict.fromkeys(hypotheses))[:8]
             return {
                 "hypotheses": hypotheses,
+                "llm_used": True,
                 "summary": {
                     "num_hypotheses": len(hypotheses),
                     "reasoning": response.get("reasoning", "LLM-generated insights"),
@@ -296,6 +370,9 @@ OUTPUT (JSON only):
                 },
             }
         except Exception:
+            logger.warning(
+                "Hypothesis generation via LLM failed; using heuristic fallback", exc_info=True
+            )
             return fallback
 
 
@@ -311,22 +388,28 @@ class DebateManagerAgent(Agent):
         object.__setattr__(self, "llm", llm)
 
     def _fallback_scoring(self, hypotheses: list[str]) -> dict[str, Any]:
-        scored = []
-        for i, h in enumerate(hypotheses):
-            confidence = max(0.1, min(1.0, 0.85 - i * 0.05))
-            business = max(0.1, min(1.0, 0.80 - i * 0.04))
-            scored.append(
-                {
-                    "hypothesis": h,
-                    "confidence": round(confidence, 2),
-                    "business_value": round(business, 2),
-                    "statistical_argument": "Ranked by position — LLM unavailable.",
-                    "business_argument": "Ranked by position — LLM unavailable.",
-                }
-            )
-        scored.sort(key=lambda x: float(x["confidence"]) * float(x["business_value"]), reverse=True)  # type: ignore[arg-type]
+        """Order hypotheses without an LLM — deliberately without inventing scores.
+
+        This path previously synthesised ``confidence = 0.85 - i * 0.05``, which the UI then
+        rendered as an authoritative "85% confidence" badge. The numbers described nothing but
+        list position, so they are omitted entirely: ``None`` tells every consumer that no
+        assessment was made, where a plausible-looking float silently claimed one was.
+        """
+        scored = [
+            {
+                "hypothesis": h,
+                "confidence": None,
+                "business_value": None,
+                "statistical_argument": "Not assessed — no LLM available to score this claim.",
+                "business_argument": "Not assessed — no LLM available to score this claim.",
+            }
+            for h in hypotheses
+        ]
+        # Input order already reflects the heuristic generator's own ordering; keep it rather
+        # than re-sorting on scores that no longer exist.
         return {
             "scored_hypotheses": scored,
+            "llm_used": False,
             "summary": {
                 "num_hypotheses": len(hypotheses),
                 "consensus": scored[0] if scored else None,
@@ -345,6 +428,7 @@ class DebateManagerAgent(Agent):
         if not hypotheses:
             return {
                 "scored_hypotheses": [],
+                "llm_used": self.llm is not None,  # type: ignore[attr-defined]
                 "summary": {"num_hypotheses": 0, "consensus": None, "arguments": []},
             }
         if self.llm is None:  # type: ignore[attr-defined]
@@ -380,11 +464,14 @@ OUTPUT (JSON only):
         try:
             response = self.llm.complete_json(system_prompt, user_prompt)  # type: ignore[attr-defined]
             scored = response.get("scored_hypotheses", [])
+            # The model can omit either score; treat a missing one as 0 rather than crashing.
             scored.sort(
-                key=lambda x: x.get("confidence", 0) * x.get("business_value", 0), reverse=True
+                key=lambda x: (x.get("confidence") or 0) * (x.get("business_value") or 0),
+                reverse=True,
             )
             return {
                 "scored_hypotheses": scored,
+                "llm_used": True,
                 "summary": {
                     "num_hypotheses": len(hypotheses),
                     "consensus": scored[0] if scored else None,
@@ -399,6 +486,7 @@ OUTPUT (JSON only):
                 },
             }
         except Exception:
+            logger.warning("Hypothesis scoring via LLM failed; returning unscored", exc_info=True)
             return self._fallback_scoring(hypotheses)
 
 
@@ -451,6 +539,10 @@ class VizWhizAgent(Agent):
             if df[col].nunique(dropna=False) <= 1:
                 return False
             if df[col].dtype == object and (df[col] == "MISSING").sum() / max(len(df), 1) > 0.8:
+                return False
+            # Charting a surrogate key ("average employee_id by department") is never the
+            # insight the user wanted; keep identifiers out of axis selection entirely.
+            if is_id_like(col, df[col]):
                 return False
             return True
 
@@ -569,7 +661,7 @@ class VizWhizAgent(Agent):
                             ).to_json(),
                         }
                     )
-                    if df[x].nunique() < 12:
+                    if df[x].nunique() < MAX_CHART_CATEGORIES:
                         plots.append(
                             {
                                 "type": "box",
@@ -596,7 +688,7 @@ class VizWhizAgent(Agent):
                             ).to_json(),
                         }
                     )
-                    if df[y].nunique() < 12:
+                    if df[y].nunique() < MAX_CHART_CATEGORIES:
                         plots.append(
                             {
                                 "type": "box",

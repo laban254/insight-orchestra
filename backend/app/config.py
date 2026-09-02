@@ -20,7 +20,7 @@ class Settings(BaseSettings):
 
     # Anthropic
     anthropic_api_key: str = Field("", alias="ANTHROPIC_API_KEY")
-    anthropic_model: str = Field("claude-3-5-haiku-20241022", alias="ANTHROPIC_MODEL")
+    anthropic_model: str = Field("claude-haiku-4-5-20251001", alias="ANTHROPIC_MODEL")
 
     # DeepSeek (OpenAI-compatible API)
     deepseek_api_key: str = Field("", alias="DEEPSEEK_API_KEY")

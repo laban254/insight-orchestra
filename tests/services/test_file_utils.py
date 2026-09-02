@@ -9,10 +9,9 @@ oversized upload hit the disk in full before being turned away.
 from io import BytesIO
 
 import pytest
-from starlette.datastructures import UploadFile
-
 from app.utils import file_utils
 from app.utils.file_utils import MAX_UPLOAD_BYTES, save_upload_file
+from starlette.datastructures import UploadFile
 
 
 @pytest.fixture(autouse=True)

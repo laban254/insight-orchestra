@@ -7,7 +7,6 @@ files, non-UTF-8 encodings, and date columns silently left as text.
 
 import pandas as pd
 import pytest
-
 from app.utils.dataset_io import (
     coerce_datetimes,
     describe_dataset,
@@ -98,9 +97,7 @@ def test_read_dataset_rejects_binary(tmp_path):
 def test_date_column_becomes_datetime(tmp_path):
     """The core fix: a CSV round-trip used to leave dates as text, so every
     agent downstream treated them as categorical."""
-    content = "date,revenue\n" + "".join(
-        f"2024-01-{d:02d},{d * 10}\n" for d in range(1, 21)
-    )
+    content = "date,revenue\n" + "".join(f"2024-01-{d:02d},{d * 10}\n" for d in range(1, 21))
     result = read_dataset(write(tmp_path, "ts.csv", content))
     assert pd.api.types.is_datetime64_any_dtype(result.df["date"])
     assert result.datetime_columns == ["date"]

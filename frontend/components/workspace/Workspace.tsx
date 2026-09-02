@@ -187,6 +187,21 @@ export function Workspace({ workspaceId, datasetId, datasetName, restore, onPers
                         </div>
                     )}
 
+                    {/* Degraded-run notice: the pipeline still returns 200 when the LLM is
+                        unreachable, so the output must say it was never interpreted. */}
+                    {analysisResult?.degraded && !analysisLoading && (
+                        <div
+                            role="status"
+                            className="rounded-2xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning"
+                        >
+                            <p className="font-medium">Statistics only — these results were not interpreted.</p>
+                            <p className="mt-1 text-xs opacity-90">
+                                {analysisResult.degraded_reason ??
+                                    "No language model was available for this run."}
+                            </p>
+                        </div>
+                    )}
+
                     {/* Narrative intro */}
                     {analysisResult && !analysisLoading && (
                         <MessageBubble
