@@ -10,6 +10,8 @@ import {
     DemoDatasetLoadResponse,
     ProcessResponse,
     AppConfig,
+    UploadResponse,
+    LocalDatabaseFilesResponse,
 } from './types';
 // Type-only import — erased at compile time, so no runtime cycle with workspaces.ts.
 import type { SavedState, WorkspaceMeta, WorkspaceRecord } from './workspaces';
@@ -40,15 +42,19 @@ export const api = {
         const response = await apiClient.post<LoadTableResponse>('/connectors/load-table', data);
         return response.data;
     },
+    listLocalDatabaseFiles: async (): Promise<LocalDatabaseFilesResponse> => {
+        const response = await apiClient.get<LocalDatabaseFilesResponse>('/connectors/local-files');
+        return response.data;
+    },
     disconnectDatabase: async (connectionId: string): Promise<void> => {
         await apiClient.delete(`/connectors/${connectionId}`);
     },
 
     // DATA
-    uploadFile: async (file: File) => {
+    uploadFile: async (file: File): Promise<UploadResponse> => {
         const formData = new FormData();
         formData.append('file', file);
-        const response = await apiClient.post('/upload', formData, {
+        const response = await apiClient.post<UploadResponse>('/upload', formData, {
             headers: { 'Content-Type': 'multipart/form-data' },
         });
         return response.data;
@@ -65,11 +71,15 @@ export const api = {
     },
 
     // ANALYSIS
-    processData: async (filePath: string, sessionId?: string): Promise<ProcessResponse> => {
+    processData: async (datasetId: string, sessionId?: string): Promise<ProcessResponse> => {
         const response = await apiClient.post<ProcessResponse>('/process', {
-            file_path: filePath,
+            dataset_id: datasetId,
             session_id: sessionId,
         });
+        return response.data;
+    },
+    getDataset: async (datasetId: string): Promise<UploadResponse> => {
+        const response = await apiClient.get<UploadResponse>(`/datasets/${datasetId}`);
         return response.data;
     },
     naturalLanguageQuery: async (data: NLQRequest): Promise<NLQResponse> => {
@@ -93,7 +103,7 @@ export const api = {
     },
     saveWorkspace: async (
         id: string,
-        payload: { datasetName: string; filePath: string; createdAt: number; state: SavedState }
+        payload: { datasetName: string; datasetId: string; createdAt: number; state: SavedState }
     ): Promise<WorkspaceMeta> => {
         const response = await apiClient.put<WorkspaceMeta>(`/workspaces/${id}`, payload);
         return response.data;

@@ -3,7 +3,7 @@
 import { useState, useCallback } from "react";
 import { api } from "@/lib/api";
 import { ChevronDown, UploadCloud, Database, Loader2 } from "lucide-react";
-import { DemoDataset } from "@/lib/types";
+import { DemoDataset, ParseAssumptions } from "@/lib/types";
 
 interface UploadInfo {
     type: "uploaded" | "demo";
@@ -12,13 +12,14 @@ interface UploadInfo {
     columns: number | string;
     description?: string;
     use_cases?: string[];
+    assumptions?: ParseAssumptions;
 }
 
 export function DatasetSelector({
     onUploadSuccess,
     datasets,
 }: {
-    onUploadSuccess: (filePath: string, info: UploadInfo) => void;
+    onUploadSuccess: (datasetId: string, info: UploadInfo) => void;
     datasets: Record<string, DemoDataset>;
 }) {
     const [isDragging, setIsDragging] = useState(false);
@@ -41,11 +42,12 @@ export function DatasetSelector({
             setIsUploading(true);
             try {
                 const result = await api.uploadFile(file);
-                onUploadSuccess(result.file_path, {
-                    name: file.name,
+                onUploadSuccess(result.dataset_id, {
+                    name: result.name || file.name,
                     type: "uploaded",
-                    rows: result.rows || "Unknown",
-                    columns: result.columns || "Unknown",
+                    rows: result.rows,
+                    columns: result.columns,
+                    assumptions: result.assumptions,
                 });
             } catch (err: unknown) {
                 setError(getErrorMessage(err, "Upload failed"));
@@ -82,7 +84,7 @@ export function DatasetSelector({
         setSelectedDataset(datasetId);
         try {
             const result = await api.loadDemoData(datasetId);
-            onUploadSuccess(result.file_path, {
+            onUploadSuccess(result.dataset_id, {
                 name: result.dataset_name,
                 type: "demo",
                 rows: result.row_count,

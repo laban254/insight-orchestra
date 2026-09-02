@@ -12,14 +12,14 @@ import type { SavedState } from "@/lib/workspaces";
 
 interface WorkspaceProps {
     workspaceId: string;
-    filePath: string;
+    datasetId: string;
     datasetName: string;
     restore?: SavedState | null;
     onPersist: (state: SavedState) => void;
     onCost?: (delta: { tokens: number; cost: number }) => void;
 }
 
-export function Workspace({ workspaceId, filePath, datasetName, restore, onPersist, onCost }: WorkspaceProps) {
+export function Workspace({ workspaceId, datasetId, datasetName, restore, onPersist, onCost }: WorkspaceProps) {
     const sessionId = workspaceId;
     const reopened = !!restore?.analysisResult;
 
@@ -43,6 +43,9 @@ export function Workspace({ workspaceId, filePath, datasetName, restore, onPersi
     persistRef.current = onPersist;
     const costRef = useRef(onCost);
     costRef.current = onCost;
+    // Strictly increasing chart ids. Date.now() alone collides when two
+    // results arrive in the same millisecond, which duplicates React keys.
+    const resultSeq = useRef<number>(Date.now());
 
     const togglePin = useCallback((id: number) => {
         setPinned((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
@@ -57,7 +60,7 @@ export function Workspace({ workspaceId, filePath, datasetName, restore, onPersi
         let cancelled = false;
         setAnalysisLoading(true);
         setAnalysisError(null);
-        api.processData(filePath, sessionId)
+        api.processData(datasetId, sessionId)
             .then((result) => {
                 if (!cancelled) setAnalysisResult(result);
             })
@@ -71,7 +74,7 @@ export function Workspace({ workspaceId, filePath, datasetName, restore, onPersi
             cancelled = true;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [filePath]);
+    }, [datasetId]);
 
     useEffect(() => {
         scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -104,14 +107,14 @@ export function Workspace({ workspaceId, filePath, datasetName, restore, onPersi
 
             try {
                 const res = await api.naturalLanguageQuery({
-                    file_path: filePath,
+                    dataset_id: datasetId,
                     question,
                     session_id: sessionId,
                 });
                 if (res.tokens_used || res.cost_usd) {
                     costRef.current?.({ tokens: res.tokens_used ?? 0, cost: res.cost_usd ?? 0 });
                 }
-                const resultId = res.plot_json ? Date.now() : undefined;
+                const resultId = res.plot_json ? (resultSeq.current += 1) : undefined;
                 if (res.plot_json && resultId) {
                     setResults((prev) => [
                         { id: resultId, question, answer: res.answer, plotJson: res.plot_json! },
@@ -139,7 +142,7 @@ export function Workspace({ workspaceId, filePath, datasetName, restore, onPersi
                 setIsLoading(false);
             }
         },
-        [filePath, sessionId, isLoading, analysisLoading]
+        [datasetId, sessionId, isLoading, analysisLoading]
     );
 
     const refineResult = useCallback(
@@ -207,6 +210,22 @@ export function Workspace({ workspaceId, filePath, datasetName, restore, onPersi
                             intro
                             stream
                         />
+                    )}
+
+                    {/* Sampling notice — never imply the analysis covered
+                        rows it never saw. */}
+                    {analysisResult?.sampling?.sampled && (
+                        <div className="rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-xs text-muted">
+                            Analysed the first{" "}
+                            <span className="font-medium text-fg">
+                                {analysisResult.sampling.analyzed_rows.toLocaleString()}
+                            </span>{" "}
+                            of{" "}
+                            <span className="font-medium text-fg">
+                                {analysisResult.sampling.total_rows.toLocaleString()}
+                            </span>{" "}
+                            rows. Raise <code className="font-mono">MAX_ANALYSIS_ROWS</code> to cover the whole file.
+                        </div>
                     )}
 
                     {/* Suggested questions */}

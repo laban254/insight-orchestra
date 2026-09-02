@@ -20,20 +20,50 @@ export interface LoadTableRequest {
 }
 
 export interface LoadTableResponse {
-  file_path: string;
+  dataset_id: string;
   table_name: string;
   row_count: number;
   column_count: number;
   columns: string[];
 }
 
+/** What the reader had to assume to parse the file, so we can tell the user. */
+export interface ParseAssumptions {
+  encoding: string;
+  delimiter: string;
+  datetime_columns: string[];
+}
+
+export interface UploadResponse {
+  dataset_id: string;
+  name: string;
+  rows: number;
+  columns: number;
+  column_names: string[];
+  dtypes: Record<string, string>;
+  null_counts: Record<string, number>;
+  preview: Record<string, unknown>[];
+  assumptions: ParseAssumptions;
+}
+
+export interface LocalDatabaseFile {
+  name: string;
+  path: string;
+}
+
+export interface LocalDatabaseFilesResponse {
+  host_directory: string;
+  files: LocalDatabaseFile[];
+}
+
 export interface NLQRequest {
-  file_path: string;
+  dataset_id: string;
   question: string;
   session_id?: string;
 }
 
 export interface NLQResponse {
+  sampling?: SamplingNotice | null;
   answer: string;
   code: string;
   reasoning: string;
@@ -68,8 +98,8 @@ export interface DemoDatasetListResponse {
 }
 
 export interface DemoDatasetLoadResponse {
-  file_path: string;
   dataset_id: string;
+  demo_id: string;
   dataset_name: string;
   columns: string[];
   row_count: number;
@@ -130,8 +160,16 @@ export interface ProcessResponse {
     columns: string[];
     rows: Record<string, unknown>[];
   };
+  sampling?: SamplingNotice | null;
   /** True when one or more LLM stages fell back to statistics-only output. */
   degraded?: boolean;
   degraded_stages?: string[];
   degraded_reason?: string | null;
+}
+
+/** Present when the dataset exceeded the analysis row cap. */
+export interface SamplingNotice {
+  sampled: boolean;
+  analyzed_rows: number;
+  total_rows: number;
 }

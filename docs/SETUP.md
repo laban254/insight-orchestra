@@ -261,6 +261,8 @@ Or run all of the above (plus Docker, port, and Ollama model checks) in one shot
 | `USE_REDIS` | `true` | Enable Redis; set `false` for in-memory fallback |
 | `SESSION_TTL_SECONDS` | `3600` | Session expiration time (1 hour) |
 | `DB_CONNECTION_TTL_SECONDS` | `600` | How long a `/connectors/connect` connection stays valid before you must reconnect (10 min) |
+| `DATASET_TTL_SECONDS` | `2592000` | How long an unused dataset (upload, DB table, BigQuery result, demo data) is kept before the retention sweep deletes it (30 days). Sliding — reset every time the dataset is opened. `0` disables age-based reaping. |
+| `RETENTION_SWEEP_INTERVAL_SECONDS` | `3600` | How often the retention sweep runs (also deletes orphaned upload files) |
 
 ### CORS
 

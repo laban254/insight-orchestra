@@ -11,6 +11,13 @@ from app.services.workspace_store import get_workspace_store
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
 _store = get_workspace_store()
 
+# Auth posture (F7): Insight Orchestra is single-tenant by design, so these
+# routes — and POST /config — are intentionally unauthenticated for a
+# localhost deployment. Any read/write/list here reaches every workspace.
+# Before exposing the backend on a public URL, gate the mutating routes
+# behind the shared-secret tracked in the launch plan; the /sessions/share
+# size cap (MAX_SHARE_BYTES) is the one hard limit that applies regardless.
+
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
@@ -43,7 +50,10 @@ def _validate_id(workspace_id: str) -> str:
 
 class WorkspaceUpsert(BaseModel):
     datasetName: str = Field(min_length=1, max_length=200)
-    filePath: str = Field(default="", max_length=1000)
+    # Opaque dataset-registry id. Records written before the registry
+    # existed carry an empty string; the UI treats those as unloadable
+    # rather than restoring a workspace whose data it can't reach.
+    datasetId: str = Field(default="", max_length=64)
     createdAt: int | None = None
     state: dict
 
@@ -72,7 +82,7 @@ async def upsert_workspace(workspace_id: str, payload: WorkspaceUpsert):
     record = {
         "id": workspace_id,
         "datasetName": payload.datasetName,
-        "filePath": payload.filePath,
+        "datasetId": payload.datasetId,
         "createdAt": payload.createdAt or (existing or {}).get("createdAt") or now_ms,
         "updatedAt": now_ms,
         "state": payload.state,

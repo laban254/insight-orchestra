@@ -12,12 +12,17 @@ from sse_starlette.sse import EventSourceResponse
 from app.agent_progress import close_queue, get_queue, push_event, push_sentinel
 from app.config import settings
 from app.services.adk_agents import DataJanitorAgent, HypothesisBotAgent, InsightOrchestraWorkflow
-from app.services.explain_agent import ExplainabilityAgent
+from app.services.dataset_cache import get_cleaned
+from app.services.dataset_registry import (
+    DATASET_DIR,
+    DatasetMissingError,
+    get_dataset_registry,
+)
 from app.services.nlq_agent import NaturalLanguageQueryAgent
-from app.services.report_agent import ReportGeneratorAgent
 from app.services.session_manager import get_session_manager
 from app.services.summarizer_agent import InsightSummarizerAgent
-from app.utils.file_utils import UPLOAD_DIR, save_upload_file
+from app.utils.dataset_io import describe_dataset, read_dataset, sample_for_analysis
+from app.utils.file_utils import discard_upload, save_upload_file
 from app.utils.json_sanitize import sanitize_json
 
 logger = logging.getLogger(__name__)
@@ -28,15 +33,16 @@ router = APIRouter()
 
 # Session manager (Redis-backed with in-memory fallback)
 _session_manager = get_session_manager()
+_datasets = get_dataset_registry()
 
 
 class ProcessRequest(BaseModel):
-    file_path: str
+    dataset_id: str
     session_id: str | None = None
 
 
 class NLQRequest(BaseModel):
-    file_path: str
+    dataset_id: str
     question: str
     session_id: str | None = None
 
@@ -46,55 +52,90 @@ class BigQueryRequest(BaseModel):
     query: str
 
 
-def get_df(file_path: str) -> pd.DataFrame:
-    """Load DataFrame from file path."""
-    # Security: Resolve and validate the path against allowed directories
-    # before touching the filesystem, to prevent path traversal. Paths
-    # outside the sandbox are reported as "not found" (rather than a
-    # distinct "access denied") so we don't confirm the existence of
-    # files outside it.
-    real_path = os.path.realpath(file_path)
-    if not (
-        real_path == "/tmp"
-        or real_path.startswith("/tmp" + os.sep)
-        or real_path == UPLOAD_DIR
-        or real_path.startswith(UPLOAD_DIR + os.sep)
-    ):
-        raise HTTPException(status_code=404, detail="File not found.")
+def resolve_dataset_path(dataset_id: str) -> str:
+    """Path for a registered dataset, or a 404 written for the user.
 
+    The client holds an opaque id, never a path, so there is no
+    caller-supplied path to validate — the registry is the only thing that
+    can name a file, and it only ever names files the server wrote.
+    """
     try:
-        return pd.read_csv(real_path)
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="File not found.") from None
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to read CSV: {e}") from e
+        return _datasets.resolve_path(dataset_id)
+    except DatasetMissingError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+
+def read_frame(path: str) -> pd.DataFrame:
+    try:
+        return read_dataset(path).df
+    except ValueError as e:
+        # read_dataset raises ValueError with a user-facing message.
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+def get_df(dataset_id: str) -> pd.DataFrame:
+    """Load the DataFrame for a registered dataset."""
+    return read_frame(resolve_dataset_path(dataset_id))
 
 
 @router.post("/upload")
 async def upload_csv(file: UploadFile = File(...)):
-    """Upload CSV file."""
+    """Upload a CSV, returning its shape, column types and a preview."""
     try:
         file_path = save_upload_file(file)
-        return {"file_path": file_path}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         raise HTTPException(status_code=500, detail="File upload failed.") from e
 
+    # Parse now rather than at analysis time. A file that can't be read is a
+    # failed upload, and reporting it later — after the UI has said the
+    # upload succeeded — is the worst version of that error.
+    try:
+        result = read_dataset(file_path)
+    except ValueError as e:
+        discard_upload(file_path)
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    name = file.filename or "Uploaded file"
+    dataset_id = _datasets.register(file_path, name=name, source="upload")
+
+    return sanitize_json(
+        {
+            "dataset_id": dataset_id,
+            "name": name,
+            **describe_dataset(result.df),
+            "assumptions": result.assumptions,
+        }
+    )
+
 
 @router.post("/process")
 async def process_data(request: ProcessRequest):
     """Run full Insight Orchestra workflow with real-time agent progress events."""
-    df = get_df(request.file_path)
+    path = resolve_dataset_path(request.dataset_id)
     workflow = InsightOrchestraWorkflow()
     sid = request.session_id
 
     try:
         push_event(sid, agent_id="janitor", status="running")
         t0 = time.monotonic()
-        cleaner_result = await asyncio.to_thread(workflow.cleaner.run, df.to_dict(orient="records"))
-        cleaned_data = cleaner_result["cleaned_data"]
-        r = cleaner_result["report"]
+
+        # Shares the cache with /nlq, so the first follow-up question after
+        # an analysis doesn't re-read and re-clean the same file.
+        def _clean():
+            frame, notice = sample_for_analysis(read_frame(path))
+            result = workflow.cleaner.run(frame)
+            result["sampling"] = notice
+            return result
+
+        cleaned, _from_cache = await asyncio.to_thread(
+            get_cleaned, request.dataset_id, path, _clean
+        )
+        cleaned_df = cleaned.df
+        sampling = cleaned.sampling
+        cleaner_result = {"cleaned_df": cleaned_df, "report": cleaned.report}
+        r = cleaned.report
         push_event(
             sid,
             agent_id="janitor",
@@ -106,9 +147,14 @@ async def process_data(request: ProcessRequest):
 
         push_event(sid, agent_id="hypothesis", status="running")
         t0 = time.monotonic()
-        hypothesis_result = await asyncio.to_thread(workflow.hypothesis.run, cleaned_data)
+        # Build the stats summary once and hand it to the hypothesis agent
+        # (and, below, the debate agent) instead of recomputing describe()/
+        # corr() at each stage.
+        stats_summary = HypothesisBotAgent._build_stats_summary(cleaned_df)
+        hypothesis_result = await asyncio.to_thread(
+            workflow.hypothesis.run, cleaned_df, stats_summary
+        )
         hypotheses = hypothesis_result["hypotheses"]
-        stats_summary = HypothesisBotAgent._build_stats_summary(pd.DataFrame(cleaned_data))
         push_event(
             sid,
             agent_id="hypothesis",
@@ -137,7 +183,7 @@ async def process_data(request: ProcessRequest):
         push_event(sid, agent_id="viz", status="running")
         t0 = time.monotonic()
         viz_result = await asyncio.to_thread(
-            workflow.viz.run, cleaned_data, consensus, hypotheses=hypotheses
+            workflow.viz.run, cleaned_df, consensus, hypotheses=hypotheses
         )
         num_plots = len(viz_result.get("chart_info", {}).get("plots", []))
         push_event(
@@ -182,13 +228,17 @@ async def process_data(request: ProcessRequest):
         )
 
     # Small sample of the cleaned data so the UI can show a preview table.
+    # The full cleaned dataset is deliberately not returned: nothing in the
+    # UI reads it, and on a large file it dominates the response body.
     import json as _json
 
-    preview_df = pd.DataFrame(cleaned_data)
     preview = {
-        "columns": preview_df.columns.tolist(),
-        "rows": _json.loads(preview_df.head(20).to_json(orient="records")),
+        "columns": cleaned_df.columns.tolist(),
+        "rows": _json.loads(cleaned_df.head(20).to_json(orient="records", date_format="iso")),
     }
+    cleaner_response = {"report": cleaner_result["report"]}
+    if sampling:
+        cleaner_response["sampling"] = sampling
 
     from app import runtime_config
 
@@ -204,13 +254,14 @@ async def process_data(request: ProcessRequest):
 
     return sanitize_json(
         {
-            "cleaner": cleaner_result,
+            "cleaner": cleaner_response,
             "hypothesis": hypothesis_result,
             "debate": debate_result,
             "viz": viz_result,
             "narrative": summary_result.get("narrative", ""),
             "suggested_questions": summary_result.get("suggested_questions", []),
             "preview": preview,
+            "sampling": sampling,
             "degraded": bool(degraded_stages),
             "degraded_stages": degraded_stages,
             "degraded_reason": (
@@ -228,19 +279,29 @@ async def process_data(request: ProcessRequest):
 async def natural_language_query(request: NLQRequest):
     """Natural language query with LLM-powered code generation."""
     sid = request.session_id
-    df = get_df(request.file_path)
+    path = resolve_dataset_path(request.dataset_id)
 
     try:
         # --- Phase 1: Data Janitor ---
+        # Cleaning is deterministic, so a follow-up question reuses the
+        # previous result instead of re-reading and re-cleaning the file.
         push_event(sid, agent_id="janitor", status="running")
         t0 = time.monotonic()
-        janitor = DataJanitorAgent(name="nlq_cleaner")
-        cleaned_result = await asyncio.to_thread(janitor.run, df.to_dict(orient="records"))
-        df = pd.DataFrame(cleaned_result["cleaned_data"])
-        report = cleaned_result["report"]
+
+        def _clean():
+            frame, notice = sample_for_analysis(read_frame(path))
+            result = DataJanitorAgent(name="nlq_cleaner").run(frame)
+            result["sampling"] = notice
+            return result
+
+        cleaned, from_cache = await asyncio.to_thread(get_cleaned, request.dataset_id, path, _clean)
+        df = cleaned.df
+        report = cleaned.report
+        sampling = cleaned.sampling
         janitor_summary = (
             f"Removed {report.get('duplicates_removed', 0)} duplicates, "
             f"imputed {report.get('total_missing', 0)} missing values."
+            + (" (cached)" if from_cache else "")
         )
         push_event(
             sid,
@@ -319,59 +380,35 @@ async def natural_language_query(request: NLQRequest):
             "execution_success": response.execution_success,
             "error": response.error,
             "session_id": sid,
+            "sampling": sampling,
         }
     )
 
 
-@router.post("/summarize")
-async def summarize_insights(payload: dict):
-    """Summarize workflow results."""
-    workflow_results = payload.get("workflow_results", {})
-
-    # Validate input is a dictionary
-    if not isinstance(workflow_results, dict):
-        raise HTTPException(status_code=400, detail="workflow_results must be a dictionary")
-
-    agent = InsightSummarizerAgent()
-    return agent.run(workflow_results)
-
-
-@router.post("/explain")
-async def explain_plot(payload: dict):
-    """Explain a visualization."""
-    plot = payload.get("plot", {})
-
-    # Validate input is a dictionary
-    if not isinstance(plot, dict):
-        raise HTTPException(status_code=400, detail="plot must be a dictionary")
-
-    agent = ExplainabilityAgent()
-    return agent.run(plot)
-
-
-@router.post("/report")
-async def generate_report(payload: dict):
-    """Generate HTML report."""
-    workflow_results = payload.get("workflow_results", {})
-
-    # Validate input is a dictionary
-    if not isinstance(workflow_results, dict):
-        raise HTTPException(status_code=400, detail="workflow_results must be a dictionary")
-
-    agent = ReportGeneratorAgent()
-    return agent.run(workflow_results)
-
-
 @router.post("/bigquery")
 async def bigquery_fetch(request: BigQueryRequest):
-    """Fetch data from BigQuery."""
-    from app.utils.bigquery_utils import run_bigquery_query
+    """Fetch data from BigQuery.
+
+    Experimental: `google-cloud-bigquery` is an optional dependency and is
+    not installed in the published images, so this returns 501 until an
+    operator installs it. There is no UI for it yet either.
+    """
+    from app.utils.bigquery_utils import BigQueryUnavailableError, run_bigquery_query
 
     try:
         df = run_bigquery_query(request.credentials_json, request.query)
-        temp_path = f"/tmp/bq_{os.urandom(8).hex()}.csv"
-        df.to_csv(temp_path, index=False)
-        return {"file_path": temp_path, "columns": df.columns.tolist(), "row_count": len(df)}
+        path = os.path.join(DATASET_DIR, f"bq_{os.urandom(8).hex()}.csv")
+        df.to_csv(path, index=False)
+        dataset_id = _datasets.register(path, name="BigQuery result", source="bigquery")
+        return {
+            "dataset_id": dataset_id,
+            "columns": df.columns.tolist(),
+            "row_count": len(df),
+        }
+    except BigQueryUnavailableError as e:
+        # Optional dependency absent — not a server fault, and not something
+        # the caller can fix by changing the request.
+        raise HTTPException(status_code=501, detail=str(e)) from e
     except ValueError as e:
         # Validation errors - return 400
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -380,6 +417,9 @@ async def bigquery_fetch(request: BigQueryRequest):
         raise HTTPException(status_code=500, detail=f"BigQuery error: {str(e)}") from e
 
 
+# NOTE (F7): unauthenticated by design for single-tenant / localhost use.
+# POST /config switches the live provider/model for everyone; gate it (and
+# the /workspaces routes) behind a shared secret before any public URL.
 class ConfigUpdate(BaseModel):
     provider: str | None = None
     model: str | None = None
@@ -454,6 +494,44 @@ async def update_config(update: ConfigUpdate):
     return runtime_config.current()
 
 
+@router.get("/datasets/{dataset_id}")
+async def get_dataset(dataset_id: str):
+    """Whether a dataset is still usable, and what it looks like.
+
+    The UI calls this when reopening a saved workspace so it can say the
+    data is gone up front, instead of restoring the charts and then failing
+    on the user's next question.
+    """
+    try:
+        path = _datasets.resolve_path(dataset_id)
+    except DatasetMissingError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+    record = _datasets.get(dataset_id)
+    try:
+        result = read_dataset(path)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    return sanitize_json(
+        {
+            "dataset_id": dataset_id,
+            "name": (record or {}).get("name", ""),
+            "source": (record or {}).get("source", ""),
+            **describe_dataset(result.df),
+            "assumptions": result.assumptions,
+        }
+    )
+
+
+@router.delete("/datasets/{dataset_id}")
+async def delete_dataset(dataset_id: str):
+    """Forget a dataset and remove its file."""
+    if not _datasets.delete(dataset_id):
+        raise HTTPException(status_code=404, detail="Dataset not found.")
+    return {"status": "deleted"}
+
+
 @router.get("/sessions/{session_id}")
 async def get_session(session_id: str):
     """Get session context."""
@@ -499,12 +577,15 @@ async def load_demo_data(dataset_id: str = "sales"):
 
     try:
         df, metadata = get_demo_dataset(dataset_id)
-        temp_path = f"/tmp/demo_{dataset_id}_{os.urandom(8).hex()}.csv"
-        df.to_csv(temp_path, index=False)
+        path = os.path.join(DATASET_DIR, f"demo_{dataset_id}_{os.urandom(8).hex()}.csv")
+        df.to_csv(path, index=False)
+        # Recording the demo id lets the registry rebuild this file if it is
+        # ever lost, so an old workspace reopens instead of dead-ending.
+        registered_id = _datasets.register(path, name=metadata["name"], source=f"demo:{dataset_id}")
 
         return {
-            "file_path": temp_path,
-            "dataset_id": metadata["dataset_id"],
+            "dataset_id": registered_id,
+            "demo_id": metadata["dataset_id"],
             "dataset_name": metadata["name"],
             "columns": metadata["column_names"],
             "row_count": metadata["rows"],

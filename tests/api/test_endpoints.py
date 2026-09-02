@@ -3,11 +3,10 @@ Unit tests for API endpoint handlers (function-level).
 """
 
 import json
-import os
-import tempfile
 from io import BytesIO
 from unittest.mock import MagicMock, Mock, patch
 
+import pandas as pd
 import pytest
 from app.api import endpoints
 from app.api.endpoints import BigQueryRequest, NLQRequest, ProcessRequest
@@ -27,14 +26,23 @@ Charlie,35,Engineering,85000
 
 class TestEndpoints:
     @pytest.mark.asyncio
-    async def test_upload_csv_success(self):
+    async def test_upload_csv_success(self, tmp_path):
+        # /upload now parses what it stored, so the path has to be real.
+        stored = tmp_path / "test_uploaded.csv"
+        stored.write_text("name,age\nAlice,25\nBob,30\n")
         with patch("app.api.endpoints.save_upload_file") as mock_save:
-            mock_save.return_value = "/tmp/test_uploaded.csv"
+            mock_save.return_value = str(stored)
             upload = UploadFile(filename="test.csv", file=BytesIO(b"name,age\nAlice,25\nBob,30"))
             response = await endpoints.upload_csv(upload)
 
-        assert "file_path" in response
-        assert response["file_path"] == "/tmp/test_uploaded.csv"
+        assert response["dataset_id"]
+        assert "file_path" not in response, "the client must never receive a server path"
+        # The upload response describes the data, so the UI never has to
+        # show "Unknown rows / Unknown cols".
+        assert response["rows"] == 2
+        assert response["columns"] == 2
+        assert response["column_names"] == ["name", "age"]
+        assert len(response["preview"]) == 2
 
     @pytest.mark.asyncio
     async def test_upload_non_csv_rejected(self):
@@ -44,16 +52,16 @@ class TestEndpoints:
         assert exc.value.status_code == 400
 
     @pytest.mark.asyncio
-    async def test_process_endpoint_requires_file(self):
+    async def test_process_endpoint_rejects_unknown_dataset(self):
         with pytest.raises(HTTPException) as exc:
-            await endpoints.process_data(ProcessRequest(file_path="/nonexistent/file.csv"))
+            await endpoints.process_data(ProcessRequest(dataset_id="does-not-exist"))
         assert exc.value.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_nlq_endpoint_requires_file(self):
+    async def test_nlq_endpoint_rejects_unknown_dataset(self):
         with pytest.raises(HTTPException) as exc:
             await endpoints.natural_language_query(
-                NLQRequest(file_path="/nonexistent/file.csv", question="What is the average age?")
+                NLQRequest(dataset_id="does-not-exist", question="What is the average age?")
             )
         assert exc.value.status_code == 404
 
@@ -81,20 +89,23 @@ class TestEndpoints:
 
 class TestEndpointsIntegration:
     @pytest.fixture
-    def temp_csv(self, sample_csv_content):
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
-            f.write(sample_csv_content)
-            temp_path = f.name
-        yield temp_path
-        if os.path.exists(temp_path):
-            os.unlink(temp_path)
+    def temp_csv(self, sample_csv_content, tmp_path):
+        """A registered dataset id — endpoints no longer take paths."""
+        from app.services.dataset_registry import get_dataset_registry
+
+        path = tmp_path / "integration.csv"
+        path.write_text(sample_csv_content)
+        registry = get_dataset_registry()
+        dataset_id = registry.register(str(path), name="integration.csv", source="upload")
+        yield dataset_id
+        registry.delete(dataset_id, remove_file=False)
 
     @pytest.mark.asyncio
     @patch("app.api.endpoints.InsightOrchestraWorkflow")
     async def test_process_workflow_called(self, mock_workflow, temp_csv):
         mock_instance = MagicMock()
         mock_instance.cleaner.run.return_value = {
-            "cleaned_data": [{"x": 1}],
+            "cleaned_df": pd.DataFrame([{"x": 1}]),
             "report": {"duplicates_removed": 0, "total_missing": 0},
         }
         mock_instance.hypothesis.run.return_value = {"hypotheses": ["h1"]}
@@ -105,7 +116,7 @@ class TestEndpointsIntegration:
         mock_instance.viz.run.return_value = {"chart_info": {"plots": []}}
         mock_workflow.return_value = mock_instance
 
-        response = await endpoints.process_data(ProcessRequest(file_path=temp_csv))
+        response = await endpoints.process_data(ProcessRequest(dataset_id=temp_csv))
         assert "cleaner" in response
         mock_instance.cleaner.run.assert_called_once()
         mock_instance.hypothesis.run.assert_called_once()
@@ -119,12 +130,12 @@ class TestEndpointsIntegration:
         self, mock_workflow, mock_summarizer, temp_csv
     ):
         """Real databases routinely have all-null numeric columns, which
-        (pre-fix) left NaN in cleaned_data and crashed response
-        serialization with Starlette's allow_nan=False JSONResponse. The
-        endpoint's own response should never contain a raw NaN/Infinity."""
+        (pre-fix) left NaN in the response and crashed serialization with
+        Starlette's allow_nan=False JSONResponse. The endpoint's own
+        response should never contain a raw NaN/Infinity."""
         mock_instance = MagicMock()
         mock_instance.cleaner.run.return_value = {
-            "cleaned_data": [{"x": 1, "processed_at": float("nan")}],
+            "cleaned_df": pd.DataFrame([{"x": 1, "processed_at": float("nan")}]),
             "report": {"duplicates_removed": 0, "total_missing": 1},
         }
         mock_instance.hypothesis.run.return_value = {"hypotheses": ["h1"]}
@@ -139,12 +150,15 @@ class TestEndpointsIntegration:
             "suggested_questions": ["What drives x?"],
         }
 
-        response = await endpoints.process_data(ProcessRequest(file_path=temp_csv))
+        response = await endpoints.process_data(ProcessRequest(dataset_id=temp_csv))
 
         # Would raise ValueError before the sanitize_json fix, matching the
         # real crash from Starlette's JSONResponse renderer.
         json.dumps(response, allow_nan=False)
-        assert response["cleaner"]["cleaned_data"][0]["processed_at"] is None
+        # The full cleaned dataset is no longer returned (nothing in the UI
+        # read it); the preview carries the same guarantee.
+        assert response["preview"]["rows"][0]["processed_at"] is None
+        assert "cleaned_data" not in response["cleaner"]
 
     @pytest.mark.asyncio
     @patch("app.api.endpoints.NaturalLanguageQueryAgent")
@@ -163,7 +177,7 @@ class TestEndpointsIntegration:
         mock_agent_class.return_value = mock_instance
 
         response = await endpoints.natural_language_query(
-            NLQRequest(file_path=temp_csv, question="What is the average age?")
+            NLQRequest(dataset_id=temp_csv, question="What is the average age?")
         )
         assert response["answer"] == "Test answer"
         mock_instance.run.assert_called_once()
@@ -180,17 +194,11 @@ class TestEndpointsErrorHandling:
         assert exc.value.status_code == 400
 
     @pytest.mark.asyncio
-    async def test_process_handles_csv_read_error(self):
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
-            f.write("name,age\nAlice,25")
-            temp_path = f.name
-        try:
-            with patch("app.api.endpoints.pd.read_csv", side_effect=Exception("read failed")):
-                with pytest.raises(HTTPException) as exc:
-                    await endpoints.process_data(ProcessRequest(file_path=temp_path))
-            assert exc.value.status_code == 400
-        finally:
-            os.unlink(temp_path)
+    async def test_process_handles_csv_read_error(self, registered_dataset):
+        with patch("app.utils.dataset_io.pd.read_csv", side_effect=Exception("read failed")):
+            with pytest.raises(HTTPException) as exc:
+                await endpoints.process_data(ProcessRequest(dataset_id=registered_dataset))
+        assert exc.value.status_code == 400
 
 
 class TestProviderReadiness:

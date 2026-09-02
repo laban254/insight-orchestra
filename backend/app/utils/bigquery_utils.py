@@ -5,6 +5,10 @@ import pandas as pd
 from pydantic import BaseModel
 
 
+class BigQueryUnavailableError(RuntimeError):
+    """Raised when the optional BigQuery dependency isn't installed."""
+
+
 class BigQueryRequest(BaseModel):
     credentials_json: str  # JSON string of service account credentials
     query: str
@@ -72,11 +76,20 @@ def run_bigquery_query(credentials_json: str, query: str) -> pd.DataFrame:
     _validate_select_only(query)
 
     try:
-        from google.cloud import bigquery  # optional dep; only needed here
+        from google.cloud import bigquery
+    except ImportError as e:
+        # google-cloud-bigquery is not in requirements.txt, so it is absent
+        # from the published images. Say that plainly rather than surfacing
+        # "No module named 'google.cloud.bigquery'" as a generic failure.
+        raise BigQueryUnavailableError(
+            "BigQuery support is experimental and its dependency is not "
+            "installed. Run `pip install google-cloud-bigquery` in the "
+            "backend environment to enable it."
+        ) from e
 
+    try:
         client = bigquery.Client.from_service_account_info(credentials_dict)
         job = client.query(query)
-        df = job.result().to_dataframe()
-        return df
+        return job.result().to_dataframe()
     except Exception as e:
         raise RuntimeError(f"BigQuery error: {str(e)}") from e

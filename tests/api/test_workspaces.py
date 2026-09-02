@@ -24,7 +24,7 @@ def store(monkeypatch):
 def _payload(name="Sales Analytics", state=None):
     return workspaces_api.WorkspaceUpsert(
         datasetName=name,
-        filePath="/tmp/demo.csv",
+        datasetId="abc123def456",
         createdAt=None,
         state=state or {"analysisResult": None, "messages": [], "results": [], "pinned": []},
     )
@@ -40,7 +40,7 @@ class TestWorkspaceEndpoints:
 
         record = await workspaces_api.get_workspace("ws-1")
         assert record["state"]["pinned"] == []
-        assert record["filePath"] == "/tmp/demo.csv"
+        assert record["datasetId"] == "abc123def456"
 
     @pytest.mark.asyncio
     async def test_update_preserves_created_at(self, store):

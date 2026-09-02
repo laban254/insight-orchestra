@@ -1,10 +1,32 @@
+import asyncio
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.endpoints import router as api_router
 from app.config import settings
+from app.services.retention import run_periodic_sweep
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Reaps expired datasets and deletes orphaned upload files on a
+    # schedule — nothing else in the backend ever deletes an upload on its
+    # own. Runs once, in-process; with multiple uvicorn workers each one
+    # runs its own sweep, which is harmless since delete() is idempotent.
+    sweeper = asyncio.create_task(run_periodic_sweep(settings.retention_sweep_interval_seconds))
+    try:
+        yield
+    finally:
+        sweeper.cancel()
+        try:
+            await sweeper
+        except asyncio.CancelledError:
+            pass
+
+
+app = FastAPI(lifespan=lifespan)
 
 # Explicit allowed origins (set ALLOWED_ORIGINS, comma-separated). A wildcard
 # can't be combined with credentials, so only enable credentials when scoped.

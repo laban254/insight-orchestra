@@ -13,6 +13,11 @@ logger = logging.getLogger(__name__)
 
 SHARE_TTL_SECONDS = 72 * 3600  # 72h
 
+# Cap on a shared payload's serialized size. /share stores an arbitrary JSON
+# blob in Redis on an unauthenticated endpoint, so bound how much one request
+# can write.
+MAX_SHARE_BYTES = 2 * 1024 * 1024  # 2 MB
+
 # Redis-backed share store (durable across restarts) with in-memory fallback.
 _memory_store: dict = {}
 _redis = None
@@ -42,12 +47,22 @@ def _evict_expired() -> None:
 
 @router.post("/share")
 async def create_share_link(req: ShareRequest):
+    try:
+        serialized = json.dumps(req.session_data)
+    except (TypeError, ValueError) as e:
+        raise HTTPException(status_code=400, detail="Share data must be JSON-serializable.") from e
+    if len(serialized.encode("utf-8")) > MAX_SHARE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Share data is too large (max {MAX_SHARE_BYTES // (1024 * 1024)} MB).",
+        )
+
     token = secrets.token_urlsafe(16)
     expires_at = datetime.now() + timedelta(seconds=SHARE_TTL_SECONDS)
 
     if _redis:
         try:
-            _redis.set(f"shared:{token}", json.dumps(req.session_data), ex=SHARE_TTL_SECONDS)
+            _redis.set(f"shared:{token}", serialized, ex=SHARE_TTL_SECONDS)
             return {"token": token, "expires_at": expires_at.isoformat()}
         except Exception as e:
             logger.error(f"Share store redis set error: {e}")

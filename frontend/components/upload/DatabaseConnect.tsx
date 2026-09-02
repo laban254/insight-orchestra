@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronLeft, Loader2, Search, Table2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ChevronLeft, FileDown, Loader2, Search, Table2 } from "lucide-react";
 import { api } from "@/lib/api";
-import { Schema } from "@/lib/types";
+import { LocalDatabaseFile, Schema } from "@/lib/types";
 import type { DatasetInfo } from "@/app/page";
 
 interface DatabaseConnectProps {
-    onDataReady: (filePath: string, info: DatasetInfo) => void;
+    onDataReady: (datasetId: string, info: DatasetInfo) => void;
 }
 
 export function DatabaseConnect({ onDataReady }: DatabaseConnectProps) {
@@ -22,6 +22,31 @@ export function DatabaseConnect({ onDataReady }: DatabaseConnectProps) {
     const [schema, setSchema] = useState<Schema | null>(null);
     const [loadingTable, setLoadingTable] = useState<string | null>(null);
     const [tableSearch, setTableSearch] = useState("");
+
+    // SQLite/DuckDB are file-backed, and the backend runs in a container —
+    // so only files inside the mounted uploads directory are reachable.
+    // Listing them beats asking for a path that can never resolve.
+    const isFileBacked = type === "sqlite" || type === "duckdb";
+    const [localFiles, setLocalFiles] = useState<LocalDatabaseFile[] | null>(null);
+    const [hostDirectory, setHostDirectory] = useState("./backend/uploads");
+
+    useEffect(() => {
+        if (!isFileBacked) return;
+        let cancelled = false;
+        void api
+            .listLocalDatabaseFiles()
+            .then((r) => {
+                if (cancelled) return;
+                setLocalFiles(r.files);
+                setHostDirectory(r.host_directory);
+            })
+            .catch(() => {
+                if (!cancelled) setLocalFiles([]);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [isFileBacked]);
 
     const getErrorMessage = (err: unknown) => {
         if (
@@ -70,7 +95,7 @@ export function DatabaseConnect({ onDataReady }: DatabaseConnectProps) {
 
         try {
             const result = await api.loadTable({ connection_id: connectionId, table_name: tableName });
-            onDataReady(result.file_path, {
+            onDataReady(result.dataset_id, {
                 name: tableName,
                 type: "database",
                 rows: result.row_count,
@@ -178,15 +203,49 @@ export function DatabaseConnect({ onDataReady }: DatabaseConnectProps) {
                         placeholder={
                             type === "postgresql" ? "postgresql://user:pass@localhost:5432/db" :
                                 type === "mysql" ? "mysql://user:pass@localhost:3306/db" :
-                                    type === "sqlite" ? "/path/to/database.db" :
-                                        type === "duckdb" ? "/path/to/database.duckdb or :memory:" : ""
+                                    isFileBacked ? "Pick a file below, or paste a path inside the container" : ""
                         }
                         className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 font-mono text-sm text-fg outline-none transition-colors placeholder:text-faint focus:border-accent/60"
                         required
                     />
-                    <p className="mt-1.5 text-xs text-faint">
-                        For SQLite and DuckDB you can use <code className="rounded bg-surface-2 px-1 font-mono text-accent">:memory:</code>
-                    </p>
+                    {isFileBacked && (
+                        <div className="mt-2">
+                            {localFiles === null ? (
+                                <p className="text-xs text-faint">Looking for database files…</p>
+                            ) : localFiles.length > 0 ? (
+                                <>
+                                    <p className="mb-1.5 text-xs text-faint">
+                                        Found in <code className="rounded bg-surface-2 px-1 font-mono">{hostDirectory}</code>
+                                    </p>
+                                    <div className="max-h-40 space-y-1 overflow-y-auto">
+                                        {localFiles.map((f) => (
+                                            <button
+                                                key={f.path}
+                                                type="button"
+                                                onClick={() => setConnectionString(f.path)}
+                                                className={`flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-xs transition-colors ${
+                                                    connectionString === f.path
+                                                        ? "border-accent/60 bg-accent-soft/30 text-fg"
+                                                        : "border-border bg-surface text-muted hover:border-accent/50"
+                                                }`}
+                                            >
+                                                <FileDown size={13} className="shrink-0 text-accent" />
+                                                <span className="truncate font-mono">{f.name}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </>
+                            ) : (
+                                <p className="text-xs text-faint">
+                                    No database files found. Copy a <code className="rounded bg-surface-2 px-1 font-mono">.db</code>,{" "}
+                                    <code className="rounded bg-surface-2 px-1 font-mono">.sqlite</code> or{" "}
+                                    <code className="rounded bg-surface-2 px-1 font-mono">.duckdb</code> file into{" "}
+                                    <code className="rounded bg-surface-2 px-1 font-mono">{hostDirectory}</code> — the backend runs in a
+                                    container and can only reach files there.
+                                </p>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 {error && (
