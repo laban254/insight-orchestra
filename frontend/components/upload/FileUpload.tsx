@@ -86,26 +86,6 @@ export function FileUpload({
         }
     };
 
-    const loadDemo = async () => {
-        setError(null);
-        setIsUploading(true);
-        try {
-            const result = await api.loadDemoData();
-            onUploadSuccess(result.dataset_id, {
-                name: result.dataset_name,
-                type: "demo",
-                rows: result.row_count,
-                columns: result.column_count,
-                description: result.description,
-                use_cases: result.use_cases,
-            });
-        } catch (err: unknown) {
-            setError(getErrorMessage(err, "Failed to load demo"));
-        } finally {
-            setIsUploading(false);
-        }
-    };
-
     return (
         <div className="w-full space-y-4">
             <div
@@ -139,17 +119,6 @@ export function FileUpload({
             {error && (
                 <div className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2.5 text-sm text-danger">{error}</div>
             )}
-
-            <div className="flex items-center justify-between">
-                <span className="text-sm text-faint">Don&apos;t have a dataset?</span>
-                <button
-                    onClick={loadDemo}
-                    disabled={isUploading}
-                    className="text-sm font-medium text-accent transition-opacity hover:opacity-80 disabled:opacity-50"
-                >
-                    Use demo dataset
-                </button>
-            </div>
         </div>
     );
 }

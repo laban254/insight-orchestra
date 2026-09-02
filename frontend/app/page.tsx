@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Database, FileUp, Waypoints, PanelLeft, Download, Plus, Clock, Moon, Command, Share2 } from "lucide-react";
+import { Database, FileUp, Waypoints, PanelLeft, Download, Plus, Clock, Moon, Command, Share2, Sparkles, ShieldCheck, Loader2 } from "lucide-react";
 import { useTheme } from "@/lib/theme";
 import { useToast } from "@/lib/toast";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
@@ -11,7 +11,7 @@ import { ExportMenu } from "@/components/ui/ExportMenu";
 import { CommandPalette, Command as Cmd } from "@/components/ui/CommandPalette";
 import { FileUpload } from "@/components/upload/FileUpload";
 import { DatabaseConnect } from "@/components/upload/DatabaseConnect";
-import { DatasetSelector } from "@/components/upload/DatasetSelector";
+import { DemoDatasetPicker } from "@/components/upload/DemoDatasetPicker";
 import { DatasetInfoPanel } from "@/components/upload/DatasetInfoPanel";
 import { Workspace } from "@/components/workspace/Workspace";
 import { HistoryDrawer } from "@/components/workspace/HistoryDrawer";
@@ -59,7 +59,9 @@ export default function Home() {
 
     const [datasetId, setDatasetId] = useState<string | null>(null);
     const [datasetInfo, setDatasetInfo] = useState<DatasetInfo | null>(null);
-    const [uploadMode, setUploadMode] = useState<"file" | "db">("file");
+    // "demo" leads: a first-time visitor rarely has a CSV or database ready,
+    // so the fastest path to seeing the product work is the default tab.
+    const [uploadMode, setUploadMode] = useState<"demo" | "file" | "db">("demo");
     const [availableDatasets, setAvailableDatasets] = useState<Record<string, DemoDataset> | null>(null);
 
     const [workspaceId, setWorkspaceId] = useState<string | null>(null);
@@ -334,13 +336,13 @@ export default function Home() {
                         className="pointer-events-none absolute left-1/2 top-0 h-[420px] w-[820px] -translate-x-1/2 rounded-full opacity-30 blur-[120px]"
                         style={{ background: "radial-gradient(circle, var(--color-accent), transparent 70%)" }}
                     />
-                    <div className="absolute right-4 top-4 flex items-center gap-2">
+                    <div className="absolute right-3 top-3 flex max-w-[calc(100%-1.5rem)] items-center gap-2 sm:right-4 sm:top-4">
                         {workspaces.length > 0 && (
                             <button
                                 onClick={() => setHistoryOpen(true)}
-                                className="flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-xs font-medium text-muted transition-colors hover:text-fg"
+                                className="flex min-w-0 shrink items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-xs font-medium text-muted transition-colors hover:text-fg"
                             >
-                                <Clock size={14} /> History
+                                <Clock size={14} className="shrink-0" /> <span className="min-w-0 truncate">History</span>
                             </button>
                         )}
                         <ThemeToggle />
@@ -356,7 +358,7 @@ export default function Home() {
                         onNew={() => setHistoryOpen(false)}
                     />
 
-                    <div className="relative z-10 mx-auto w-full max-w-xl">
+                    <div className="relative z-10 mx-auto w-full min-w-0 max-w-xl">
                         <div className="mb-9 flex flex-col items-center text-center">
                             <div className="mb-6">
                                 <Logo size={14} />
@@ -366,45 +368,59 @@ export default function Home() {
                                 Connect your data and let a team of specialized AI agents clean,
                                 hypothesize, debate, and visualize the insights that matter.
                             </p>
+                            <div className="mt-4 inline-flex max-w-full items-center gap-1.5 rounded-full border border-border bg-surface-2 px-3 py-1.5 text-xs font-medium text-muted">
+                                <ShieldCheck size={13} className="shrink-0 text-accent" />
+                                {/* Bare text as a flex child won't wrap — same trap as the
+                                    tab labels below. min-w-0 lets it shrink instead of
+                                    forcing the whole hero column wider than the screen. */}
+                                <span className="min-w-0">Your data never leaves your machine</span>
+                            </div>
                         </div>
 
                         <div className="rounded-2xl border border-border bg-surface shadow-[var(--shadow)]">
                             <div className="flex overflow-hidden rounded-t-2xl border-b border-border">
                                 {([
-                                    { id: "file", label: "Upload CSV", Icon: FileUp },
-                                    { id: "db", label: "Connect Database", Icon: Database },
-                                ] as const).map(({ id, label, Icon }) => {
+                                    { id: "demo", label: "Try a Demo", shortLabel: "Demo", Icon: Sparkles },
+                                    { id: "file", label: "Upload CSV", shortLabel: "Upload", Icon: FileUp },
+                                    { id: "db", label: "Connect Database", shortLabel: "Database", Icon: Database },
+                                ] as const).map(({ id, label, shortLabel, Icon }) => {
                                     const active = uploadMode === id;
                                     return (
                                         <button
                                             key={id}
                                             onClick={() => setUploadMode(id)}
-                                            className={`flex flex-1 items-center justify-center gap-2 py-4 text-sm font-medium transition-colors ${
+                                            className={`flex flex-1 min-w-0 items-center justify-center gap-1.5 py-4 text-sm font-medium transition-colors ${
                                                 active
                                                     ? "border-b-2 border-accent text-accent"
                                                     : "border-b-2 border-transparent text-muted hover:text-fg"
                                             }`}
                                         >
-                                            <Icon size={16} /> {label}
+                                            <Icon size={16} className="shrink-0" />
+                                            <span className="hidden truncate sm:inline">{label}</span>
+                                            <span className="truncate sm:hidden">{shortLabel}</span>
                                         </button>
                                     );
                                 })}
                             </div>
 
                             <div className="p-6 sm:p-8">
-                                {uploadMode === "file" ? (
+                                {uploadMode === "demo" ? (
                                     availableDatasets ? (
-                                        <DatasetSelector onUploadSuccess={handleUploadSuccess} datasets={availableDatasets} />
+                                        <DemoDatasetPicker onUploadSuccess={handleUploadSuccess} datasets={availableDatasets} />
                                     ) : (
-                                        <FileUpload onUploadSuccess={handleUploadSuccess} />
+                                        <div className="flex items-center justify-center gap-2 py-10 text-sm text-faint">
+                                            <Loader2 size={15} className="animate-spin" /> Loading demo datasets…
+                                        </div>
                                     )
+                                ) : uploadMode === "file" ? (
+                                    <FileUpload onUploadSuccess={handleUploadSuccess} />
                                 ) : (
                                     <DatabaseConnect onDataReady={handleUploadSuccess} />
                                 )}
                             </div>
                         </div>
                         <p className="mt-6 text-center text-xs text-faint">
-                            Press <kbd className="rounded border border-border px-1 font-mono">⌘K</kbd> anytime · your data stays in your environment
+                            Press <kbd className="rounded border border-border px-1 font-mono">⌘K</kbd> anytime for the command palette
                         </p>
                     </div>
                 </main>

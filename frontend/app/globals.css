@@ -19,7 +19,8 @@
   /* Text */
   --fg:          #0b1220;
   --muted:       #4a566b;
-  --faint:       #8b97ac;
+  /* 4.5:1 on --bg (AA for body text) — the previous #8b97ac measured ~2.75:1. */
+  --faint:       #65728a;
 
   /* Brand / accents */
   --accent:        #0891b2;  /* cyan-600 — primary, AA on white */
@@ -53,7 +54,8 @@
 
   --fg:          #e8eefc;
   --muted:       #9aa7c2;
-  --faint:       #5e6c89;
+  /* 5:1 on --bg (AA for body text) — the previous #5e6c89 measured ~3.7:1. */
+  --faint:       #748299;
 
   --accent:        #22d3ee;  /* electric cyan */
   --accent-fg:     #04141a;
