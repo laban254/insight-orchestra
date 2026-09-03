@@ -89,7 +89,7 @@ export function FileUpload({
     return (
         <div className="w-full space-y-4">
             <div
-                className={`cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition-colors ${
+                className={`cursor-pointer rounded-xl border p-8 text-center transition-colors ${
                     isDragging ? "border-accent bg-accent-soft/30" : "border-border hover:border-accent/50"
                 }`}
                 onDragEnter={handleDrag}

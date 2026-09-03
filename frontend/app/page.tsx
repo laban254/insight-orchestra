@@ -45,7 +45,7 @@ const newId = () => crypto.randomUUID();
 function Logo({ size = 8 }: { size?: number }) {
     return (
         <div
-            className="grid place-items-center rounded-xl bg-accent text-accent-fg glow-accent"
+            className="grid place-items-center rounded-xl bg-accent text-accent-fg"
             style={{ width: `${size * 4}px`, height: `${size * 4}px` }}
         >
             <Waypoints size={size * 2.2} />
@@ -331,11 +331,6 @@ export default function Home() {
                 </main>
             ) : (
                 <main className="relative flex min-h-screen items-center justify-center overflow-x-clip overflow-y-auto bg-bg p-4 py-10">
-                    <div
-                        aria-hidden
-                        className="pointer-events-none absolute left-1/2 top-0 h-[420px] w-[820px] -translate-x-1/2 rounded-full opacity-30 blur-[120px]"
-                        style={{ background: "radial-gradient(circle, var(--color-accent), transparent 70%)" }}
-                    />
                     <div className="absolute right-3 top-3 flex max-w-[calc(100%-1.5rem)] items-center gap-2 sm:right-4 sm:top-4">
                         {workspaces.length > 0 && (
                             <button
@@ -365,8 +360,8 @@ export default function Home() {
                             </div>
                             <h1 className="text-3xl font-bold tracking-tight text-fg">Insight Orchestra</h1>
                             <p className="mt-3 max-w-sm text-sm leading-relaxed text-muted">
-                                Connect your data and let a team of specialized AI agents clean,
-                                hypothesize, debate, and visualize the insights that matter.
+                                Upload a CSV or connect a database. It gets cleaned, analysed and
+                                charted — then you can ask questions about it in plain English.
                             </p>
                             <div className="mt-4 inline-flex max-w-full items-center gap-1.5 rounded-full border border-border bg-surface-2 px-3 py-1.5 text-xs font-medium text-muted">
                                 <ShieldCheck size={13} className="shrink-0 text-accent" />
