@@ -36,7 +36,6 @@
   --info:     #2563eb;
 
   /* Effects */
-  --glow:    0 0 0 0 transparent;
   --ring:    color-mix(in oklab, var(--accent) 40%, transparent);
   --shadow:  0 1px 2px rgb(11 18 32 / 0.06), 0 4px 16px rgb(11 18 32 / 0.05);
 
@@ -70,7 +69,6 @@
 
   --ring:    color-mix(in oklab, var(--accent) 55%, transparent);
   --shadow:  0 1px 2px rgb(0 0 0 / 0.4), 0 8px 30px rgb(0 0 0 / 0.35);
-  --glow:    0 0 24px -6px color-mix(in oklab, var(--accent) 55%, transparent);
 
   --chart-grid: rgba(232, 238, 252, 0.08);
 }
@@ -133,9 +131,6 @@ html.theme-ready * {
   border-radius: 999px;
 }
 *::-webkit-scrollbar-thumb:hover { background: var(--border); }
-
-/* Utility: subtle accent glow for hero/active elements */
-.glow-accent { box-shadow: var(--glow); }
 
 @keyframes shimmer {
   100% { transform: translateX(100%); }

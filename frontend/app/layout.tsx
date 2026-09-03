@@ -18,7 +18,7 @@ const jetbrains = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: 'Insight Orchestra',
-  description: 'Multi-agent data intelligence — clean, hypothesize, debate, visualize.',
+  description: 'Self-hosted AI data analyst. Upload a CSV, get cleaned data, ranked insights and charts.',
 }
 
 // Runs before paint to set the theme class and avoid a flash of the wrong theme.
