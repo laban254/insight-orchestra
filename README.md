@@ -139,7 +139,7 @@ Each stage streams real-time progress to the UI via SSE. See the [Agent Pipeline
 
 ## Roadmap
 
-Near-term focus is correctness and hardening: CI builds from a clean cache, rate limiting, input validation, and broader test coverage. Further out: more data formats (Excel, JSON, Parquet), saved dashboards, and PDF export. Have a request or want to influence priorities? [Open an issue](https://github.com/laban254/insight-orchestra/issues).
+Coming up: more data formats (Excel, JSON, Parquet), saved dashboards, and PDF export. Have a request or want to influence priorities? [Open an issue](https://github.com/laban254/insight-orchestra/issues).
 
 ## Contributing
 
