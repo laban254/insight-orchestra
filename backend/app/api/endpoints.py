@@ -516,8 +516,8 @@ async def get_dataset(dataset_id: str):
     return sanitize_json(
         {
             "dataset_id": dataset_id,
-            "name": (record or {}).get("name", ""),
-            "source": (record or {}).get("source", ""),
+            "name": record["name"] if record else "",
+            "source": record["source"] if record else "",
             **describe_dataset(result.df),
             "assumptions": result.assumptions,
         }
