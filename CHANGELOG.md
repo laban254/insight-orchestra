@@ -1,5 +1,40 @@
 # Changelog
 
+## [1.0.1](https://github.com/laban254/insight-orchestra/compare/v1.0.0...v1.0.1) (2026-09-03)
+
+
+### Bug Fixes
+
+* **agents:** report LLM fallback instead of presenting it as analysis ([01cff5c](https://github.com/laban254/insight-orchestra/commit/01cff5c671970588779b66f4ac608a263e035957))
+* **agents:** treat dates as time, not as a category ([e5f1668](https://github.com/laban254/insight-orchestra/commit/e5f166888dd9914546b6c99e8c55f86619517bba))
+* **connectors:** enforce read-only at the session level, decode credentials ([fe99f44](https://github.com/laban254/insight-orchestra/commit/fe99f4408949fd982dfbd304028f9522411ad1d2))
+* **connectors:** make SQLite and DuckDB usable from the container ([feaf7d6](https://github.com/laban254/insight-orchestra/commit/feaf7d6f9f5615b3fa7db248302898f31ddb02a3))
+* **ingest:** sniff encoding and delimiter, parse dates on read ([e9a8b21](https://github.com/laban254/insight-orchestra/commit/e9a8b21078edcaed0cea3bdc5a33d34185df708d))
+* **landing:** resolve mobile overflow, lead with demo, raise contrast ([7757d9f](https://github.com/laban254/insight-orchestra/commit/7757d9f6dba06ca4b2b0b1539c6a3c2227d58f6c))
+* **ops:** cap container logs and refresh the Anthropic model default ([da068ef](https://github.com/laban254/insight-orchestra/commit/da068efc9b5486431f125783e963cca086fc28df))
+* resolve all 13 open CodeQL code scanning alerts ([f3df29e](https://github.com/laban254/insight-orchestra/commit/f3df29ea448bede8d6466f01db3bfd87f8f62e80))
+* **retention:** reap idle datasets and sweep orphaned upload files ([63e2ea3](https://github.com/laban254/insight-orchestra/commit/63e2ea3758df76d8f9f6ea8faaf302b35d4b7d00))
+* run a single uvicorn worker so agent progress actually streams ([22c631e](https://github.com/laban254/insight-orchestra/commit/22c631e4f404d7caa43a0d2391d11744a0b8942f)), closes [#53](https://github.com/laban254/insight-orchestra/issues/53)
+* **security:** delete the dead second FastAPI app ([4b2a9fa](https://github.com/laban254/insight-orchestra/commit/4b2a9fadcc7de96cec0ce2e2f732e0ef3a4cf58c))
+* **security:** drop the isfile pre-check that CodeQL kept flagging ([95b4270](https://github.com/laban254/insight-orchestra/commit/95b4270ab14fc95f4ec9caf3db3c2974a080cbdd))
+* **security:** harden the code sandbox and resolve post-review findings ([6a6c71a](https://github.com/laban254/insight-orchestra/commit/6a6c71a914253759eab2c026fcc7cdb9ce7052bf))
+* **security:** inline the allowed-dir check for CodeQL guard recognition ([4d8726e](https://github.com/laban254/insight-orchestra/commit/4d8726ec5ba3be7b4a084c6e7e01f34532661f8f))
+* **security:** split path-injection guard into sequential checks ([a033e18](https://github.com/laban254/insight-orchestra/commit/a033e182e9c016a66bcfd65615a6d4a9a63ef14c))
+* stop presenting LLM-fallback output as completed analysis ([9929721](https://github.com/laban254/insight-orchestra/commit/99297216a80202f2c0852f66c659badda78ced28))
+* stop reporting a healthy backend as broken on first run ([a49b991](https://github.com/laban254/insight-orchestra/commit/a49b991385896dec778ef4937b6247f21cc9df51))
+* stop reporting a healthy backend as broken on first run ([81e2a8d](https://github.com/laban254/insight-orchestra/commit/81e2a8d88fe1762168cff89784b95648e8e4fb18))
+* type error in dataset preview response ([0616179](https://github.com/laban254/insight-orchestra/commit/061617949bc251ddae44127804c22bf1871391fd))
+* type error in dataset preview response ([1ada26c](https://github.com/laban254/insight-orchestra/commit/1ada26cadb83c9dad97212674d5d8f06aafe1838))
+* **ui:** render unscored results honestly and label icon-only controls ([fdb9422](https://github.com/laban254/insight-orchestra/commit/fdb9422ec1f67e518fc8e80e8ad420ff9643ccc0))
+* **upload:** validate content properly and report what was ingested ([35b4538](https://github.com/laban254/insight-orchestra/commit/35b4538d0d70f47db248e98cd77e9539154d999a))
+
+
+### Performance Improvements
+
+* **hypothesis:** cap columns fed to the fallback's O(n^2) loops ([e8b3d0a](https://github.com/laban254/insight-orchestra/commit/e8b3d0a95886ec4a357d151ee09e8e0ee0527dd0))
+* **nlq:** cache the cleaned frame instead of re-cleaning per question ([47b9074](https://github.com/laban254/insight-orchestra/commit/47b90745d30cad398d0fd67de24e90634aa8fdc7))
+* **pipeline:** pass DataFrames between agents instead of dicts ([cc24350](https://github.com/laban254/insight-orchestra/commit/cc2435069963c4b154590d3b9831bbd411b512ce))
+
 ## [1.0.0](https://github.com/laban254/insight-orchestra/compare/v0.1.0...v1.0.0) (2026-08-19)
 
 
