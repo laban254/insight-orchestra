@@ -143,6 +143,67 @@ def test_empty_file_raises(tmp_path):
         read_dataset(write(tmp_path, "empty.csv", ""))
 
 
+# --- additional formats ---------------------------------------------------
+
+
+@pytest.fixture
+def sample_df():
+    return pd.DataFrame(
+        {
+            "name": ["Alice", "Bob", "Charlie"],
+            "age": [25, 30, 35],
+            "joined": pd.to_datetime(["2024-01-01", "2024-02-15", "2024-03-20"]),
+        }
+    )
+
+
+def test_reads_xlsx(tmp_path, sample_df):
+    path = tmp_path / "data.xlsx"
+    sample_df.to_excel(path, index=False)
+    result = read_dataset(str(path))
+    assert list(result.df.columns) == ["name", "age", "joined"]
+    assert len(result.df) == 3
+    assert result.df["name"].tolist() == ["Alice", "Bob", "Charlie"]
+    assert pd.api.types.is_datetime64_any_dtype(result.df["joined"])
+
+
+def test_reads_json_records(tmp_path, sample_df):
+    path = tmp_path / "data.json"
+    sample_df.to_json(path, orient="records")
+    result = read_dataset(str(path))
+    assert list(result.df.columns) == ["name", "age", "joined"]
+    assert len(result.df) == 3
+
+
+def test_reads_json_lines(tmp_path, sample_df):
+    path = tmp_path / "data.json"
+    sample_df.to_json(path, orient="records", lines=True)
+    result = read_dataset(str(path))
+    assert len(result.df) == 3
+
+
+def test_invalid_json_raises_value_error(tmp_path):
+    with pytest.raises(ValueError, match="JSON"):
+        read_dataset(write(tmp_path, "bad.json", "{not valid json"))
+
+
+def test_reads_parquet(tmp_path, sample_df):
+    path = tmp_path / "data.parquet"
+    sample_df.to_parquet(path)
+    result = read_dataset(str(path))
+    assert list(result.df.columns) == ["name", "age", "joined"]
+    assert len(result.df) == 3
+    assert pd.api.types.is_datetime64_any_dtype(result.df["joined"])
+
+
+def test_non_csv_formats_report_no_encoding_or_delimiter(tmp_path, sample_df):
+    path = tmp_path / "data.xlsx"
+    sample_df.to_excel(path, index=False)
+    result = read_dataset(str(path))
+    assert result.assumptions["encoding"] == ""
+    assert result.assumptions["delimiter"] == ""
+
+
 # --- describe -----------------------------------------------------------
 
 

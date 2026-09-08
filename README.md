@@ -102,7 +102,7 @@ Once `./setup.sh` finishes:
 | Backend API | http://localhost:8000 |
 | Swagger Docs | http://localhost:8000/docs |
 
-Pick one of the five bundled demo datasets (or upload your own CSV) and the pipeline runs automatically.
+Pick one of the five bundled demo datasets (or upload your own CSV, TSV, Excel, JSON, or Parquet file) and the pipeline runs automatically.
 
 ## How It Works
 
@@ -139,7 +139,7 @@ Each stage streams real-time progress to the UI via SSE. See the [Agent Pipeline
 
 ## Roadmap
 
-Coming up: more data formats (Excel, JSON, Parquet), saved dashboards, and PDF export. Have a request or want to influence priorities? [Open an issue](https://github.com/laban254/insight-orchestra/issues).
+Coming up: a JOIN-capable natural-language SQL agent for database connections. Have a request or want to influence priorities? [Open an issue](https://github.com/laban254/insight-orchestra/issues).
 
 ## Contributing
 

@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { LayoutDashboard, TrendingUp, Lightbulb, AlertTriangle, Rows3, Columns3, CopyMinus, Wand2, BarChart3, MessageSquare, Pin, Columns2, Wand, CornerDownLeft } from "lucide-react";
+import { LayoutDashboard, TrendingUp, Lightbulb, AlertTriangle, Rows3, Columns3, CopyMinus, Wand2, BarChart3, MessageSquare, Pin, Columns2, Wand, CornerDownLeft, GripVertical } from "lucide-react";
 import { ProcessResponse, ScoredHypothesis } from "@/lib/types";
 import { ChartRenderer } from "@/components/viz/ChartRenderer";
 import { DataTable } from "@/components/viz/DataTable";
+import { LazyMount } from "@/components/viz/LazyMount";
 
 export interface QueryResult {
     id: number;
@@ -21,6 +22,7 @@ interface CanvasPaneProps {
     results: QueryResult[];
     pinned: number[];
     onTogglePin: (id: number) => void;
+    onReorderPin: (draggedId: number, targetId: number) => void;
     onRefine: (r: QueryResult, instruction: string) => void;
     activeTab: "overview" | "results";
     onTab: (t: "overview" | "results") => void;
@@ -66,7 +68,9 @@ function ResultCard({
                     <Pin size={13} className={pinned ? "fill-current" : ""} />
                 </button>
             </div>
-            <ChartRenderer plotJsonStr={r.plotJson} height={height} />
+            <LazyMount height={height}>
+                <ChartRenderer plotJsonStr={r.plotJson} height={height} />
+            </LazyMount>
             {!compact && onRefine && (
                 <div className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-2 py-1.5 focus-within:border-accent/50">
                     <Wand size={14} className="ml-1 shrink-0 text-accent-2" />
@@ -149,7 +153,21 @@ function Skeleton() {
     );
 }
 
-export function CanvasPane({ loading, error, result, datasetName, results, pinned, onTogglePin, onRefine, activeTab, onTab }: CanvasPaneProps) {
+export function CanvasPane({
+    loading,
+    error,
+    result,
+    datasetName,
+    results,
+    pinned,
+    onTogglePin,
+    onReorderPin,
+    onRefine,
+    activeTab,
+    onTab,
+}: CanvasPaneProps) {
+    const [draggedId, setDraggedId] = useState<number | null>(null);
+    const [dragOverId, setDragOverId] = useState<number | null>(null);
     const report = result?.cleaner.report;
     const pinnedResults = pinned
         .map((id) => results.find((r) => r.id === id))
@@ -211,17 +229,46 @@ export function CanvasPane({ loading, error, result, datasetName, results, pinne
                                 <div>
                                     <h3 className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-accent">
                                         <Columns2 size={13} /> Pinned · compare
+                                        {pinnedResults.length > 1 && (
+                                            <span className="ml-auto flex items-center gap-1 text-[10px] font-normal normal-case text-faint">
+                                                <GripVertical size={11} /> Drag to reorder
+                                            </span>
+                                        )}
                                     </h3>
                                     <div className={`grid gap-4 ${pinnedResults.length > 1 ? "2xl:grid-cols-2" : "grid-cols-1"}`}>
                                         {pinnedResults.map((r) => (
-                                            <ResultCard
+                                            <div
                                                 key={`pin-${r.id}`}
-                                                r={r}
-                                                pinned
-                                                onTogglePin={onTogglePin}
-                                                height={300}
-                                                compact
-                                            />
+                                                draggable={pinnedResults.length > 1}
+                                                onDragStart={() => setDraggedId(r.id)}
+                                                onDragEnter={() => draggedId !== null && setDragOverId(r.id)}
+                                                onDragOver={(e) => e.preventDefault()}
+                                                onDrop={(e) => {
+                                                    e.preventDefault();
+                                                    if (draggedId !== null) onReorderPin(draggedId, r.id);
+                                                    setDraggedId(null);
+                                                    setDragOverId(null);
+                                                }}
+                                                onDragEnd={() => {
+                                                    setDraggedId(null);
+                                                    setDragOverId(null);
+                                                }}
+                                                className={`rounded-2xl transition-[opacity,box-shadow] ${
+                                                    pinnedResults.length > 1 ? "cursor-grab active:cursor-grabbing" : ""
+                                                } ${draggedId === r.id ? "opacity-40" : ""} ${
+                                                    dragOverId === r.id && draggedId !== r.id
+                                                        ? "ring-2 ring-accent/60 ring-offset-2 ring-offset-surface"
+                                                        : ""
+                                                }`}
+                                            >
+                                                <ResultCard
+                                                    r={r}
+                                                    pinned
+                                                    onTogglePin={onTogglePin}
+                                                    height={300}
+                                                    compact
+                                                />
+                                            </div>
                                         ))}
                                     </div>
                                 </div>

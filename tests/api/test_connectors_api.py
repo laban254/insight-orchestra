@@ -198,6 +198,77 @@ class TestLoadTable:
         assert "Failed to load table" in exc.value.detail
 
 
+class TestQueryDatabase:
+    @pytest.mark.asyncio
+    async def test_query_returns_agent_response(self, store, fake_connector, monkeypatch):
+        connection_id = await _connect(store, fake_connector)
+
+        from app.services.db_nlq_agent import DatabaseNLQResponse
+
+        mock_agent = MagicMock()
+        mock_agent.run.return_value = DatabaseNLQResponse(
+            answer="Found 2 rows",
+            sql="SELECT * FROM users",
+            reasoning="direct lookup",
+            tables_used=["users"],
+            execution_success=True,
+        )
+        monkeypatch.setattr(connectors_api, "DatabaseNLQAgent", MagicMock(return_value=mock_agent))
+
+        result = await connectors_api.query_database(
+            connectors_api.DatabaseQueryRequest(
+                connection_id=connection_id, question="who are the users?"
+            )
+        )
+
+        assert result["answer"] == "Found 2 rows"
+        assert result["sql"] == "SELECT * FROM users"
+        assert result["tables_used"] == ["users"]
+        assert result["execution_success"] is True
+        mock_agent.run.assert_called_once()
+        # Schema and a real connector instance are handed to the agent, not
+        # just the connection id — the agent needs both to generate SQL and
+        # to actually execute it.
+        args, _ = mock_agent.run.call_args
+        assert args[0] is fake_connector
+        assert "users" in args[1]
+
+    @pytest.mark.asyncio
+    async def test_query_disconnects_after(self, store, fake_connector, monkeypatch):
+        connection_id = await _connect(store, fake_connector)
+        fake_connector.disconnect.reset_mock()
+
+        from app.services.db_nlq_agent import DatabaseNLQResponse
+
+        mock_agent = MagicMock()
+        mock_agent.run.return_value = DatabaseNLQResponse(answer="ok", sql="SELECT 1")
+        monkeypatch.setattr(connectors_api, "DatabaseNLQAgent", MagicMock(return_value=mock_agent))
+
+        await connectors_api.query_database(
+            connectors_api.DatabaseQueryRequest(connection_id=connection_id, question="q")
+        )
+        fake_connector.disconnect.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_query_unknown_connection_404(self, store):
+        with pytest.raises(HTTPException) as exc:
+            await connectors_api.query_database(
+                connectors_api.DatabaseQueryRequest(connection_id="nope", question="q")
+            )
+        assert exc.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_query_connect_failure_gives_400(self, store, fake_connector):
+        connection_id = await _connect(store, fake_connector)
+        fake_connector.connect.side_effect = RuntimeError("connection refused")
+
+        with pytest.raises(HTTPException) as exc:
+            await connectors_api.query_database(
+                connectors_api.DatabaseQueryRequest(connection_id=connection_id, question="q")
+            )
+        assert exc.value.status_code == 400
+
+
 class TestDisconnect:
     @pytest.mark.asyncio
     async def test_disconnect_success(self, store, fake_connector):

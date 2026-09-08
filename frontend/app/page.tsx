@@ -17,7 +17,7 @@ import { Workspace } from "@/components/workspace/Workspace";
 import { HistoryDrawer } from "@/components/workspace/HistoryDrawer";
 import { api } from "@/lib/api";
 import { DemoDataset, ParseAssumptions } from "@/lib/types";
-import { exportReport } from "@/lib/exportReport";
+import { exportReport, exportReportAsPdf } from "@/lib/exportReport";
 import {
     listWorkspaces,
     loadWorkspace,
@@ -225,6 +225,16 @@ export default function Home() {
         toast("Report downloaded", "success");
     }, [datasetInfo, toast]);
 
+    const handleExportPdf = useCallback(() => {
+        const st = currentState.current;
+        if (!st?.analysisResult) {
+            toast("Run an analysis first", "info");
+            return;
+        }
+        exportReportAsPdf(datasetInfo?.name ?? "Dataset", st.analysisResult, st.results);
+        toast("Opened print preview — choose “Save as PDF”", "success");
+    }, [datasetInfo, toast]);
+
     const handleShare = useCallback(async () => {
         const st = currentState.current;
         if (!st?.analysisResult || !workspaceId) {
@@ -308,7 +318,7 @@ export default function Home() {
                             >
                                 <Share2 size={16} />
                             </button>
-                            <ExportMenu sessionId={workspaceId} onReport={handleExport} />
+                            <ExportMenu sessionId={workspaceId} onReport={handleExport} onPdf={handleExportPdf} />
                             <DatasetInfoPanel
                                 info={datasetInfo}
                                 onReset={handleNew}

@@ -237,3 +237,27 @@ class TestNaturalLanguageQueryAgent:
         assert "pandas DataFrame" in agent.SYSTEM_PROMPT
         assert "result" in agent.SYSTEM_PROMPT
         assert "JSON" in agent.SYSTEM_PROMPT
+
+
+class TestNoLlmConfigured:
+    """A deployment with no provider configured at all (every API key
+    empty, Ollama unreachable) must not crash the request — LLMService's
+    constructor raises ValueError for that case, and it's the same shape
+    real CI hits since it never has an ambient .env with a real key."""
+
+    def test_run_returns_a_clean_response_not_a_crash(self, sample_dataframe):
+        agent = NaturalLanguageQueryAgent(llm_service=None)
+        agent.llm = None  # force regardless of ambient env
+
+        response = agent.run(sample_dataframe, "what is the average age?")
+
+        assert response.execution_success is False
+        assert response.error == "no_llm_configured"
+        assert "No LLM provider is configured" in response.answer
+
+    def test_get_cost_summary_does_not_crash(self, sample_dataframe):
+        agent = NaturalLanguageQueryAgent(llm_service=None)
+        agent.llm = None
+
+        summary = agent.get_cost_summary()
+        assert summary == {"total_cost_usd": 0.0, "total_tokens": 0}

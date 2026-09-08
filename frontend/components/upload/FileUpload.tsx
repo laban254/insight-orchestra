@@ -97,7 +97,13 @@ export function FileUpload({
                 onDragOver={handleDrag}
                 onDrop={handleDrop}
             >
-                <input type="file" accept=".csv" className="hidden" id="file-upload" onChange={handleChange} />
+                <input
+                    type="file"
+                    accept=".csv,.tsv,.xlsx,.json,.parquet"
+                    className="hidden"
+                    id="file-upload"
+                    onChange={handleChange}
+                />
                 <label htmlFor="file-upload" className="flex cursor-pointer flex-col items-center gap-2">
                     {isUploading ? (
                         <>
@@ -110,7 +116,7 @@ export function FileUpload({
                                 <UploadCloud size={22} />
                             </div>
                             <p className="text-sm font-medium text-fg">Click to upload or drag and drop</p>
-                            <p className="text-xs text-faint">CSV files only</p>
+                            <p className="text-xs text-faint">CSV, TSV, Excel, JSON, or Parquet</p>
                         </>
                     )}
                 </label>

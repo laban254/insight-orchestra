@@ -8,7 +8,7 @@ and a GIF for the README.
 
 The pipeline needs a working LLM provider. Check before recording:
 
-    curl -s localhost:8000/config | python3 -m json.tool
+    curl -s localhost:8000/api/v1/config | python3 -m json.tool
 
 If every entry under "ready" is false the run will fail fast rather than record
 a video of an error banner.
@@ -82,7 +82,7 @@ def log(msg: str) -> None:
 def preflight(api_url: str, allow_degraded: bool = False) -> None:
     """Fail before recording if no LLM provider can serve the pipeline."""
     try:
-        with urllib.request.urlopen(f"{api_url}/config", timeout=5) as resp:
+        with urllib.request.urlopen(f"{api_url}/api/v1/config", timeout=5) as resp:
             cfg = json.load(resp)
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
         sys.exit(f"Could not reach the backend at {api_url}: {exc}")

@@ -65,7 +65,7 @@ Insight Orchestra is a **multi-agent AI data analysis platform** with a three-la
 - Session state management
 
 **Key Components**:
-- [`FileUpload.tsx`](frontend/components/upload/FileUpload.tsx) — CSV file upload with drag-and-drop, demo dataset selector
+- [`FileUpload.tsx`](frontend/components/upload/FileUpload.tsx) — dataset file upload (CSV/TSV/Excel/JSON/Parquet) with drag-and-drop, demo dataset selector
 - [`DatabaseConnect.tsx`](frontend/components/upload/DatabaseConnect.tsx) — Database connection form, then a table picker to select which table to analyze
 - [`ChatPanel.tsx`](frontend/components/chat/ChatPanel.tsx) — Main Q&A interface with message history
 - [`AgentPipeline.tsx`](frontend/components/agents/AgentPipeline.tsx) — SSE-based real-time agent progress display

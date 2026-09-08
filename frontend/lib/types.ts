@@ -27,6 +27,25 @@ export interface LoadTableResponse {
   columns: string[];
 }
 
+/** Multi-table NL->SQL against a live connection — JOIN-capable, a
+ * separate mode from the single-table CSV-pipeline NLQ (NLQRequest). */
+export interface DatabaseQueryRequest {
+  connection_id: string;
+  question: string;
+}
+
+export interface DatabaseQueryResponse {
+  answer: string;
+  sql: string;
+  reasoning: string;
+  plot_json: string | null;
+  tables_used: string[] | null;
+  needs_clarification: boolean;
+  clarification_question: string | null;
+  execution_success: boolean;
+  error: string | null;
+}
+
 /** What the reader had to assume to parse the file, so we can tell the user. */
 export interface ParseAssumptions {
   encoding: string;
@@ -44,6 +63,35 @@ export interface UploadResponse {
   null_counts: Record<string, number>;
   preview: Record<string, unknown>[];
   assumptions: ParseAssumptions;
+}
+
+export interface DatasetRowsResponse {
+  columns: string[];
+  rows: Record<string, unknown>[];
+  total_rows: number;
+  offset: number;
+  limit: number;
+  has_more: boolean;
+}
+
+export type TransformOperation = "normalize" | "scale" | "encode";
+
+export interface TransformRequest {
+  column: string;
+  operation: TransformOperation;
+  new_column?: string;
+}
+
+export interface TransformResponse {
+  dataset_id: string;
+  new_column: string;
+  operation: TransformOperation;
+  rows: number;
+  columns: number;
+  column_names: string[];
+  dtypes: Record<string, string>;
+  null_counts: Record<string, number>;
+  preview: Record<string, unknown>[];
 }
 
 export interface LocalDatabaseFile {

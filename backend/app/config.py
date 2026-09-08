@@ -35,8 +35,32 @@ class Settings(BaseSettings):
     max_retries: int = Field(3, alias="MAX_RETRIES")
     request_timeout: int = Field(300, alias="REQUEST_TIMEOUT")
 
+    # Overall wall-clock ceiling for the whole /process and /nlq requests
+    # (not just a single LLM call — the full multi-stage pipeline). Set well
+    # above `request_timeout` since /process alone can chain several
+    # LLM-backed stages. Past this, the request fails with a clean 504
+    # instead of hanging until the client's own timeout gives up silently.
+    process_timeout_seconds: int = Field(600, alias="PROCESS_TIMEOUT_SECONDS")
+    nlq_timeout_seconds: int = Field(180, alias="NLQ_TIMEOUT_SECONDS")
+
+    # Root logger level for the structured JSON logs (see logging_config.py).
+    log_level: str = Field("INFO", alias="LOG_LEVEL")
+
     # Feature flags
     demo_mode: bool = Field(True, alias="DEMO_MODE")
+
+    # Rate limiting (in-memory, per-client-IP fixed window). Safe as
+    # in-memory because the backend always runs as a single uvicorn worker
+    # (see backend/Dockerfile) — move to Redis if that ever changes.
+    rate_limit_enabled: bool = Field(True, alias="RATE_LIMIT_ENABLED")
+    rate_limit_default_per_minute: int = Field(120, alias="RATE_LIMIT_DEFAULT_PER_MINUTE")
+    rate_limit_process_per_minute: int = Field(10, alias="RATE_LIMIT_PROCESS_PER_MINUTE")
+    rate_limit_nlq_per_minute: int = Field(20, alias="RATE_LIMIT_NLQ_PER_MINUTE")
+
+    # /nlq answer cache — same dataset + question + provider/model + prior
+    # conversation skips regenerating and re-executing the query.
+    query_cache_enabled: bool = Field(True, alias="QUERY_CACHE_ENABLED")
+    query_cache_ttl_seconds: int = Field(3600, alias="QUERY_CACHE_TTL_SECONDS")
 
     # Largest number of rows fed to the agent pipeline. The agents compute
     # summary statistics and aggregated charts, so past this point extra

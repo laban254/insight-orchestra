@@ -1,3 +1,4 @@
+import asyncio
 import os
 import uuid
 from urllib.parse import urlparse
@@ -8,6 +9,7 @@ from pydantic import BaseModel
 from app.connectors import DuckDBConnector, MySQLConnector, PostgreSQLConnector, SQLiteConnector
 from app.services.connection_store import get_connection_store
 from app.services.dataset_registry import DATASET_DIR, get_dataset_registry
+from app.services.db_nlq_agent import DatabaseNLQAgent
 from app.utils.file_utils import UPLOAD_DIR
 
 router = APIRouter(prefix="/connectors", tags=["connectors"])
@@ -169,6 +171,49 @@ async def load_table(req: LoadTableRequest):
         "row_count": len(df),
         "column_count": len(df.columns),
         "columns": list(df.columns),
+    }
+
+
+class DatabaseQueryRequest(BaseModel):
+    connection_id: str
+    question: str
+
+
+@router.post("/query")
+async def query_database(req: DatabaseQueryRequest):
+    """Multi-table NL->SQL: answer a question directly against the connected
+    database — JOIN-capable across every table in scope — instead of
+    materializing a single table first like /load-table + /nlq do. A
+    separate mode from the CSV-pipeline NLQ agent, which stays scoped to one
+    materialized table."""
+    meta = _store.get(req.connection_id)
+    if meta is None:
+        raise HTTPException(
+            404, "Connection not found or expired. Please reconnect to the database."
+        )
+
+    connector = CONNECTOR_MAP[meta["db_type"]]()  # type: ignore[abstract]
+    try:
+        connector.connect(meta["connection_string"])
+    except Exception as e:
+        raise HTTPException(400, f"Failed to connect: {str(e)}") from e
+
+    try:
+        agent = DatabaseNLQAgent()
+        response = await asyncio.to_thread(agent.run, connector, meta["schema"], req.question)
+    finally:
+        connector.disconnect()
+
+    return {
+        "answer": response.answer,
+        "sql": response.sql,
+        "reasoning": response.reasoning,
+        "plot_json": response.plot_json,
+        "tables_used": response.tables_used,
+        "needs_clarification": response.needs_clarification,
+        "clarification_question": response.clarification_question,
+        "execution_success": response.execution_success,
+        "error": response.error,
     }
 
 

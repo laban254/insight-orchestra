@@ -4,6 +4,7 @@ import {
     Scale,
     BarChart3,
     Bot,
+    PenLine,
     type LucideIcon,
 } from "lucide-react";
 
@@ -52,9 +53,16 @@ export const AGENT_META: Record<string, AgentMeta> = {
         Icon: Bot,
         color: "#e879f9", // magenta
     },
+    narrator: {
+        id: "narrator",
+        name: "Narrator",
+        description: "Writes up the findings in plain English",
+        Icon: PenLine,
+        color: "#60a5fa", // blue
+    },
 };
 
-export const ANALYSIS_FLOW = ["janitor", "hypothesis", "debate", "viz"] as const;
+export const ANALYSIS_FLOW = ["janitor", "hypothesis", "debate", "viz", "narrator"] as const;
 export const NLQ_FLOW = ["janitor", "nlq", "viz"] as const;
 
 export function metaFor(id: string): AgentMeta {

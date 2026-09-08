@@ -14,7 +14,9 @@ export interface Agent {
     duration?: number;
 }
 
-const API_BASE = getApiBaseUrl();
+// Every backend route except /health, /docs and /redoc lives under this
+// versioned prefix (see backend/app/main.py).
+const API_BASE = `${getApiBaseUrl()}/api/v1`;
 
 interface Props {
     sessionId: string;
@@ -171,17 +173,23 @@ export function AgentTimeline({ sessionId, flow, runId, finished, onAgentsChange
                                 )}
                             </div>
                             <p className="mt-0.5 text-xs text-faint">{meta.description}</p>
-                            {agent.output && (agent.status === "done" || agent.status === "error") && (
-                                <p
-                                    className={`mt-1.5 rounded-lg border px-3 py-2 text-xs leading-relaxed ${
-                                        agent.status === "error"
-                                            ? "border-danger/30 bg-danger/10 text-danger"
-                                            : "border-border-soft bg-surface-2 text-muted"
-                                    }`}
-                                >
-                                    {agent.output}
-                                </p>
-                            )}
+                            {agent.output &&
+                                (agent.status === "done" ||
+                                    agent.status === "error" ||
+                                    agent.status === "running") && (
+                                    <p
+                                        className={`mt-1.5 rounded-lg border px-3 py-2 text-xs leading-relaxed ${
+                                            agent.status === "error"
+                                                ? "border-danger/30 bg-danger/10 text-danger"
+                                                : "border-border-soft bg-surface-2 text-muted"
+                                        }`}
+                                    >
+                                        {agent.output}
+                                        {agent.status === "running" && (
+                                            <span className="animate-pulse text-accent">▍</span>
+                                        )}
+                                    </p>
+                                )}
                         </div>
                     </li>
                 );

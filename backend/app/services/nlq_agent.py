@@ -17,10 +17,10 @@ from typing import Any
 
 import pandas as pd
 import plotly.express as px
-import requests
 
-from app.services.llm_service import DataFrameSchema, LLMProvider, LLMService
+from app.services.llm_service import DataFrameSchema, LLMProvider, LLMService, friendly_llm_error
 from app.services.sandbox_executor import SandboxExecutor
+from app.utils.chart_heuristics import pick_fallback_chart
 from app.utils.log_utils import safe_log_value
 
 logger = logging.getLogger(__name__)
@@ -150,7 +150,16 @@ Code: result = df[df['price'] > 100]
             sandbox: Optional SandboxExecutor instance
             max_retries: Maximum code execution retries
         """
-        self.llm = llm_service or LLMService()
+        self.llm = llm_service
+        if self.llm is None:
+            try:
+                self.llm = LLMService()
+            except Exception:
+                # No heuristic fallback exists for "write pandas code" the
+                # way /process's agents fall back to statistics — run()
+                # below turns this into a clean response instead of letting
+                # the constructor's ValueError crash the request.
+                self.llm = None
         self.sandbox = sandbox or SandboxExecutor(timeout_seconds=30)
         self.max_retries = max_retries
 
@@ -197,7 +206,7 @@ Code: result = df[df['price'] > 100]
         Return the shortest effective system prompt for the active provider.
         Ollama with small models gets the compact version to preserve token budget.
         """
-        is_ollama = hasattr(self.llm, "config") and self.llm.config.provider == LLMProvider.OLLAMA
+        is_ollama = self.llm is not None and self.llm.config.provider == LLMProvider.OLLAMA
         if is_ollama:
             return self.COMPACT_SYSTEM_PROMPT
         if is_plot:
@@ -298,6 +307,8 @@ Code: result = df[df['price'] > 100]
         session_id: str | None = None,
     ) -> dict[str, Any]:
         """Generate Python code from a natural language question."""
+        # Guaranteed by run()'s own guard — never called with self.llm unset.
+        assert self.llm is not None
         is_plot = self._is_plot_question(question)
         few_shot = self._build_few_shot_examples(df)
 
@@ -504,16 +515,9 @@ Code: result = df[df['price'] > 100]
         """Build a Plotly chart when chart mode returns a non-Plotly object."""
         # If query result is a DataFrame, prefer plotting that.
         if isinstance(result_obj, pd.DataFrame) and not result_obj.empty:
-            numeric_cols = result_obj.select_dtypes(include=["number"]).columns.tolist()
-            categorical_cols = result_obj.select_dtypes(
-                include=["object", "string", "category"]
-            ).columns.tolist()
-            if categorical_cols and numeric_cols:
-                return px.bar(result_obj, x=categorical_cols[0], y=numeric_cols[0])
-            if len(numeric_cols) >= 2:
-                return px.scatter(result_obj, x=numeric_cols[0], y=numeric_cols[1])
-            if len(numeric_cols) == 1:
-                return px.histogram(result_obj, x=numeric_cols[0])
+            fig = pick_fallback_chart(result_obj)
+            if fig is not None:
+                return fig
 
         # Fallback to original dataset
         numeric_cols = df.select_dtypes(include=["number"]).columns.tolist()
@@ -553,6 +557,17 @@ Code: result = df[df['price'] > 100]
             safe_log_value(sid),
             safe_log_value(question[:100]),
         )
+
+        if self.llm is None:
+            return NLQResponse(
+                answer=(
+                    "No LLM provider is configured, so questions can't be turned into code. "
+                    "Set an API key in backend/.env and restart the backend."
+                ),
+                code="",
+                reasoning="",
+                error="no_llm_configured",
+            )
 
         try:
             # Step 1: Generate code
@@ -661,7 +676,7 @@ Code: result = df[df['price'] > 100]
         except Exception as e:
             logger.error(f"[session={sid}] NLQ processing failed: {e}")
             return NLQResponse(
-                answer=self._friendly_error(e),
+                answer=friendly_llm_error(e, self.llm),
                 code="",
                 reasoning="",
                 error=str(e),
@@ -669,52 +684,10 @@ Code: result = df[df['price'] > 100]
                 cost_usd=self.llm.total_cost,
             )
 
-    def _friendly_error(self, e: Exception) -> str:
-        """Map a raw LLM provider exception to an actionable message.
-
-        Auth failures are detected by shape (a `status_code` of 401, or
-        "AuthenticationError" in the exception's class name) rather than
-        importing any specific SDK's error types, so this covers every cloud
-        provider — including ones added later — without needing an update
-        here. Ollama is the one provider called over plain HTTP instead of
-        an SDK, so a dead/unreachable container surfaces as a
-        `requests.exceptions.ConnectionError` instead — checked separately
-        since neither signal above would catch it. Either way, the raw
-        `str()` is a provider JSON error body or a urllib3 retry trace,
-        neither of which is actionable for a user, so surface what to
-        actually do instead.
-        """
-        is_auth_error = (
-            getattr(e, "status_code", None) == 401
-            or "authenticationerror" in type(e).__name__.lower()
-        )
-        if is_auth_error:
-            provider = self.llm.config.provider
-            env_var = {
-                LLMProvider.OPENAI: "OPENAI_API_KEY",
-                LLMProvider.ANTHROPIC: "ANTHROPIC_API_KEY",
-                LLMProvider.DEEPSEEK: "DEEPSEEK_API_KEY",
-            }.get(provider)
-            if env_var:
-                return (
-                    f"Your {provider.value} API key is missing or invalid. "
-                    f"Add it to backend/.env ({env_var}=...) and restart the backend "
-                    "(docker compose up -d --build backend)."
-                )
-
-        if (
-            isinstance(e, requests.exceptions.ConnectionError)
-            and self.llm.config.provider == LLMProvider.OLLAMA
-        ):
-            return (
-                f"Can't reach Ollama at {self.llm.config.base_url}. Make sure the ollama "
-                "container is running (docker compose up -d ollama) and the model is pulled "
-                f"(docker compose exec ollama ollama pull {self.llm.config.model})."
-            )
-        return f"Error processing your question: {str(e)}"
-
     def get_cost_summary(self) -> dict[str, Any]:
         """Get cost summary from LLM service."""
+        if self.llm is None:
+            return {"total_cost_usd": 0.0, "total_tokens": 0}
         return self.llm.get_cost_summary()
 
 

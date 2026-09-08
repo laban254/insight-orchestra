@@ -51,6 +51,22 @@ export function Workspace({ workspaceId, datasetId, datasetName, restore, onPers
         setPinned((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
     }, []);
 
+    // Order in `pinned` is what the compare grid renders in, and it's part
+    // of the persisted workspace state — so reordering here is also what
+    // makes a saved/reopened workspace remember a named dashboard's layout.
+    const reorderPin = useCallback((draggedId: number, targetId: number) => {
+        if (draggedId === targetId) return;
+        setPinned((prev) => {
+            const from = prev.indexOf(draggedId);
+            const to = prev.indexOf(targetId);
+            if (from === -1 || to === -1) return prev;
+            const next = [...prev];
+            next.splice(from, 1);
+            next.splice(to, 0, draggedId);
+            return next;
+        });
+    }, []);
+
     const liveAgents = useRef<Agent[]>([]);
     const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -332,6 +348,7 @@ export function Workspace({ workspaceId, datasetId, datasetName, restore, onPers
                 results={results}
                 pinned={pinned}
                 onTogglePin={togglePin}
+                onReorderPin={reorderPin}
                 onRefine={refineResult}
                 activeTab={canvasTab}
                 onTab={setCanvasTab}
