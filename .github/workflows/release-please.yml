@@ -23,8 +23,16 @@ jobs:
       # Recorded on every run so the exact output names are visible in the log.
       # The dispatch below keys off them, and the failure mode if they ever
       # change is a release that quietly ships without images.
+      #
+      # Passed through an env var rather than interpolated directly into the
+      # run: script — the JSON includes the generated changelog body, and an
+      # apostrophe in a past commit message ("the fallback's O(n^2) loops")
+      # broke out of the single-quoted shell string, turning the next `(`
+      # into a syntax error and failing this step outright.
       - name: Record release-please outputs
-        run: echo '${{ toJSON(steps.release.outputs) }}'
+        env:
+          RELEASE_OUTPUTS: ${{ toJSON(steps.release.outputs) }}
+        run: echo "$RELEASE_OUTPUTS"
 
       # release-please pushes the tag with GITHUB_TOKEN, and GitHub suppresses
       # workflow triggers from that token to prevent recursion — so the
