@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pandas as pd
 import pytest
 from app.api import endpoints
-from app.api.endpoints import BigQueryRequest, NLQRequest, ProcessRequest
+from app.api.endpoints import BigQueryRequest, NLQRequest, ProcessRequest, TransformRequest
 from app.main import health_check
 from fastapi import HTTPException
 from starlette.datastructures import UploadFile
@@ -161,6 +161,105 @@ class TestEndpointsIntegration:
         assert "cleaned_data" not in response["cleaner"]
 
     @pytest.mark.asyncio
+    async def test_dataset_rows_first_page(self, temp_csv):
+        response = await endpoints.get_dataset_rows(temp_csv, offset=0, limit=2)
+        assert response["total_rows"] == 3
+        assert response["offset"] == 0
+        assert response["limit"] == 2
+        assert len(response["rows"]) == 2
+        assert response["rows"][0]["name"] == "Alice"
+        assert response["has_more"] is True
+
+    @pytest.mark.asyncio
+    async def test_dataset_rows_last_page_has_no_more(self, temp_csv):
+        response = await endpoints.get_dataset_rows(temp_csv, offset=2, limit=2)
+        assert len(response["rows"]) == 1
+        assert response["rows"][0]["name"] == "Charlie"
+        assert response["has_more"] is False
+
+    @pytest.mark.asyncio
+    async def test_dataset_rows_offset_past_the_end_is_empty(self, temp_csv):
+        response = await endpoints.get_dataset_rows(temp_csv, offset=100, limit=50)
+        assert response["rows"] == []
+        assert response["has_more"] is False
+
+    @pytest.mark.asyncio
+    async def test_transform_normalize_scales_to_zero_one(self, temp_csv):
+        response = await endpoints.transform_dataset(
+            temp_csv, TransformRequest(column="age", operation="normalize")
+        )
+        assert response["new_column"] == "age_normalize"
+        values = [row["age_normalize"] for row in response["preview"]]
+        assert min(values) == 0.0
+        assert max(values) == 1.0
+        # Non-destructive: a new dataset id, original untouched.
+        assert response["dataset_id"] != temp_csv
+
+    @pytest.mark.asyncio
+    async def test_transform_scale_is_zero_mean(self, temp_csv):
+        response = await endpoints.transform_dataset(
+            temp_csv, TransformRequest(column="salary", operation="scale")
+        )
+        values = [row["salary_scale"] for row in response["preview"]]
+        assert sum(values) == pytest.approx(0.0, abs=1e-9)
+
+    @pytest.mark.asyncio
+    async def test_transform_encode_maps_categories_to_integers(self, temp_csv):
+        response = await endpoints.transform_dataset(
+            temp_csv, TransformRequest(column="department", operation="encode")
+        )
+        rows = response["preview"]
+        # Alice=Engineering, Bob=Sales, Charlie=Engineering — first-seen order.
+        assert rows[0]["department_encode"] == rows[2]["department_encode"]
+        assert rows[0]["department_encode"] != rows[1]["department_encode"]
+
+    @pytest.mark.asyncio
+    async def test_transform_respects_custom_new_column_name(self, temp_csv):
+        response = await endpoints.transform_dataset(
+            temp_csv,
+            TransformRequest(column="age", operation="normalize", new_column="age_0to1"),
+        )
+        assert response["new_column"] == "age_0to1"
+        assert "age_0to1" in response["preview"][0]
+
+    @pytest.mark.asyncio
+    async def test_transform_unknown_column_is_400(self, temp_csv):
+        with pytest.raises(HTTPException) as exc:
+            await endpoints.transform_dataset(
+                temp_csv, TransformRequest(column="nope", operation="normalize")
+            )
+        assert exc.value.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_transform_normalize_on_text_column_is_400(self, temp_csv):
+        with pytest.raises(HTTPException) as exc:
+            await endpoints.transform_dataset(
+                temp_csv, TransformRequest(column="department", operation="normalize")
+            )
+        assert exc.value.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_transform_constant_column_does_not_divide_by_zero(self, tmp_path):
+        from app.services.dataset_registry import get_dataset_registry
+
+        path = tmp_path / "constant.csv"
+        path.write_text("value\n5\n5\n5\n")
+        registry = get_dataset_registry()
+        dataset_id = registry.register(str(path), name="constant.csv", source="upload")
+        try:
+            normalized = await endpoints.transform_dataset(
+                dataset_id, TransformRequest(column="value", operation="normalize")
+            )
+            assert all(row["value_normalize"] == 0.5 for row in normalized["preview"])
+
+            scaled = await endpoints.transform_dataset(
+                dataset_id, TransformRequest(column="value", operation="scale")
+            )
+            assert all(row["value_scale"] == 0.0 for row in scaled["preview"])
+        finally:
+            registry.delete(dataset_id, remove_file=False)
+
+    @pytest.mark.asyncio
     @patch("app.api.endpoints.NaturalLanguageQueryAgent")
     async def test_nlq_agent_called(self, mock_agent_class, temp_csv):
         mock_instance = MagicMock()
@@ -181,6 +280,125 @@ class TestEndpointsIntegration:
         )
         assert response["answer"] == "Test answer"
         mock_instance.run.assert_called_once()
+
+    @pytest.mark.asyncio
+    @patch("app.api.endpoints.NaturalLanguageQueryAgent")
+    async def test_nlq_answer_is_cached_for_a_repeated_question(self, mock_agent_class, temp_csv):
+        """Same dataset + same question + same provider/model should skip
+        the second LLM call and sandbox execution entirely."""
+        import app.services.query_cache as qc_module
+
+        qc_module._query_cache = None  # fresh cache, isolated from other tests
+
+        mock_instance = MagicMock()
+        mock_instance.run.return_value = Mock(
+            answer="Test answer",
+            code="print('test')",
+            reasoning="reasoning",
+            plot_json=None,
+            needs_clarification=False,
+            clarification_question=None,
+            execution_success=True,
+            error=None,
+        )
+        mock_agent_class.return_value = mock_instance
+
+        question = "What is the average age?"
+        first = await endpoints.natural_language_query(
+            NLQRequest(dataset_id=temp_csv, question=question)
+        )
+        second = await endpoints.natural_language_query(
+            NLQRequest(dataset_id=temp_csv, question=question)
+        )
+
+        assert first["answer"] == "Test answer"
+        assert second["answer"] == "Test answer"
+        mock_instance.run.assert_called_once()
+
+    @pytest.mark.asyncio
+    @patch("app.api.endpoints.InsightOrchestraWorkflow")
+    async def test_process_timeout_returns_504(self, mock_workflow, temp_csv):
+        """A pipeline stage that outruns process_timeout_seconds fails fast
+        with a clean 504 instead of hanging until the client gives up."""
+        import time as time_module
+
+        mock_instance = MagicMock()
+        mock_instance.cleaner.run.side_effect = lambda frame: (
+            time_module.sleep(0.2) or {"cleaned_df": pd.DataFrame([{"x": 1}]), "report": {}}
+        )
+        mock_workflow.return_value = mock_instance
+
+        original_timeout = endpoints.settings.process_timeout_seconds
+        endpoints.settings.process_timeout_seconds = 0.01
+        try:
+            with pytest.raises(HTTPException) as exc:
+                await endpoints.process_data(ProcessRequest(dataset_id=temp_csv))
+        finally:
+            endpoints.settings.process_timeout_seconds = original_timeout
+
+        assert exc.value.status_code == 504
+
+    @pytest.mark.asyncio
+    @patch("app.api.endpoints.NaturalLanguageQueryAgent")
+    async def test_nlq_timeout_returns_friendly_response(self, mock_agent_class, temp_csv):
+        """A query that outruns nlq_timeout_seconds returns a friendly
+        timeout answer (200, not a raw exception) instead of hanging."""
+        import time as time_module
+
+        mock_instance = MagicMock()
+
+        def slow_run(df, question, context, sid):
+            time_module.sleep(0.2)
+            return Mock(answer="unreachable", code="", plot_json=None, execution_success=True)
+
+        mock_instance.run.side_effect = slow_run
+        mock_agent_class.return_value = mock_instance
+
+        original_timeout = endpoints.settings.nlq_timeout_seconds
+        endpoints.settings.nlq_timeout_seconds = 0.01
+        try:
+            response = await endpoints.natural_language_query(
+                NLQRequest(dataset_id=temp_csv, question="slow question?")
+            )
+        finally:
+            endpoints.settings.nlq_timeout_seconds = original_timeout
+
+        assert response["error"] == "timeout"
+        assert "took too long" in response["answer"]
+
+    @pytest.mark.asyncio
+    @patch("app.api.endpoints.InsightOrchestraWorkflow")
+    async def test_process_unexpected_error_returns_502_not_a_raw_500(
+        self, mock_workflow, temp_csv
+    ):
+        """An unhandled exception anywhere in the pipeline used to propagate
+        as a bare 500 with no useful message; it should now surface as a
+        502 with an actionable detail."""
+        mock_instance = MagicMock()
+        mock_instance.cleaner.run.side_effect = RuntimeError("cleaner blew up")
+        mock_workflow.return_value = mock_instance
+
+        with pytest.raises(HTTPException) as exc:
+            await endpoints.process_data(ProcessRequest(dataset_id=temp_csv))
+
+        assert exc.value.status_code == 502
+        assert exc.value.detail
+
+    @pytest.mark.asyncio
+    @patch("app.api.endpoints.InsightOrchestraWorkflow")
+    async def test_process_http_exception_is_not_masked_as_502(self, mock_workflow, temp_csv):
+        """A deliberate HTTPException raised deeper in the pipeline (e.g. a
+        dataset that fails to read) keeps its own status/message rather than
+        being caught by the generic error handler and turned into a 502."""
+        mock_instance = MagicMock()
+        mock_instance.cleaner.run.side_effect = HTTPException(status_code=400, detail="bad dataset")
+        mock_workflow.return_value = mock_instance
+
+        with pytest.raises(HTTPException) as exc:
+            await endpoints.process_data(ProcessRequest(dataset_id=temp_csv))
+
+        assert exc.value.status_code == 400
+        assert exc.value.detail == "bad dataset"
 
 
 class TestEndpointsErrorHandling:

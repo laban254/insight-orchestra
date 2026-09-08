@@ -4,9 +4,9 @@
 
 Insight Orchestra provides a **RESTful API** built with FastAPI. All endpoints return JSON responses and support CORS for frontend integration.
 
-**Base URL**: `http://localhost:8000`
+**Base URL**: `http://localhost:8000/api/v1` — every endpoint below except Health Check lives under this prefix.
 
-**Interactive Docs**:
+**Interactive Docs** (unversioned, outside the `/api/v1` prefix):
 - Swagger UI: `http://localhost:8000/docs`
 - ReDoc: `http://localhost:8000/redoc`
 
@@ -37,18 +37,18 @@ Check if the backend is running.
 
 ### File Upload
 
-#### `POST /upload`
+#### `POST /api/v1/upload`
 
-Upload a CSV file for analysis.
+Upload a dataset file for analysis — CSV, TSV, Excel (`.xlsx`), JSON, or Parquet.
 
 **Request**: `multipart/form-data`
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `file` | File | Yes | CSV file |
+| `file` | File | Yes | `.csv`, `.tsv`, `.xlsx`, `.json`, or `.parquet` |
 
 **Example**:
 ```bash
-curl -X POST http://localhost:8000/upload \
+curl -X POST http://localhost:8000/api/v1/upload \
   -F "file=@data.csv"
 ```
 
@@ -73,26 +73,29 @@ curl -X POST http://localhost:8000/upload \
 
 The file is parsed during upload, so a file that cannot be read fails here
 rather than later during analysis. `assumptions` reports what had to be
-detected — a non-comma delimiter, a non-UTF-8 encoding, or columns parsed as
-dates — so the client can tell the user what was inferred.
+detected for CSV/TSV — a non-comma delimiter, a non-UTF-8 encoding, or
+columns parsed as dates — so the client can tell the user what was inferred.
+Excel/JSON/Parquet have no delimiter or encoding to detect, so both fields
+come back as empty strings for those formats.
 
 The client receives an opaque `dataset_id`, never a server path.
 
 **Errors**:
 | Status | Detail |
 |--------|--------|
-| `400` | `Only CSV files are allowed (.csv or .tsv).` |
+| `400` | `Only CSV, TSV, Excel (.xlsx), JSON, or Parquet files are allowed.` |
 | `400` | `File too large. Maximum is 50 MB.` |
-| `400` | `This looks like a spreadsheet or archive rather than a CSV...` |
+| `400` | `This looks like a spreadsheet or archive rather than a CSV...` (wrong content for a `.csv`/`.tsv` extension) |
+| `400` | `This doesn't look like a valid .xlsx file.` / `...valid Parquet file.` / `...valid JSON text.` (wrong content for the claimed extension) |
 | `500` | `File upload failed.` |
 
 ---
 
 ### Process Data (Full Pipeline)
 
-#### `POST /process`
+#### `POST /api/v1/process`
 
-Run the complete 4-agent pipeline (Data Janitor → Hypothesis Bot → Debate Manager → Viz Whiz). Emits SSE events to `/agents/stream/{session_id}`.
+Run the complete 4-agent pipeline (Data Janitor → Hypothesis Bot → Debate Manager → Viz Whiz). Emits SSE events to `/api/v1/agents/stream/{session_id}`.
 
 **Request Body**:
 ```json
@@ -105,7 +108,7 @@ Run the complete 4-agent pipeline (Data Janitor → Hypothesis Bot → Debate Ma
 
 **Example**:
 ```bash
-curl -X POST http://localhost:8000/process \
+curl -X POST http://localhost:8000/api/v1/process \
   -H "Content-Type: application/json" \
   -d '{"dataset_id": "8f14e45fceea167a5a36dedd4bea2543"}'
 ```
@@ -161,9 +164,9 @@ curl -X POST http://localhost:8000/process \
 
 ### Natural Language Query
 
-#### `POST /nlq`
+#### `POST /api/v1/nlq`
 
-Convert a natural language question into pandas code, execute it in the sandbox, and return results. Also emits SSE events to `/agents/stream/{session_id}` (Data Janitor + Viz Whiz stages).
+Convert a natural language question into pandas code, execute it in the sandbox, and return results. Also emits SSE events to `/api/v1/agents/stream/{session_id}` (Data Janitor + Viz Whiz stages).
 
 **Request Body**:
 ```json
@@ -176,7 +179,7 @@ Convert a natural language question into pandas code, execute it in the sandbox,
 
 **Example**:
 ```bash
-curl -X POST http://localhost:8000/nlq \
+curl -X POST http://localhost:8000/api/v1/nlq \
   -H "Content-Type: application/json" \
   -d '{
     "dataset_id": "8f14e45fceea167a5a36dedd4bea2543",
@@ -209,19 +212,19 @@ curl -X POST http://localhost:8000/nlq \
 
 ### Datasets
 
-Every ingestion path (`/upload`, `/demo/load`, `/connectors/load-table`,
-`/bigquery`) registers the data it materializes and returns an opaque
+Every ingestion path (`/api/v1/upload`, `/api/v1/demo/load`, `/api/v1/connectors/load-table`,
+`/api/v1/bigquery`) registers the data it materializes and returns an opaque
 `dataset_id`. The client never receives or sends a filesystem path, so
-`/process` and `/nlq` have no caller-supplied path to validate. Files live
+`/api/v1/process` and `/api/v1/nlq` have no caller-supplied path to validate. Files live
 on the mounted uploads volume, so they survive a container recreate.
 
-#### `GET /datasets/{dataset_id}`
+#### `GET /api/v1/datasets/{dataset_id}`
 
 Whether a dataset is still usable, plus its shape and a preview. The UI
 calls this when reopening a saved analysis so it can report missing data up
 front instead of failing on the next question.
 
-**Response** `200 OK`: same body as `/upload`, plus the `source` it came
+**Response** `200 OK`: same body as `/api/v1/upload`, plus the `source` it came
 from (`upload`, `demo:<id>`, `database`, `bigquery`).
 
 Demo datasets are regenerated on demand if their file has been removed, so
@@ -232,7 +235,7 @@ an old workspace built on demo data reopens normally.
 |--------|--------|
 | `404` | `That dataset is no longer available. Upload it again to continue.` |
 
-#### `DELETE /datasets/{dataset_id}`
+#### `DELETE /api/v1/datasets/{dataset_id}`
 
 Forget a dataset and delete its file.
 
@@ -240,7 +243,7 @@ Forget a dataset and delete its file.
 
 ### Summarize
 
-#### `POST /summarize`
+#### `POST /api/v1/summarize`
 
 Generate a text summary of workflow results.
 
@@ -267,7 +270,7 @@ Generate a text summary of workflow results.
 
 ### Explain
 
-#### `POST /explain`
+#### `POST /api/v1/explain`
 
 Generate a plain-English explanation for a Plotly chart (rule-based, not LLM-powered).
 
@@ -293,7 +296,7 @@ Generate a plain-English explanation for a Plotly chart (rule-based, not LLM-pow
 
 ### Generate Report
 
-#### `POST /report`
+#### `POST /api/v1/report`
 
 Generate an HTML report from workflow results.
 
@@ -315,7 +318,7 @@ Generate an HTML report from workflow results.
 
 ### BigQuery Query
 
-#### `POST /bigquery`
+#### `POST /api/v1/bigquery`
 
 > **Experimental — not enabled by default.** `google-cloud-bigquery` is an
 > optional dependency and is *not* installed in the published images, so this
@@ -355,7 +358,7 @@ Run a SQL query against Google BigQuery using service account credentials.
 
 Connecting a database is a three-step flow: connect (get a schema + a
 `connection_id`), load a table (materializes it as a CSV), then run it
-through the normal analysis pipeline (`/process`, `/nlq`) exactly like an
+through the normal analysis pipeline (`/api/v1/process`, `/api/v1/nlq`) exactly like an
 uploaded file.
 
 The live connection itself is never held open between requests — the
@@ -367,7 +370,7 @@ string, cached schema) is persisted (in Redis, with a sliding TTL — see
 `DB_CONNECTION_TTL_SECONDS` in the [Setup Guide](SETUP.md)). `/load-table`
 reconnects fresh each time it's called.
 
-#### `POST /connectors/connect`
+#### `POST /api/v1/connectors/connect`
 
 **Request Body**:
 ```json
@@ -405,7 +408,7 @@ reconnects fresh each time it's called.
 > means the container itself, not your host. See
 > [Connecting to a database on your host machine](SETUP.md#connecting-to-a-database-on-your-host-machine).
 
-#### `POST /connectors/load-table`
+#### `POST /api/v1/connectors/load-table`
 
 Materialize a table from a connected database into a CSV, using the
 `connection_id` returned by `/connect`.
@@ -430,7 +433,7 @@ Materialize a table from a connected database into a CSV, using the
   "columns": ["id", "email", "..."]
 }
 ```
-Pass `dataset_id` to `/process` or `/nlq` just like an uploaded file's id.
+Pass `dataset_id` to `/api/v1/process` or `/api/v1/nlq` just like an uploaded file's id.
 
 **Errors**:
 | Status | Detail |
@@ -439,23 +442,23 @@ Pass `dataset_id` to `/process` or `/nlq` just like an uploaded file's id.
 | `400` | `Unknown table: ...` — table isn't in the connection's schema |
 | `400` | `Failed to load table: ...` — query failed against the live database |
 
-#### `DELETE /connectors/{connection_id}`
+#### `DELETE /api/v1/connectors/{connection_id}`
 
 Disconnect and forget a connection before its TTL expires.
 
 **Response** `200 OK`: `{"status": "disconnected"}`
 **Errors**: `404` — `Connection not found or already expired.`
 
-#### `GET /connectors/schema`
+#### `GET /api/v1/connectors/schema`
 
 Placeholder — not yet implemented (always returns `{"status": "not_implemented"}`).
-Use the `schema` field returned by `/connectors/connect` instead.
+Use the `schema` field returned by `/api/v1/connectors/connect` instead.
 
 ---
 
 ### Session Management
 
-#### `GET /sessions/{session_id}`
+#### `GET /api/v1/sessions/{session_id}`
 
 Retrieve chat history for a session.
 
@@ -473,7 +476,7 @@ Retrieve chat history for a session.
 }
 ```
 
-#### `DELETE /sessions/{session_id}`
+#### `DELETE /api/v1/sessions/{session_id}`
 
 Clear a session's history.
 
@@ -488,7 +491,7 @@ Clear a session's history.
 
 ### Session Sharing
 
-#### `POST /sessions/share`
+#### `POST /api/v1/sessions/share`
 
 Create a share link for a session. Links expire after 72 hours.
 
@@ -507,7 +510,7 @@ Create a share link for a session. Links expire after 72 hours.
 }
 ```
 
-#### `GET /sessions/shared/{token}`
+#### `GET /api/v1/sessions/shared/{token}`
 
 Access a shared session.
 
@@ -527,19 +530,19 @@ Built from the real session history stored server-side (`session_manager`) —
 narrative, hypotheses, charts, and Q&A pairs for that `session_id`. Returns
 `404` if the session doesn't exist or has expired.
 
-#### `GET /export/{session_id}/html`
+#### `GET /api/v1/export/{session_id}/html`
 
 Export session results as an HTML file, with charts embedded as interactive Plotly figures.
 
 **Response**: `200 OK` — HTML file download.
 
-#### `GET /export/{session_id}/markdown`
+#### `GET /api/v1/export/{session_id}/markdown`
 
 Export session results as Markdown (narrative, top insights, chart titles, Q&A transcript).
 
 **Response**: `200 OK` — Markdown text file download.
 
-#### `GET /export/{session_id}/csv`
+#### `GET /api/v1/export/{session_id}/csv`
 
 Export the session's question/answer/code history as CSV. Returns `404` if no questions have been asked yet.
 
@@ -555,7 +558,7 @@ Export the session's question/answer/code history as CSV. Returns `404` if no qu
 
 ### Demo Datasets
 
-#### `GET /demo/list`
+#### `GET /api/v1/demo/list`
 
 List available demo datasets. Disabled when `DEMO_MODE=false`.
 
@@ -579,7 +582,7 @@ List available demo datasets. Disabled when `DEMO_MODE=false`.
 }
 ```
 
-#### `GET /demo/load`
+#### `GET /api/v1/demo/load`
 
 Load a demo dataset by ID. Disabled when `DEMO_MODE=false`.
 
@@ -603,11 +606,11 @@ Load a demo dataset by ID. Disabled when `DEMO_MODE=false`.
 
 ### Real-Time Agent Streaming (SSE)
 
-#### `GET /agents/stream/{session_id}`
+#### `GET /api/v1/agents/stream/{session_id}`
 
 Server-Sent Events endpoint that streams real-time agent progress. Used by the frontend [`AgentPipeline`](frontend/components/agents/AgentPipeline.tsx) component.
 
-Events are consumed after calling `/process` or `/nlq` with a matching `session_id`.
+Events are consumed after calling `/api/v1/process` or `/api/v1/nlq` with a matching `session_id`.
 
 **Event format** (SSE `data:` field):
 ```json
@@ -667,7 +670,7 @@ Content-Type: application/json
 
 ```bash
 # 1. Upload CSV
-UPLOAD_RESPONSE=$(curl -s -X POST http://localhost:8000/upload \
+UPLOAD_RESPONSE=$(curl -s -X POST http://localhost:8000/api/v1/upload \
   -F "file=@sales_data.csv")
 
 DATASET_ID=$(echo $UPLOAD_RESPONSE | jq -r '.dataset_id')
@@ -676,15 +679,15 @@ DATASET_ID=$(echo $UPLOAD_RESPONSE | jq -r '.dataset_id')
 SESSION_ID="test-session-1"
 
 # Open SSE stream in another terminal:
-# curl -N http://localhost:8000/agents/stream/$SESSION_ID
+# curl -N http://localhost:8000/api/v1/agents/stream/$SESSION_ID
 
 # 3. Process data through full pipeline
-curl -s -X POST "http://localhost:8000/process?session_id=$SESSION_ID" \
+curl -s -X POST "http://localhost:8000/api/v1/process?session_id=$SESSION_ID" \
   -H "Content-Type: application/json" \
   -d "{\"dataset_id\": \"$DATASET_ID\"}"
 
 # 4. Ask a question
-curl -s -X POST http://localhost:8000/nlq \
+curl -s -X POST http://localhost:8000/api/v1/nlq \
   -H "Content-Type: application/json" \
   -d "{
     \"dataset_id\": \"$DATASET_ID\",
@@ -697,7 +700,7 @@ curl -s -X POST http://localhost:8000/nlq \
 
 ```bash
 # 1. Connect — returns a connection_id and the DB's schema
-CONNECTION_ID=$(curl -s -X POST http://localhost:8000/connectors/connect \
+CONNECTION_ID=$(curl -s -X POST http://localhost:8000/api/v1/connectors/connect \
   -H "Content-Type: application/json" \
   -d '{
     "type": "postgresql",
@@ -705,16 +708,16 @@ CONNECTION_ID=$(curl -s -X POST http://localhost:8000/connectors/connect \
   }' | jq -r '.connection_id')
 
 # 2. Load a table — materializes it as a CSV
-DATASET_ID=$(curl -s -X POST http://localhost:8000/connectors/load-table \
+DATASET_ID=$(curl -s -X POST http://localhost:8000/api/v1/connectors/load-table \
   -H "Content-Type: application/json" \
   -d "{\"connection_id\": \"$CONNECTION_ID\", \"table_name\": \"users\"}" \
   | jq -r '.dataset_id')
 
 # 3. Run it through the normal pipeline
-curl -s -X POST http://localhost:8000/process \
+curl -s -X POST http://localhost:8000/api/v1/process \
   -H "Content-Type: application/json" \
   -d "{\"dataset_id\": \"$DATASET_ID\"}"
 
 # Optional: disconnect early instead of waiting for the TTL
-curl -X DELETE http://localhost:8000/connectors/$CONNECTION_ID
+curl -X DELETE http://localhost:8000/api/v1/connectors/$CONNECTION_ID
 ```

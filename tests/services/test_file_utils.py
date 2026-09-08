@@ -45,11 +45,49 @@ def test_accepts_real_world_csvs(name, data, upload_dir):
         assert fh.read() == data
 
 
+def test_accepts_xlsx_by_zip_magic(upload_dir):
+    # A minimal real xlsx magic prefix is enough for the content check;
+    # dataset_io.read_dataset() is what actually validates the workbook.
+    data = b"PK\x03\x04" + b"\x00" * 40
+    path = save_upload_file(upload("book.xlsx", data))
+    with open(path, "rb") as fh:
+        assert fh.read() == data
+
+
+def test_accepts_json(upload_dir):
+    data = b'[{"a": 1, "b": 2}]'
+    path = save_upload_file(upload("data.json", data))
+    with open(path, "rb") as fh:
+        assert fh.read() == data
+
+
+def test_accepts_parquet_by_magic(upload_dir):
+    data = b"PAR1" + b"\x00" * 40 + b"PAR1"
+    path = save_upload_file(upload("data.parquet", data))
+    with open(path, "rb") as fh:
+        assert fh.read() == data
+
+
 # --- refused ------------------------------------------------------------
 
 
+def test_rejects_xlsx_without_zip_magic():
+    with pytest.raises(ValueError, match="valid .xlsx"):
+        save_upload_file(upload("fake.xlsx", b"not a real xlsx file at all"))
+
+
+def test_rejects_parquet_without_magic():
+    with pytest.raises(ValueError, match="valid Parquet"):
+        save_upload_file(upload("fake.parquet", b"not a real parquet file"))
+
+
+def test_rejects_binary_content_named_as_json():
+    with pytest.raises(ValueError, match="valid JSON"):
+        save_upload_file(upload("fake.json", b"\x00\x01\x02binary garbage"))
+
+
 def test_rejects_wrong_extension():
-    with pytest.raises(ValueError, match="Only CSV files"):
+    with pytest.raises(ValueError, match="Only CSV, TSV, Excel"):
         save_upload_file(upload("notes.txt", b"a,b\n1,2\n"))
 
 

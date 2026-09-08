@@ -1,9 +1,22 @@
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from app.services.llm_service import LLMService
 
 logger = logging.getLogger(__name__)
+
+_NARRATIVE_SYSTEM = """You are a data analyst presenting findings to a business user.
+Write a concise, friendly narrative (3-5 sentences) summarising the key findings.
+Use plain English — no jargon. Reference actual column names and numbers where possible.
+Respond with the narrative text only — no JSON, no markdown, no preamble like "Here's a summary:"."""
+
+_QUESTIONS_SYSTEM = """You are a data analyst. Given a summary of an analysis, suggest 4-5
+specific follow-up questions the user should ask to explore further. Reference actual
+column names where possible.
+
+OUTPUT (JSON only):
+{"suggested_questions": ["question 1", "question 2", "question 3", "question 4", "question 5"]}"""
 
 
 class InsightSummarizerAgent:
@@ -67,7 +80,20 @@ class InsightSummarizerAgent:
             "llm_used": False,
         }
 
-    def run(self, workflow_results: dict[str, Any]) -> dict[str, Any]:
+    def run(
+        self,
+        workflow_results: dict[str, Any],
+        on_chunk: Callable[[str], None] | None = None,
+    ) -> dict[str, Any]:
+        """Generate the narrative + suggested questions.
+
+        If `on_chunk` is given, the narrative streams: it's called with the
+        accumulated text so far after every chunk, so a caller with an SSE
+        connection can show the narration as it's written instead of only
+        after the whole thing is done. Suggested questions are generated
+        afterwards, in a separate (non-streamed) call — they're a short
+        structured list, not prose, so there's nothing to usefully stream.
+        """
         cleaner = workflow_results.get("cleaner", {})
         hypothesis = workflow_results.get("hypothesis", {})
         debate = workflow_results.get("debate", {})
@@ -104,23 +130,28 @@ class InsightSummarizerAgent:
             f"Categorical columns: {cat_cols}"
         )
 
-        system = """You are a data analyst presenting findings to a business user.
-Write a concise, friendly narrative (3-5 sentences) summarising the key findings.
-Then list 4-5 specific follow-up questions the user should ask to explore further.
-Use plain English — no jargon. Reference actual column names and numbers where possible.
-
-OUTPUT (JSON only):
-{
-  "narrative": "3-5 sentence summary",
-  "suggested_questions": ["question 1", "question 2", "question 3", "question 4", "question 5"]
-}"""
-
         try:
-            result = self.llm.complete_json(system, context)
-            narrative = result.get("narrative", "")
-            questions = result.get("suggested_questions", [])
+            narrative = ""
+            for chunk in self.llm.stream_complete(_NARRATIVE_SYSTEM, context):
+                narrative += chunk
+                if on_chunk is not None:
+                    on_chunk(narrative)
+            narrative = narrative.strip()
             if not narrative:
                 raise ValueError("empty narrative")
+
+            questions: list[str] = []
+            try:
+                q_result = self.llm.complete_json(
+                    _QUESTIONS_SYSTEM, f"Summary:\n{narrative}\n\n{context}"
+                )
+                questions = q_result.get("suggested_questions", [])
+            except Exception as e:
+                # The narrative is the part a reader actually notices missing;
+                # losing the suggestions list on its own isn't worth falling
+                # all the way back to the heuristic narrative too.
+                logger.warning(f"Suggested-questions generation failed: {e}")
+
             return {
                 "narrative": narrative,
                 "suggested_questions": questions[:5],

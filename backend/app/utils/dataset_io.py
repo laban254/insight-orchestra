@@ -64,6 +64,13 @@ _BINARY_MAGIC = (
 # isn't silently destroyed.
 _MIN_PARSE_RATIO = 0.9
 
+# Non-CSV formats read_dataset() also accepts. Legacy .xls is deliberately
+# out of scope (it needs a different, unmaintained engine); a modern Excel
+# export is always .xlsx.
+EXCEL_SUFFIXES = (".xlsx",)
+JSON_SUFFIXES = (".json",)
+PARQUET_SUFFIXES = (".parquet",)
+
 # Values sampled per column when deciding whether it looks like a date.
 _DATE_SAMPLE = 200
 
@@ -188,15 +195,8 @@ def coerce_datetimes(df: pd.DataFrame) -> list[str]:
     return converted
 
 
-def read_dataset(path: str, nrows: int | None = None) -> DatasetReadResult:
-    """Read a CSV from disk, sniffing encoding and delimiter, parsing dates.
-
-    Raises ValueError with a message meant for the user — callers translate
-    it into an HTTP error.
-    """
-    if not os.path.isfile(path):
-        raise ValueError("File not found.")
-
+def _read_csv(path: str, nrows: int | None) -> tuple[pd.DataFrame, str, str]:
+    """Sniff encoding/delimiter and parse a CSV/TSV. Returns (df, encoding, delimiter)."""
     encoding = detect_encoding(path)
     with open(path, "rb") as fh:
         raw = fh.read(SNIFF_BYTES)
@@ -234,6 +234,66 @@ def read_dataset(path: str, nrows: int | None = None) -> DatasetReadResult:
         # caller's point of view, so it stays a 400 rather than a 500.
         raise ValueError(f"Could not read the file: {e}") from e
 
+    return df, encoding, delimiter
+
+
+def _read_excel(path: str, nrows: int | None) -> pd.DataFrame:
+    """Read the first sheet of an .xlsx workbook."""
+    try:
+        df = pd.read_excel(path, sheet_name=0, engine="openpyxl")
+    except Exception as e:
+        raise ValueError(f"Could not read the Excel file: {e}") from e
+    return df.head(nrows) if nrows is not None else df
+
+
+def _read_json(path: str, nrows: int | None) -> pd.DataFrame:
+    """Read a JSON array of records (or a JSON Lines file) into a DataFrame."""
+    try:
+        df = pd.read_json(path)
+    except ValueError:
+        try:
+            df = pd.read_json(path, lines=True)
+        except Exception as e:
+            raise ValueError(f"Could not parse the file as JSON: {e}") from e
+    except Exception as e:
+        raise ValueError(f"Could not read the JSON file: {e}") from e
+    return df.head(nrows) if nrows is not None else df
+
+
+def _read_parquet(path: str, nrows: int | None) -> pd.DataFrame:
+    try:
+        df = pd.read_parquet(path, engine="pyarrow")
+    except Exception as e:
+        raise ValueError(f"Could not read the Parquet file: {e}") from e
+    return df.head(nrows) if nrows is not None else df
+
+
+def read_dataset(path: str, nrows: int | None = None) -> DatasetReadResult:
+    """Read a dataset file (CSV/TSV, Excel, JSON, or Parquet) from disk.
+
+    CSV/TSV are sniffed for encoding and delimiter; every format goes
+    through the same date-coercion pass afterwards, since only CSV/TSV/JSON
+    leave dates as strings — Excel and Parquet usually keep real datetime
+    dtypes, which `coerce_datetimes` just passes through unchanged.
+
+    Raises ValueError with a message meant for the user — callers translate
+    it into an HTTP error.
+    """
+    if not os.path.isfile(path):
+        raise ValueError("File not found.")
+
+    lower = path.lower()
+    encoding = ""
+    delimiter = ""
+    if lower.endswith(EXCEL_SUFFIXES):
+        df = _read_excel(path, nrows)
+    elif lower.endswith(JSON_SUFFIXES):
+        df = _read_json(path, nrows)
+    elif lower.endswith(PARQUET_SUFFIXES):
+        df = _read_parquet(path, nrows)
+    else:
+        df, encoding, delimiter = _read_csv(path, nrows)
+
     if df.empty and not df.columns.tolist():
         raise ValueError("The file contains no columns.")
 
@@ -243,7 +303,7 @@ def read_dataset(path: str, nrows: int | None = None) -> DatasetReadResult:
         os.path.basename(path),
         len(df),
         len(df.columns),
-        encoding,
+        encoding or "n/a",
         delimiter,
         datetime_columns,
     )

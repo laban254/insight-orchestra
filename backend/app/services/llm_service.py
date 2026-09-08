@@ -176,6 +176,30 @@ class LLMService:
     def _exponential_backoff(self, attempt: int) -> float:
         return float(min(2**attempt + (attempt * 0.1), 60))
 
+    @staticmethod
+    def _is_retryable(exc: Exception) -> bool:
+        """Whether retrying `exc` could plausibly succeed.
+
+        Auth/permission/bad-request errors (401/403/400/404) fail the same
+        way every time — retrying just burns `max_retries` attempts and the
+        user's wait time before failing anyway. Detected by `status_code`
+        (set by both the OpenAI and Anthropic SDKs' error classes, and by
+        `requests.HTTPError.response`) rather than importing SDK-specific
+        exception types, so this covers every provider uniformly.
+        """
+        status: int | None = getattr(exc, "status_code", None)
+        if status is None and isinstance(exc, requests.exceptions.HTTPError):
+            status = exc.response.status_code if exc.response is not None else None
+        if status is not None:
+            return bool(status == 429 or status >= 500)
+        if isinstance(exc, requests.exceptions.RequestException):
+            # Timeouts/connection errors are transient; any other requests
+            # exception without a status code (e.g. a malformed response) is not.
+            return isinstance(
+                exc, requests.exceptions.Timeout | requests.exceptions.ConnectionError
+            )
+        return True  # unknown shape — keep the previous always-retry behaviour
+
     # ------------------------------------------------------------------
     # Provider-specific callers
     # ------------------------------------------------------------------
@@ -271,6 +295,9 @@ class LLMService:
             except Exception as e:
                 last_error = e
                 logger.error(f"LLM call failed (attempt {attempt + 1}): {e}")
+                if not self._is_retryable(e):
+                    logger.info(f"Not retrying — {type(e).__name__} won't succeed on retry.")
+                    raise
             if attempt < self.config.max_retries:
                 delay = self._exponential_backoff(attempt)
                 logger.info(f"Retrying in {delay:.1f}s…")
@@ -360,11 +387,143 @@ class LLMService:
             logger.error(f"JSON parse failed. Raw ({len(content)} chars): {content[:200]!r}")
             raise ValueError("Invalid JSON from LLM") from None
 
+    def stream_complete(self, system_prompt: str, user_prompt: str):
+        """Yield the response text incrementally as the provider generates it.
+
+        For user-facing prose only (narration) — JSON-mode responses can't
+        be shown mid-stream (partial JSON reads as broken text), so this has
+        no `use_fallback`/JSON variant; callers needing structured output
+        still use `complete_json()`. No retry loop: a failure partway
+        through has already shown the caller partial text, so retrying
+        would duplicate or contradict what's already been displayed. The
+        caller (a chunk-consuming agent) is expected to fall back to a
+        non-streamed heuristic on any exception here, same as a `complete()`
+        failure.
+        """
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+        model = self.config.model
+        if self.config.provider == LLMProvider.OLLAMA:
+            yield from self._stream_ollama(messages, model)
+        elif self.config.provider in (LLMProvider.OPENAI, LLMProvider.DEEPSEEK):
+            yield from self._stream_openai(messages, model)
+        elif self.config.provider == LLMProvider.ANTHROPIC:
+            yield from self._stream_anthropic(messages, model)
+        else:
+            raise NotImplementedError(f"Provider {self.config.provider} not implemented")
+
+    def _stream_ollama(self, messages: list[dict[str, str]], model: str):
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "stream": True,
+            "options": {"temperature": self.config.temperature},
+        }
+        llm_timeout = max(self.config.request_timeout, 300)
+        response = requests.post(
+            f"{self.config.base_url}/api/chat", json=payload, timeout=llm_timeout, stream=True
+        )
+        response.raise_for_status()
+        for line in response.iter_lines():
+            if not line:
+                continue
+            data = json.loads(line)
+            chunk = data.get("message", {}).get("content", "")
+            if chunk:
+                yield chunk
+            if data.get("done"):
+                self.total_tokens += data.get("prompt_eval_count", 0) + data.get("eval_count", 0)
+
+    def _stream_openai(self, messages: list[dict[str, str]], model: str):
+        stream = self.client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=self.config.temperature,
+            max_tokens=4096,
+            timeout=self.config.request_timeout,
+            stream=True,
+            stream_options={"include_usage": True},
+        )
+        for chunk in stream:
+            if chunk.usage is not None:
+                self._record_usage(model, chunk.usage.prompt_tokens, chunk.usage.completion_tokens)
+                continue
+            delta = chunk.choices[0].delta.content if chunk.choices else None
+            if delta:
+                yield delta
+
+    def _stream_anthropic(self, messages: list[dict[str, str]], model: str):
+        system_content = next((m["content"] for m in messages if m["role"] == "system"), "")
+        user_messages = [m for m in messages if m["role"] != "system"]
+        with self.client.messages.stream(
+            model=model,
+            max_tokens=4096,
+            system=system_content,
+            messages=user_messages,
+            temperature=self.config.temperature,
+        ) as stream:
+            yield from stream.text_stream
+            final = stream.get_final_message()
+            self._record_usage(model, final.usage.input_tokens, final.usage.output_tokens)
+
     def get_cost_summary(self) -> dict[str, Any]:
         return {
             "total_cost_usd": round(self.total_cost, 4),
             "total_tokens": self.total_tokens,
         }
+
+
+def friendly_llm_error(e: Exception, llm: LLMService) -> str:
+    """Map a raw LLM provider exception to an actionable, user-facing message.
+
+    Shared between /nlq and /process — both call through `llm` and both need
+    to turn "APIConnectionError" or a urllib3 retry trace into something a
+    user can act on. Auth/timeout are detected by shape (a `status_code` of
+    401, or "timeout"/"authenticationerror" in the exception's class name)
+    rather than importing any specific SDK's error types, so this covers
+    every cloud provider — including ones added later — without an update
+    here. Ollama is the one provider called over plain HTTP instead of an
+    SDK, so a dead/unreachable container surfaces as a
+    `requests.exceptions.ConnectionError` instead — checked separately since
+    neither signal above would catch it.
+    """
+    is_auth_error = (
+        getattr(e, "status_code", None) == 401 or "authenticationerror" in type(e).__name__.lower()
+    )
+    if is_auth_error:
+        provider = llm.config.provider
+        env_var = {
+            LLMProvider.OPENAI: "OPENAI_API_KEY",
+            LLMProvider.ANTHROPIC: "ANTHROPIC_API_KEY",
+            LLMProvider.DEEPSEEK: "DEEPSEEK_API_KEY",
+        }.get(provider)
+        if env_var:
+            return (
+                f"Your {provider.value} API key is missing or invalid. "
+                f"Add it to backend/.env ({env_var}=...) and restart the backend "
+                "(docker compose up -d --build backend)."
+            )
+
+    if (
+        isinstance(e, requests.exceptions.ConnectionError)
+        and llm.config.provider == LLMProvider.OLLAMA
+    ):
+        return (
+            f"Can't reach Ollama at {llm.config.base_url}. Make sure the ollama "
+            "container is running (docker compose up -d ollama) and the model is pulled "
+            f"(docker compose exec ollama ollama pull {llm.config.model})."
+        )
+
+    is_timeout = isinstance(e, requests.exceptions.Timeout) or "timeout" in type(e).__name__.lower()
+    if is_timeout:
+        return (
+            f"The {llm.config.provider.value} request took too long and was stopped. "
+            "Try a smaller dataset, a simpler question, or a faster model."
+        )
+
+    return f"Error: {str(e)}"
 
 
 class DataFrameSchema:

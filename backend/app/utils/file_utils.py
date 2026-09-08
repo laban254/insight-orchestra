@@ -3,7 +3,13 @@ import uuid
 
 from fastapi import UploadFile
 
-from app.utils.dataset_io import SNIFF_BYTES, looks_binary
+from app.utils.dataset_io import (
+    EXCEL_SUFFIXES,
+    JSON_SUFFIXES,
+    PARQUET_SUFFIXES,
+    SNIFF_BYTES,
+    looks_binary,
+)
 
 UPLOAD_DIR = os.path.abspath(
     os.path.join(os.path.dirname(os.path.dirname(__file__)), "..", "uploads")
@@ -16,34 +22,54 @@ MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
 # Extensions accepted. The content check below is what actually decides —
 # these just stop obviously wrong files before anything is written. `.txt`
-# is deliberately excluded: a prose file would parse as a valid one-column
-# CSV, so the extension is the only thing that can rule it out.
-ALLOWED_SUFFIXES = (".csv", ".tsv")
+# is deliberately excluded from the CSV suffixes: a prose file would parse
+# as a valid one-column CSV, so the extension is the only thing that can
+# rule it out.
+CSV_SUFFIXES = (".csv", ".tsv")
+ALLOWED_SUFFIXES = CSV_SUFFIXES + EXCEL_SUFFIXES + JSON_SUFFIXES + PARQUET_SUFFIXES
+
+# Leading bytes for the non-CSV formats we accept, so a file merely *named*
+# `.xlsx`/`.parquet` (or a CSV misnamed as one) is still rejected up front
+# rather than failing confusingly deep inside a format-specific reader.
+_XLSX_MAGIC = b"PK\x03\x04"  # xlsx is a zip archive
+_PARQUET_MAGIC = b"PAR1"
 
 # Copy the upload in chunks so the size limit can be enforced while writing.
 _COPY_CHUNK = 1024 * 1024
 
 
 def save_upload_file(upload_file: UploadFile) -> str:
-    """Persist an uploaded delimited-text file and return its path.
+    """Persist an uploaded dataset file and return its path.
 
-    Validation is deliberately shallow here — it rejects what is definitely
-    not a CSV (wrong extension, binary content) and enforces the size limit.
+    Validation is deliberately shallow here — it rejects content that
+    obviously doesn't match its extension and enforces the size limit.
     Whether the bytes actually parse is decided by `read_dataset`, so that
-    delimiter and encoding handling live in exactly one place.
+    format-specific handling lives in exactly one place.
     """
     filename = upload_file.filename or ""
-    if not filename.lower().endswith(ALLOWED_SUFFIXES):
-        raise ValueError("Only CSV files are allowed (.csv or .tsv).")
+    lower = filename.lower()
+    if not lower.endswith(ALLOWED_SUFFIXES):
+        raise ValueError("Only CSV, TSV, Excel (.xlsx), JSON, or Parquet files are allowed.")
 
     header = upload_file.file.read(SNIFF_BYTES)
     if not header:
         raise ValueError("The file is empty.")
-    if looks_binary(header):
-        raise ValueError(
-            "This looks like a spreadsheet or archive rather than a CSV. "
-            "Export it as CSV and try again."
-        )
+
+    if lower.endswith(CSV_SUFFIXES):
+        if looks_binary(header):
+            raise ValueError(
+                "This looks like a spreadsheet or archive rather than a CSV. "
+                "Export it as CSV and try again."
+            )
+    elif lower.endswith(EXCEL_SUFFIXES):
+        if not header.startswith(_XLSX_MAGIC):
+            raise ValueError("This doesn't look like a valid .xlsx file.")
+    elif lower.endswith(PARQUET_SUFFIXES):
+        if not header.startswith(_PARQUET_MAGIC):
+            raise ValueError("This doesn't look like a valid Parquet file.")
+    elif lower.endswith(JSON_SUFFIXES) and looks_binary(header):
+        raise ValueError("This doesn't look like valid JSON text.")
+
     upload_file.file.seek(0)
 
     # basename() so a crafted filename can't contribute path segments of its

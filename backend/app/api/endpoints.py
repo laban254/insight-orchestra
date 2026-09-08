@@ -1,11 +1,13 @@
 import asyncio
+import json
 import logging
 import os
 import time
+from typing import Any, Literal
 
 import pandas as pd
 import requests
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
@@ -18,7 +20,9 @@ from app.services.dataset_registry import (
     DatasetMissingError,
     get_dataset_registry,
 )
-from app.services.nlq_agent import NaturalLanguageQueryAgent
+from app.services.llm_service import friendly_llm_error
+from app.services.nlq_agent import NaturalLanguageQueryAgent, NLQResponse
+from app.services.query_cache import get_query_cache
 from app.services.session_manager import get_session_manager
 from app.services.summarizer_agent import InsightSummarizerAgent
 from app.utils.dataset_io import describe_dataset, read_dataset, sample_for_analysis
@@ -117,7 +121,7 @@ async def process_data(request: ProcessRequest):
     workflow = InsightOrchestraWorkflow()
     sid = request.session_id
 
-    try:
+    async def _run_pipeline() -> dict:
         push_event(sid, agent_id="janitor", status="running")
         t0 = time.monotonic()
 
@@ -202,11 +206,86 @@ async def process_data(request: ProcessRequest):
             "viz": viz_result,
             "stats": stats_summary,
         }
+        push_event(sid, agent_id="narrator", status="running")
+        t0 = time.monotonic()
         summarizer = InsightSummarizerAgent(llm_service=workflow.llm)
-        summary_result = await asyncio.to_thread(summarizer.run, workflow_results)
-    finally:
-        # Always close the progress stream, even if an agent raised.
+
+        # Runs in a worker thread; push_event is safe to call from there
+        # (see agent_progress.py) — each chunk updates the same "running"
+        # event so the UI can show the narrative being written live instead
+        # of only after the whole pipeline finishes.
+        def _on_narrative_chunk(text: str) -> None:
+            push_event(sid, agent_id="narrator", status="running", output=text)
+
+        summary_result = await asyncio.to_thread(
+            summarizer.run, workflow_results, _on_narrative_chunk
+        )
+        push_event(
+            sid,
+            agent_id="narrator",
+            status="done",
+            output=summary_result.get("narrative", ""),
+            duration=int((time.monotonic() - t0) * 1000),
+        )
+
+        return {
+            "cleaned_df": cleaned_df,
+            "sampling": sampling,
+            "cleaner_result": cleaner_result,
+            "hypothesis_result": hypothesis_result,
+            "hypotheses": hypotheses,
+            "debate_result": debate_result,
+            "consensus": consensus,
+            "viz_result": viz_result,
+            "summary_result": summary_result,
+        }
+
+    try:
+        stages = await asyncio.wait_for(_run_pipeline(), timeout=settings.process_timeout_seconds)
+    except HTTPException:
+        # Deliberate error from deeper in the pipeline (e.g. a corrupt or
+        # unreadable dataset) — already has the right status/message, so
+        # don't let the generic handler below mask it behind a 502.
         push_sentinel(sid)
+        raise
+    except TimeoutError as e:
+        # _run_pipeline() keeps executing in its background thread (Python
+        # can't kill a thread), but the request itself fails fast with an
+        # actionable message instead of hanging until the client gives up.
+        push_event(sid, agent_id="pipeline", status="error", output="Analysis timed out.")
+        push_sentinel(sid)
+        raise HTTPException(
+            status_code=504,
+            detail=(
+                "Analysis took too long and was stopped. Try a smaller dataset or a faster model."
+            ),
+        ) from e
+    except Exception as e:
+        logger.error(f"[session={sid}] /process failed: {e}")
+        push_event(sid, agent_id="pipeline", status="error", output=str(e))
+        push_sentinel(sid)
+        # workflow.llm is None when no provider could be constructed at all
+        # (e.g. no API key for any provider) — friendly_llm_error() needs a
+        # real LLMService to name the provider, so fall back to a generic
+        # message rather than passing None through.
+        detail = (
+            friendly_llm_error(e, workflow.llm)
+            if workflow.llm is not None
+            else "No LLM provider is configured. Set an API key in backend/.env and restart the backend."
+        )
+        raise HTTPException(status_code=502, detail=detail) from e
+    else:
+        push_sentinel(sid)
+
+    cleaned_df = stages["cleaned_df"]
+    sampling = stages["sampling"]
+    cleaner_result = stages["cleaner_result"]
+    hypothesis_result = stages["hypothesis_result"]
+    hypotheses = stages["hypotheses"]
+    debate_result = stages["debate_result"]
+    consensus = stages["consensus"]
+    viz_result = stages["viz_result"]
+    summary_result = stages["summary_result"]
 
     # Store analysis context in session so NLQ queries can reference it.
     # Charts are kept so server-side exports can embed them; they are stripped
@@ -230,11 +309,10 @@ async def process_data(request: ProcessRequest):
     # Small sample of the cleaned data so the UI can show a preview table.
     # The full cleaned dataset is deliberately not returned: nothing in the
     # UI reads it, and on a large file it dominates the response body.
-    import json as _json
-
+    # (Full pagination through the raw dataset is GET /datasets/{id}/rows.)
     preview = {
         "columns": cleaned_df.columns.tolist(),
-        "rows": _json.loads(cleaned_df.head(20).to_json(orient="records", date_format="iso")),
+        "rows": json.loads(cleaned_df.head(20).to_json(orient="records", date_format="iso")),
     }
     cleaner_response = {"report": cleaner_result["report"]}
     if sampling:
@@ -280,8 +358,10 @@ async def natural_language_query(request: NLQRequest):
     """Natural language query with LLM-powered code generation."""
     sid = request.session_id
     path = resolve_dataset_path(request.dataset_id)
+    sampling: dict[str, Any] | None = None
 
-    try:
+    async def _run() -> NLQResponse:
+        nonlocal sampling
         # --- Phase 1: Data Janitor ---
         # Cleaning is deterministic, so a follow-up question reuses the
         # previous result instead of re-reading and re-cleaning the file.
@@ -324,24 +404,59 @@ async def natural_language_query(request: NLQRequest):
         # --- Phase 2: NLQ Agent ---
         push_event(sid, agent_id="nlq", status="running")
         t0 = time.monotonic()
-        agent = NaturalLanguageQueryAgent()
-        response = await asyncio.to_thread(agent.run, df, request.question, context, sid)
-        if response.execution_success:
+
+        from app import runtime_config
+
+        cache = get_query_cache()
+        provider = runtime_config.get_provider()
+        model = runtime_config.current()["model"]
+        cached = cache.get(request.dataset_id, request.question, provider, model, context)
+
+        if cached is not None:
+            response = NLQResponse(**cached)
             push_event(
                 sid,
                 agent_id="nlq",
                 status="done",
-                output="Generated and executed query successfully.",
+                output="Generated and executed query successfully. (cached)",
                 duration=int((time.monotonic() - t0) * 1000),
             )
         else:
-            push_event(
-                sid,
-                agent_id="nlq",
-                status="error",
-                output=response.error or "Query execution failed.",
-                duration=int((time.monotonic() - t0) * 1000),
-            )
+            agent = NaturalLanguageQueryAgent()
+            response = await asyncio.to_thread(agent.run, df, request.question, context, sid)
+            if response.execution_success:
+                cache.set(
+                    request.dataset_id,
+                    request.question,
+                    provider,
+                    model,
+                    {
+                        "answer": response.answer,
+                        "code": response.code,
+                        "reasoning": response.reasoning,
+                        "plot_json": response.plot_json,
+                        "needs_clarification": response.needs_clarification,
+                        "clarification_question": response.clarification_question,
+                        "execution_success": response.execution_success,
+                        "error": response.error,
+                    },
+                    context,
+                )
+                push_event(
+                    sid,
+                    agent_id="nlq",
+                    status="done",
+                    output="Generated and executed query successfully.",
+                    duration=int((time.monotonic() - t0) * 1000),
+                )
+            else:
+                push_event(
+                    sid,
+                    agent_id="nlq",
+                    status="error",
+                    output=response.error or "Query execution failed.",
+                    duration=int((time.monotonic() - t0) * 1000),
+                )
 
         # --- Phase 3: Viz Whiz (emit only when a plot was produced) ---
         if response.plot_json:
@@ -353,6 +468,24 @@ async def natural_language_query(request: NLQRequest):
                 output="Chart generated successfully.",
                 duration=0,
             )
+        return response
+
+    try:
+        response = await asyncio.wait_for(_run(), timeout=settings.nlq_timeout_seconds)
+    except TimeoutError:
+        # _run() keeps executing in its background thread (Python can't kill
+        # a thread), but the request itself fails fast with an actionable
+        # message instead of hanging until the client gives up on its own.
+        push_event(sid, agent_id="nlq", status="error", output="Query timed out.")
+        response = NLQResponse(
+            answer=(
+                "This query took too long and was stopped. Try a simpler question, a "
+                "smaller dataset, or a faster model."
+            ),
+            code="",
+            reasoning="",
+            error="timeout",
+        )
     finally:
         # Always close the progress stream, even if an agent raised.
         push_sentinel(sid)
@@ -520,6 +653,96 @@ async def get_dataset(dataset_id: str):
             "source": record["source"] if record else "",
             **describe_dataset(result.df),
             "assumptions": result.assumptions,
+        }
+    )
+
+
+# Every other preview in the API (`/upload`, `GET /datasets/{id}`) is a fixed
+# `head(20)` — fine for "does this look right after ingest" but no way to
+# see the rest of a large file. This is the one place that can page through
+# the whole thing.
+MAX_PAGE_SIZE = 500
+
+
+@router.get("/datasets/{dataset_id}/rows")
+async def get_dataset_rows(
+    dataset_id: str,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=MAX_PAGE_SIZE),
+):
+    """A page of rows from the dataset, for browsing past the fixed preview."""
+    df = get_df(dataset_id)
+    total_rows = len(df)
+    page = df.iloc[offset : offset + limit]
+
+    return sanitize_json(
+        {
+            "columns": df.columns.tolist(),
+            "rows": json.loads(page.to_json(orient="records", date_format="iso")),
+            "total_rows": total_rows,
+            "offset": offset,
+            "limit": limit,
+            "has_more": offset + limit < total_rows,
+        }
+    )
+
+
+class TransformRequest(BaseModel):
+    column: str
+    operation: Literal["normalize", "scale", "encode"]
+    # Defaults to "{column}_{operation}" if not given.
+    new_column: str | None = None
+
+
+@router.post("/datasets/{dataset_id}/transform")
+async def transform_dataset(dataset_id: str, request: TransformRequest):
+    """Apply a deterministic column transform, without needing the LLM to
+    write and run pandas code for what's really a fixed, well-known
+    operation. Non-destructive: writes the result as a new derived dataset
+    rather than mutating the original, consistent with every other
+    ingestion path (upload/demo/DB table) always minting a fresh id.
+    """
+    df = get_df(dataset_id)
+    if request.column not in df.columns:
+        raise HTTPException(status_code=400, detail=f"Column '{request.column}' not found.")
+
+    new_column = request.new_column or f"{request.column}_{request.operation}"
+    series = df[request.column]
+    result_df = df.copy()
+
+    if request.operation in ("normalize", "scale"):
+        if not pd.api.types.is_numeric_dtype(series):
+            raise HTTPException(
+                status_code=400,
+                detail=f"'{request.operation}' needs a numeric column; "
+                f"'{request.column}' is {series.dtype}.",
+            )
+        if request.operation == "normalize":
+            lo, hi = series.min(), series.max()
+            # A constant column has no range to normalize against — every
+            # value is equally "the middle" rather than a divide-by-zero.
+            result_df[new_column] = 0.5 if hi == lo else (series - lo) / (hi - lo)
+        else:  # scale (z-score / standardize)
+            mean, std = series.mean(), series.std()
+            result_df[new_column] = 0.0 if not std else (series - mean) / std
+    else:  # encode — integer-code each distinct value, in first-seen order
+        codes, _ = pd.factorize(series.astype(str))
+        result_df[new_column] = codes
+
+    path = os.path.join(DATASET_DIR, f"transform_{os.urandom(8).hex()}.csv")
+    result_df.to_csv(path, index=False)
+    record = _datasets.get(dataset_id)
+    base_name = record["name"] if record else dataset_id
+    new_dataset_id = _datasets.register(
+        path, name=f"{base_name} ({request.operation}: {request.column})", source="transform"
+    )
+
+    return sanitize_json(
+        {
+            "dataset_id": new_dataset_id,
+            "new_column": new_column,
+            "operation": request.operation,
+            **describe_dataset(result_df),
         }
     )
 

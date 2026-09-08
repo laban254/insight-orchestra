@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Download, FileCode2, FileText, Table2 } from "lucide-react";
+import { Download, FileCode2, FileText, Printer, Table2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { api } from "@/lib/api";
 
@@ -14,7 +14,15 @@ function downloadUrl(url: string) {
     a.remove();
 }
 
-export function ExportMenu({ sessionId, onReport }: { sessionId: string; onReport: () => void }) {
+export function ExportMenu({
+    sessionId,
+    onReport,
+    onPdf,
+}: {
+    sessionId: string;
+    onReport: () => void;
+    onPdf: () => void;
+}) {
     const [open, setOpen] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
 
@@ -57,6 +65,7 @@ export function ExportMenu({ sessionId, onReport }: { sessionId: string; onRepor
                         Export
                     </p>
                     {item(FileCode2, "Interactive report", "HTML with live charts", onReport)}
+                    {item(Printer, "PDF", "Print preview — save as PDF", onPdf)}
                     {item(FileText, "Summary", "Markdown report", () =>
                         downloadUrl(api.getExportUrl(sessionId, "markdown"))
                     )}
