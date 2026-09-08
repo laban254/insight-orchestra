@@ -150,7 +150,16 @@ Code: result = df[df['price'] > 100]
             sandbox: Optional SandboxExecutor instance
             max_retries: Maximum code execution retries
         """
-        self.llm = llm_service or LLMService()
+        self.llm = llm_service
+        if self.llm is None:
+            try:
+                self.llm = LLMService()
+            except Exception:
+                # No heuristic fallback exists for "write pandas code" the
+                # way /process's agents fall back to statistics — run()
+                # below turns this into a clean response instead of letting
+                # the constructor's ValueError crash the request.
+                self.llm = None
         self.sandbox = sandbox or SandboxExecutor(timeout_seconds=30)
         self.max_retries = max_retries
 
@@ -197,7 +206,7 @@ Code: result = df[df['price'] > 100]
         Return the shortest effective system prompt for the active provider.
         Ollama with small models gets the compact version to preserve token budget.
         """
-        is_ollama = hasattr(self.llm, "config") and self.llm.config.provider == LLMProvider.OLLAMA
+        is_ollama = self.llm is not None and self.llm.config.provider == LLMProvider.OLLAMA
         if is_ollama:
             return self.COMPACT_SYSTEM_PROMPT
         if is_plot:
@@ -298,6 +307,8 @@ Code: result = df[df['price'] > 100]
         session_id: str | None = None,
     ) -> dict[str, Any]:
         """Generate Python code from a natural language question."""
+        # Guaranteed by run()'s own guard — never called with self.llm unset.
+        assert self.llm is not None
         is_plot = self._is_plot_question(question)
         few_shot = self._build_few_shot_examples(df)
 
@@ -547,6 +558,17 @@ Code: result = df[df['price'] > 100]
             safe_log_value(question[:100]),
         )
 
+        if self.llm is None:
+            return NLQResponse(
+                answer=(
+                    "No LLM provider is configured, so questions can't be turned into code. "
+                    "Set an API key in backend/.env and restart the backend."
+                ),
+                code="",
+                reasoning="",
+                error="no_llm_configured",
+            )
+
         try:
             # Step 1: Generate code
             llm_response = self._generate_code(df, question, context, session_id)
@@ -664,6 +686,8 @@ Code: result = df[df['price'] > 100]
 
     def get_cost_summary(self) -> dict[str, Any]:
         """Get cost summary from LLM service."""
+        if self.llm is None:
+            return {"total_cost_usd": 0.0, "total_tokens": 0}
         return self.llm.get_cost_summary()
 
 
