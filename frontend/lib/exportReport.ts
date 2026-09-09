@@ -47,6 +47,14 @@ function buildReportHtml(
         ["Missing fixed", report.total_missing.toLocaleString()],
     ];
 
+    // Print mode forces a light page (see the @media print block below) —
+    // the chart's own title/axis/tick text is drawn by Plotly onto a
+    // canvas, not styled by that CSS, so it needs the matching dark-on-light
+    // palette here or it stays the light-on-dark color and goes nearly
+    // invisible against the white print background.
+    const fontColor = autoprint ? "#0b1220" : "#e8eefc";
+    const gridColor = autoprint ? "rgba(11,18,32,0.15)" : "rgba(232,238,252,0.08)";
+
     // Print/PDF mode waits on every chart's render promise before calling
     // window.print() — printing before Plotly has painted produces a PDF
     // with empty chart boxes, since print rasterizes whatever is on screen
@@ -55,9 +63,17 @@ function buildReportHtml(
         .map((f) => {
             try {
                 const parsed = JSON.parse(f.json);
+                const layoutOverrides = {
+                    paper_bgcolor: "transparent",
+                    plot_bgcolor: "transparent",
+                    font: { color: fontColor },
+                    colorway: ["#22d3ee", "#e879f9", "#a78bfa", "#34d399", "#fbbf24", "#fb7185"],
+                    xaxis: { ...(parsed.layout?.xaxis ?? {}), gridcolor: gridColor, tickfont: { color: fontColor }, titlefont: { color: fontColor } },
+                    yaxis: { ...(parsed.layout?.yaxis ?? {}), gridcolor: gridColor, tickfont: { color: fontColor }, titlefont: { color: fontColor } },
+                };
                 return `Plotly.newPlot(${JSON.stringify(f.id)}, ${JSON.stringify(parsed.data ?? [])}, Object.assign(${JSON.stringify(
                     parsed.layout ?? {}
-                )}, {paper_bgcolor:'transparent',plot_bgcolor:'transparent',font:{color:'#e8eefc'},colorway:['#22d3ee','#e879f9','#a78bfa','#34d399','#fbbf24','#fb7185']}), {responsive:true,displaylogo:false})`;
+                )}, ${JSON.stringify(layoutOverrides)}), {responsive:true,displaylogo:false})`;
             } catch {
                 return "";
             }
