@@ -172,6 +172,10 @@ export function CanvasPane({
     const pinnedResults = pinned
         .map((id) => results.find((r) => r.id === id))
         .filter((r): r is QueryResult => Boolean(r));
+    // "Compare" only means something with two or more charts side by side. With
+    // one pin, a separate section would just render the same chart twice (once
+    // compact here, once full in "All results" below).
+    const showCompare = pinnedResults.length >= 2;
     const consensus = result?.debate.summary.consensus;
     const scored = result?.debate.scored_hypotheses ?? [];
     const plots = result?.viz.chart_info.plots ?? [];
@@ -224,22 +228,20 @@ export function CanvasPane({
                         </div>
                     ) : (
                         <div className="space-y-7">
-                            {/* Pinned — side-by-side compare */}
-                            {pinnedResults.length > 0 && (
+                            {/* Pinned — side-by-side compare (2+ only) */}
+                            {showCompare && (
                                 <div>
                                     <h3 className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-accent">
                                         <Columns2 size={13} /> Pinned · compare
-                                        {pinnedResults.length > 1 && (
-                                            <span className="ml-auto flex items-center gap-1 text-[10px] font-normal normal-case text-faint">
-                                                <GripVertical size={11} /> Drag to reorder
-                                            </span>
-                                        )}
+                                        <span className="ml-auto flex items-center gap-1 text-[10px] font-normal normal-case text-faint">
+                                            <GripVertical size={11} /> Drag to reorder
+                                        </span>
                                     </h3>
-                                    <div className={`grid gap-4 ${pinnedResults.length > 1 ? "2xl:grid-cols-2" : "grid-cols-1"}`}>
+                                    <div className="grid gap-4 2xl:grid-cols-2">
                                         {pinnedResults.map((r) => (
                                             <div
                                                 key={`pin-${r.id}`}
-                                                draggable={pinnedResults.length > 1}
+                                                draggable
                                                 onDragStart={() => setDraggedId(r.id)}
                                                 onDragEnter={() => draggedId !== null && setDragOverId(r.id)}
                                                 onDragOver={(e) => e.preventDefault()}
@@ -253,9 +255,9 @@ export function CanvasPane({
                                                     setDraggedId(null);
                                                     setDragOverId(null);
                                                 }}
-                                                className={`rounded-2xl transition-[opacity,box-shadow] ${
-                                                    pinnedResults.length > 1 ? "cursor-grab active:cursor-grabbing" : ""
-                                                } ${draggedId === r.id ? "opacity-40" : ""} ${
+                                                className={`cursor-grab rounded-2xl transition-[opacity,box-shadow] active:cursor-grabbing ${
+                                                    draggedId === r.id ? "opacity-40" : ""
+                                                } ${
                                                     dragOverId === r.id && draggedId !== r.id
                                                         ? "ring-2 ring-accent/60 ring-offset-2 ring-offset-surface"
                                                         : ""
@@ -276,7 +278,7 @@ export function CanvasPane({
 
                             {/* All results — newest first */}
                             <div>
-                                {pinnedResults.length > 0 && (
+                                {showCompare && (
                                     <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-faint">All results</h3>
                                 )}
                                 <div className="space-y-6">
@@ -314,8 +316,18 @@ export function CanvasPane({
                         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                             <Stat icon={Rows3} label="Rows" value={report.final_shape[0].toLocaleString()} tint="#22d3ee" />
                             <Stat icon={Columns3} label="Columns" value={String(report.final_shape[1])} tint="#a78bfa" />
-                            <Stat icon={CopyMinus} label="Dupes removed" value={report.duplicates_removed.toLocaleString()} tint="#fbbf24" />
-                            <Stat icon={Wand2} label="Missing fixed" value={report.total_missing.toLocaleString()} tint="#34d399" />
+                            <Stat
+                                icon={CopyMinus}
+                                label="Dupes removed"
+                                value={report.duplicates_removed ? report.duplicates_removed.toLocaleString() : "None"}
+                                tint="#fbbf24"
+                            />
+                            <Stat
+                                icon={Wand2}
+                                label="Missing fixed"
+                                value={report.total_missing ? report.total_missing.toLocaleString() : "None"}
+                                tint="#34d399"
+                            />
                         </div>
 
                         {/* Top insight */}
