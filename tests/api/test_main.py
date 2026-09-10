@@ -136,3 +136,18 @@ class TestAuthGatingIntegration:
         (which would be 401)."""
         resp = client.get("/api/v1/sessions/shared/does-not-exist")
         assert resp.status_code == 404
+
+    def test_auth_me_is_reachable_unauthenticated(self, auth_on):
+        """The frontend calls /auth/me before it knows whether login is
+        needed — it must return 200 with user:null, never 401, or the login
+        flow can't bootstrap."""
+        resp = client.get("/api/v1/auth/me")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body == {"auth_enabled": True, "oidc_configured": False, "user": None}
+
+    def test_auth_me_reports_the_signed_in_user(self, auth_on):
+        token = auth_on(Role.ADMIN)
+        resp = client.get("/api/v1/auth/me", cookies={SESSION_COOKIE_NAME: token})
+        assert resp.status_code == 200
+        assert resp.json()["user"]["role"] == "admin"

@@ -6,6 +6,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 from app.auth import (
     SESSION_COOKIE_NAME,
+    get_current_user,
     hash_password,
     require_role,
     require_user,
@@ -109,8 +110,13 @@ async def logout(
 
 
 @router.get("/me")
-async def me(user: UserRecord | None = Depends(require_user)):
-    """Whether auth is on, and who (if anyone) the caller is authenticated as."""
+async def me(user: UserRecord | None = Depends(get_current_user)):
+    """Whether auth is on, and who (if anyone) the caller is authenticated as.
+
+    Never requires auth — the frontend calls this before it knows whether a
+    login is needed, so an unauthenticated caller must get a clean
+    `{auth_enabled, user: null}` rather than a 401.
+    """
     return {
         "auth_enabled": settings.auth_enabled,
         "oidc_configured": bool(settings.oidc_issuer and settings.oidc_client_id),
