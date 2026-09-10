@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ChevronLeft, FileDown, Loader2, Search, Table2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { LocalDatabaseFile, Schema } from "@/lib/types";
+import { Select } from "@/components/ui/Select";
 import type { DatasetInfo } from "@/app/page";
 
 interface DatabaseConnectProps {
@@ -182,16 +183,12 @@ export function DatabaseConnect({ onDataReady }: DatabaseConnectProps) {
             <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
                     <label className="mb-1.5 block text-xs font-medium text-muted">Database type</label>
-                    <select
-                        value={type}
-                        onChange={(e) => setType(e.target.value)}
-                        className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-sm text-fg outline-none transition-colors focus:border-accent/60"
-                    >
+                    <Select value={type} onChange={(e) => setType(e.target.value)}>
                         <option value="postgresql">PostgreSQL</option>
                         <option value="mysql">MySQL</option>
                         <option value="duckdb">DuckDB</option>
                         <option value="sqlite">SQLite</option>
-                    </select>
+                    </Select>
                 </div>
 
                 <div>

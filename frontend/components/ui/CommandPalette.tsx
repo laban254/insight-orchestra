@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, CornerDownLeft } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { useCloseMenus } from "@/lib/menus";
 
 export interface Command {
     id: string;
@@ -23,6 +24,12 @@ export function CommandPalette({ open, onOpenChange, commands }: Props) {
     const [query, setQuery] = useState("");
     const [active, setActive] = useState(0);
     const inputRef = useRef<HTMLInputElement>(null);
+    const closeMenus = useCloseMenus();
+
+    // A full-screen overlay takes over — no header dropdown should linger under it.
+    useEffect(() => {
+        if (open) closeMenus();
+    }, [open, closeMenus]);
 
     // Global Cmd/Ctrl+K toggles the palette.
     useEffect(() => {

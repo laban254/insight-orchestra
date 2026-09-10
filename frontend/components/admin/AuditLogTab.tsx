@@ -5,6 +5,7 @@ import { Download, Loader2, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { apiErrorMessage } from "@/lib/apiError";
 import { useToast } from "@/lib/toast";
+import { Select } from "@/components/ui/Select";
 import type { AuditEntry } from "@/lib/types";
 
 function fmtTime(seconds: number): string {
@@ -70,15 +71,15 @@ export function AuditLogTab() {
         <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                    <select
+                    <Select
+                        dense
                         value={limit}
                         onChange={(e) => setLimit(Number(e.target.value))}
-                        className="rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs text-fg outline-none"
                     >
                         <option value={50}>Last 50</option>
                         <option value={200}>Last 200</option>
                         <option value={1000}>Last 1000</option>
-                    </select>
+                    </Select>
                     <button
                         onClick={load}
                         disabled={refreshing}
