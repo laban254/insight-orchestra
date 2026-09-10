@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronDown, LogOut, User } from "lucide-react";
+import { ChevronDown, LogOut, Shield, User } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 
 /** Signed-in user badge + logout. Renders nothing when auth is off or no one is signed in. */
@@ -45,6 +46,15 @@ export function UserMenu() {
                         <p className="truncate text-sm font-medium text-fg">{user.email}</p>
                         <p className="mt-0.5 text-[10px] uppercase tracking-wider text-faint">{user.role}</p>
                     </div>
+                    {user.role === "admin" && (
+                        <Link
+                            href="/admin"
+                            onClick={() => setOpen(false)}
+                            className="flex w-full items-center gap-2 border-b border-border-soft px-3 py-2.5 text-left text-sm text-muted transition-colors hover:bg-surface-2 hover:text-fg"
+                        >
+                            <Shield size={14} /> Admin panel
+                        </Link>
+                    )}
                     <button
                         onClick={handleLogout}
                         className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-muted transition-colors hover:bg-surface-2 hover:text-fg"

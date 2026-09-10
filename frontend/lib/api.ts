@@ -17,6 +17,11 @@ import {
     TransformRequest,
     TransformResponse,
     LocalDatabaseFilesResponse,
+    AdminUser,
+    ApiKey,
+    ApiKeyWithSecret,
+    AuditEntry,
+    UserRole,
 } from './types';
 // Type-only import — erased at compile time, so no runtime cycle with workspaces.ts.
 import type { SavedState, WorkspaceMeta, WorkspaceRecord } from './workspaces';
@@ -184,5 +189,54 @@ export const api = {
     setConfig: async (update: { provider?: string; model?: string }): Promise<{ provider: string; model: string }> => {
         const response = await apiClient.post('/config', update);
         return response.data;
+    },
+
+    // AUTH ADMIN — user management (admin only), API keys (self-service),
+    // audit log (admin only). All 404 when the backend has auth disabled.
+    listUsers: async (): Promise<AdminUser[]> => {
+        const response = await apiClient.get<{ users: AdminUser[] }>('/auth/users');
+        return response.data.users;
+    },
+    createUser: async (data: {
+        email: string;
+        name: string;
+        password: string;
+        role: UserRole;
+    }): Promise<AdminUser> => {
+        const response = await apiClient.post<AdminUser>('/auth/users', data);
+        return response.data;
+    },
+    updateUser: async (
+        id: string,
+        data: { name?: string; role?: UserRole; is_active?: boolean }
+    ): Promise<AdminUser> => {
+        const response = await apiClient.patch<AdminUser>(`/auth/users/${id}`, data);
+        return response.data;
+    },
+    deleteUser: async (id: string): Promise<void> => {
+        await apiClient.delete(`/auth/users/${id}`);
+    },
+
+    listApiKeys: async (): Promise<ApiKey[]> => {
+        const response = await apiClient.get<{ api_keys: ApiKey[] }>('/auth/api-keys');
+        return response.data.api_keys;
+    },
+    createApiKey: async (name: string): Promise<ApiKeyWithSecret> => {
+        const response = await apiClient.post<ApiKeyWithSecret>('/auth/api-keys', { name });
+        return response.data;
+    },
+    deleteApiKey: async (id: string): Promise<void> => {
+        await apiClient.delete(`/auth/api-keys/${id}`);
+    },
+
+    listAuditLog: async (limit = 200): Promise<AuditEntry[]> => {
+        const response = await apiClient.get<{ entries: AuditEntry[] }>('/audit/log', {
+            params: { limit },
+        });
+        return response.data.entries;
+    },
+    downloadAuditLog: async (): Promise<Blob> => {
+        const response = await apiClient.get('/audit/export', { responseType: 'blob' });
+        return response.data as Blob;
     },
 };

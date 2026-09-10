@@ -221,3 +221,42 @@ export interface SamplingNotice {
   analyzed_rows: number;
   total_rows: number;
 }
+
+// ---- Auth admin (only meaningful when the backend has AUTH_ENABLED=true) ----
+
+export type UserRole = "admin" | "member" | "viewer";
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  auth_provider: string;
+  created_at: number;
+  is_active: boolean;
+}
+
+export interface ApiKey {
+  id: string;
+  name: string;
+  display_prefix: string;
+  created_at: number;
+  expires_at: number | null;
+  last_used_at: number | null;
+}
+
+/** Returned once, on creation — the raw key is never retrievable again. */
+export interface ApiKeyWithSecret extends ApiKey {
+  key: string;
+}
+
+export interface AuditEntry {
+  id: string;
+  timestamp: number;
+  actor_user_id: string | null;
+  actor_email: string | null;
+  action: string;
+  resource: string | null;
+  detail: Record<string, unknown> | null;
+  ip_address: string | null;
+}
