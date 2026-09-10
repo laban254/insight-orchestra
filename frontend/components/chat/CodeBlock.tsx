@@ -1,88 +1,145 @@
 "use client";
 
-import Editor from "@monaco-editor/react";
-import { useState } from "react";
-import { Copy, Check, ChevronDown, ChevronUp } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Check, ChevronDown, ChevronUp, Copy } from "lucide-react";
 
 interface CodeBlockProps {
     code: string;
     language?: string;
 }
 
-const LINE_HEIGHT = 21;   // px per line in Monaco at fontSize 13
-const MIN_HEIGHT  = 52;   // at least 2 visible lines
-const MAX_HEIGHT  = 260;  // cap before we show "Expand"
-const COLLAPSE_THRESHOLD = 10; // lines before the expand toggle appears
+const COLLAPSE_THRESHOLD = 12; // lines before the "show all" toggle appears
 
-export function CodeBlock({ code, language = "python" }: CodeBlockProps) {
-    const [copied,   setCopied]   = useState(false);
+const KEYWORDS = new Set([
+    "and", "as", "assert", "async", "await", "break", "class", "continue", "def", "del",
+    "elif", "else", "except", "finally", "for", "from", "global", "if", "import", "in", "is",
+    "lambda", "nonlocal", "not", "or", "pass", "raise", "return", "try", "while", "with",
+    "yield", "True", "False", "None",
+]);
+const BUILTINS = new Set([
+    "print", "len", "range", "list", "dict", "set", "tuple", "int", "float", "str", "bool",
+    "sum", "min", "max", "sorted", "abs", "round", "zip", "map", "filter", "enumerate",
+    "df", "pd", "np", "px", "go", "result", "fig",
+]);
+
+type Tok = { t: string; c?: string };
+
+// Tiny single-pass Python tokenizer — enough for the short generated
+// snippets we show. Not a real parser; unknown text falls through as plain.
+function tokenize(src: string): Tok[] {
+    const out: Tok[] = [];
+    let i = 0;
+    const push = (t: string, c?: string) => out.push({ t, c });
+    while (i < src.length) {
+        const ch = src[i];
+        if (ch === "#") {
+            let j = i;
+            while (j < src.length && src[j] !== "\n") j++;
+            push(src.slice(i, j), "comment");
+            i = j;
+        } else if (ch === '"' || ch === "'") {
+            const q = ch;
+            let j = i + 1;
+            while (j < src.length && src[j] !== q) {
+                if (src[j] === "\\") j++;
+                j++;
+            }
+            j = Math.min(j + 1, src.length);
+            push(src.slice(i, j), "string");
+            i = j;
+        } else if (/[0-9]/.test(ch)) {
+            let j = i;
+            while (j < src.length && /[0-9._eE]/.test(src[j])) j++;
+            push(src.slice(i, j), "number");
+            i = j;
+        } else if (/[A-Za-z_]/.test(ch)) {
+            let j = i;
+            while (j < src.length && /[A-Za-z0-9_]/.test(src[j])) j++;
+            const word = src.slice(i, j);
+            push(word, KEYWORDS.has(word) ? "keyword" : BUILTINS.has(word) ? "builtin" : undefined);
+            i = j;
+        } else {
+            let j = i;
+            while (j < src.length && !/[#"'0-9A-Za-z_]/.test(src[j])) j++;
+            push(src.slice(i, j));
+            i = j;
+        }
+    }
+    return out;
+}
+
+const TONE: Record<string, string> = {
+    comment: "#6b7a99",
+    string: "#7ee7c7",
+    number: "#f0b866",
+    keyword: "#c792ea",
+    builtin: "#82aaff",
+};
+
+export function CodeBlock({ code }: CodeBlockProps) {
+    const [copied, setCopied] = useState(false);
     const [expanded, setExpanded] = useState(false);
 
-    const lines      = (code || "").split("\n").length;
-    const isLong     = lines > COLLAPSE_THRESHOLD;
-    const editorH    = Math.max(MIN_HEIGHT, Math.min(lines * LINE_HEIGHT, MAX_HEIGHT));
-    const displayH   = isLong && !expanded ? Math.min(editorH, COLLAPSE_THRESHOLD * LINE_HEIGHT) : editorH;
+    const src = code || "";
+    const lines = src.split("\n");
+    const isLong = lines.length > COLLAPSE_THRESHOLD;
+    const shown = isLong && !expanded ? lines.slice(0, COLLAPSE_THRESHOLD).join("\n") : src;
+    const toks = useMemo(() => tokenize(shown), [shown]);
 
     const handleCopy = async () => {
-        await navigator.clipboard.writeText(code);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+        try {
+            await navigator.clipboard.writeText(src);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } catch {
+            /* clipboard blocked — no-op */
+        }
     };
 
     return (
-        <div className="w-full overflow-hidden rounded-xl border border-border">
-            {/* Toolbar */}
-            <div className="flex items-center justify-between px-4 py-2 bg-gray-900">
+        <div className="w-full overflow-hidden rounded-xl border border-[#25314c] bg-[#0d1424]">
+            <div className="flex items-center justify-between border-b border-[#1c2740] px-3.5 py-2">
                 <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-yellow-400" />
-                    <span className="text-xs text-gray-400 font-mono tracking-wide">
-                        Python · Generated
-                    </span>
+                    <span className="h-2 w-2 rounded-full bg-[#f0b866]" />
+                    <span className="font-mono text-[11px] tracking-wide text-[#6b7a99]">Python · generated</span>
                 </div>
-                <div className="flex gap-3">
-                    <button
-                        onClick={handleCopy}
-                        className="flex items-center gap-1 text-xs text-gray-400 hover:text-white transition-colors focus:outline-none"
-                    >
-                        {copied ? <Check size={13} className="text-green-400" /> : <Copy size={13} />}
-                        <span className={copied ? "text-green-400" : ""}>{copied ? "Copied" : "Copy"}</span>
-                    </button>
-                </div>
+                <button
+                    onClick={handleCopy}
+                    className="flex items-center gap-1 text-[11px] text-[#6b7a99] transition-colors hover:text-[#c7d2e8]"
+                >
+                    {copied ? <Check size={12} className="text-[#7ee7c7]" /> : <Copy size={12} />}
+                    {copied ? "Copied" : "Copy"}
+                </button>
             </div>
 
-            {/* Monaco Editor — auto-sized */}
-            <div className="bg-[#1e1e1e]" style={{ height: `${displayH}px`, overflow: "hidden" }}>
-                <Editor
-                    height={`${displayH}px`}
-                    language={language}
-                    value={code}
-                    theme="vs-dark"
-                    options={{
-                        readOnly: true,
-                        minimap: { enabled: false },
-                        scrollBeyondLastLine: false,
-                        fontSize: 13,
-                        lineNumbers: "on",
-                        wordWrap: "on",
-                        automaticLayout: true,
-                        renderLineHighlight: "none",
-                        hideCursorInOverviewRuler: true,
-                        scrollbar: { vertical: "hidden", horizontal: "hidden" },
-                        overviewRulerLanes: 0,
-                    }}
-                />
-            </div>
+            <pre className="overflow-x-auto px-4 py-3 font-mono text-[12.5px] leading-relaxed text-[#c7d2e8]">
+                <code>
+                    {toks.map((tk, n) =>
+                        tk.c ? (
+                            <span key={n} style={{ color: TONE[tk.c] }}>
+                                {tk.t}
+                            </span>
+                        ) : (
+                            <span key={n}>{tk.t}</span>
+                        )
+                    )}
+                </code>
+            </pre>
 
-            {/* Expand / Collapse toggle for long blocks */}
             {isLong && (
                 <button
-                    onClick={() => setExpanded(v => !v)}
-                    className="w-full flex items-center justify-center gap-1 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-gray-200 text-xs transition-colors"
+                    onClick={() => setExpanded((v) => !v)}
+                    className="flex w-full items-center justify-center gap-1 border-t border-[#1c2740] py-1.5 text-[11px] text-[#6b7a99] transition-colors hover:bg-[#111a2e] hover:text-[#c7d2e8]"
                 >
-                    {expanded
-                        ? <><ChevronUp size={12} /> Collapse</>
-                        : <><ChevronDown size={12} /> Show all {lines} lines</>
-                    }
+                    {expanded ? (
+                        <>
+                            <ChevronUp size={12} /> Collapse
+                        </>
+                    ) : (
+                        <>
+                            <ChevronDown size={12} /> Show all {lines.length} lines
+                        </>
+                    )}
                 </button>
             )}
         </div>

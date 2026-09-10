@@ -224,7 +224,8 @@ export function Workspace({ workspaceId, datasetId, datasetName, restore, onPers
                             role="assistant"
                             content={analysisResult.narrative}
                             intro
-                            stream
+                            collapsible
+                            stream={!reopened}
                         />
                     )}
 
@@ -253,10 +254,11 @@ export function Workspace({ workspaceId, datasetId, datasetName, restore, onPers
                                     <button
                                         key={i}
                                         onClick={() => submitQuery(s)}
-                                        className="group flex items-center gap-2 rounded-xl border border-border bg-surface px-3.5 py-2.5 text-left text-sm text-muted transition-colors hover:border-accent/50 hover:text-fg"
+                                        title={s}
+                                        className="group flex items-start gap-2 rounded-xl border border-border bg-surface px-3.5 py-2.5 text-left text-sm text-muted transition-colors hover:border-accent/50 hover:text-fg"
                                     >
-                                        <Sparkles size={13} className="shrink-0 text-accent opacity-60 group-hover:opacity-100" />
-                                        {s}
+                                        <Sparkles size={13} className="mt-0.5 shrink-0 text-accent opacity-60 group-hover:opacity-100" />
+                                        <span className="line-clamp-2">{s}</span>
                                     </button>
                                 ))}
                             </div>
@@ -297,7 +299,8 @@ export function Workspace({ workspaceId, datasetId, datasetName, restore, onPers
                                     key={i}
                                     onClick={() => submitQuery(s)}
                                     disabled={isLoading}
-                                    className="shrink-0 rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-muted transition-colors hover:border-accent/50 hover:text-fg disabled:opacity-50"
+                                    title={s}
+                                    className="max-w-[240px] shrink-0 truncate rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-muted transition-colors hover:border-accent/50 hover:text-fg disabled:opacity-50"
                                 >
                                     {s}
                                 </button>
