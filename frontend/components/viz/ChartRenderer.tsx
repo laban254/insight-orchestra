@@ -27,7 +27,17 @@ export function ChartRenderer({ plotJsonStr, height = 360 }: ChartRendererProps)
     const parsed = useMemo(() => {
         try {
             const p = JSON.parse(plotJsonStr);
-            return { data: p.data ?? [], layout: p.layout ?? {} };
+            const layout = { ...(p.layout ?? {}) };
+            // Plotly Express bakes a full `template` into every figure — its own
+            // colorway, an opaque paper background, light-mode fonts. It wins
+            // over the theme overrides below, which is why in-app charts render
+            // off-brand (purple bars, white panels). Drop it.
+            delete layout.template;
+            // The generated figure's title is almost always the bare column
+            // name ("region"), which then also shows as the axis label. The
+            // card/section above the chart already carries a real title.
+            delete layout.title;
+            return { data: Array.isArray(p.data) ? p.data : [], layout };
         } catch {
             return null;
         }
@@ -46,21 +56,22 @@ export function ChartRenderer({ plotJsonStr, height = 360 }: ChartRendererProps)
     const grid = isDark ? "rgba(232,238,252,0.08)" : "rgba(11,18,32,0.08)";
     const axis = isDark ? "rgba(232,238,252,0.15)" : "rgba(11,18,32,0.15)";
 
+    // A bar chart with a non-zero baseline distorts the visual comparison
+    // (a bar half as tall can be 90% of the value). Force the value axis to
+    // start at zero and ignore any range the generator picked.
+    const hasBar = parsed.data.some((t: { type?: string }) => t?.type === "bar");
+    const forceZero = hasBar ? { rangemode: "tozero" as const, range: undefined, autorange: true } : {};
+
     const layout = {
         ...parsed.layout,
         autosize: true,
-        margin: { l: 48, r: 20, t: 36, b: 44 },
+        margin: { l: 48, r: 20, t: 16, b: 44 },
         paper_bgcolor: "transparent",
         plot_bgcolor: "transparent",
         colorway: COLORWAY,
         font: { family: "var(--font-inter), system-ui, sans-serif", color: fg, size: 12 },
-        title: parsed.layout?.title
-            ? typeof parsed.layout.title === "string"
-                ? { text: parsed.layout.title, font: { size: 14, color: fg } }
-                : { ...parsed.layout.title, font: { size: 14, color: fg } }
-            : undefined,
-        xaxis: { gridcolor: grid, linecolor: axis, zerolinecolor: axis, ...(parsed.layout?.xaxis ?? {}) },
-        yaxis: { gridcolor: grid, linecolor: axis, zerolinecolor: axis, ...(parsed.layout?.yaxis ?? {}) },
+        xaxis: { gridcolor: grid, linecolor: axis, zerolinecolor: axis, ...(parsed.layout?.xaxis ?? {}), ...forceZero },
+        yaxis: { gridcolor: grid, linecolor: axis, zerolinecolor: axis, ...(parsed.layout?.yaxis ?? {}), ...forceZero },
         legend: { font: { color: fg }, ...(parsed.layout?.legend ?? {}) },
         hoverlabel: {
             bgcolor: isDark ? "#161f33" : "#ffffff",
