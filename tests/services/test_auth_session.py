@@ -36,12 +36,14 @@ class TestAuthSessionStore:
         store = make_store()
         token = store.create("user-1")
 
-        assert store.revoke(token) is True
+        revoked = store.revoke(token)
+        assert revoked is True
         assert store.get_user_id(token) is None
 
     def test_revoke_unknown_token_returns_false(self):
         store = make_store()
-        assert store.revoke("does-not-exist") is False
+        revoked = store.revoke("does-not-exist")
+        assert revoked is False
 
     def test_stale_session_is_reaped(self):
         store = make_store(ttl_seconds=0.05)

@@ -47,7 +47,9 @@ export default function LoginPage() {
         }
     };
 
-    if (loading || (!loading && (!authEnabled || user))) {
+    // Still resolving, or auth is off / already signed in (the effect above
+    // is redirecting) — show a spinner rather than flashing the form.
+    if (loading || !authEnabled || user) {
         return (
             <main className="grid min-h-screen place-items-center bg-bg">
                 <Loader2 className="animate-spin text-accent" size={28} />

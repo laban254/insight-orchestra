@@ -269,7 +269,9 @@ async def process_data(
             ),
         ) from e
     except Exception as e:
-        logger.error(f"[session={sid}] /process failed: {e}")
+        # sid is client-supplied and unvalidated — repr() it so a newline or
+        # control char can't forge extra log lines (CodeQL: log injection).
+        logger.error(f"[session={sid!r}] /process failed: {e}")
         push_event(sid, agent_id="pipeline", status="error", output=str(e))
         push_sentinel(sid)
         # workflow.llm is None when no provider could be constructed at all

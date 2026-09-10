@@ -83,19 +83,22 @@ class TestUserStore:
 
     def test_update_unknown_id_returns_none(self):
         store = make_store()
-        assert store.update("nope", role="admin") is None
+        updated = store.update("nope", role="admin")
+        assert updated is None
 
     def test_delete_removes_from_both_indexes(self):
         store = make_store()
         record = store.create(email="a@example.com", name="A", role=Role.MEMBER)
 
-        assert store.delete(record["id"]) is True
+        deleted = store.delete(record["id"])
+        assert deleted is True
         assert store.get(record["id"]) is None
         assert store.get_by_email("a@example.com") is None
 
     def test_delete_unknown_id_returns_false(self):
         store = make_store()
-        assert store.delete("nope") is False
+        deleted = store.delete("nope")
+        assert deleted is False
 
     def test_create_with_password_hash_and_provider(self):
         store = make_store()

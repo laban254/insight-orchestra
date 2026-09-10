@@ -70,10 +70,12 @@ class TestAPIKeyStore:
         store = make_store()
         record, raw_key = store.create("user-1", "CI key")
 
-        assert store.delete(record["id"]) is True
+        deleted = store.delete(record["id"])
+        assert deleted is True
         assert store.get(record["id"]) is None
         assert store.resolve(raw_key) is None
 
     def test_delete_unknown_id_returns_false(self):
         store = make_store()
-        assert store.delete("does-not-exist") is False
+        deleted = store.delete("does-not-exist")
+        assert deleted is False

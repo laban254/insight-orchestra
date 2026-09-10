@@ -79,18 +79,22 @@ class TestLoginState:
     def test_consume_is_single_use(self):
         store = oidc_module._NonceStore(ttl_seconds=60)
         token = store.create()
-        assert store.consume(token) is True
-        assert store.consume(token) is False
+        first = store.consume(token)
+        second = store.consume(token)
+        assert first is True
+        assert second is False
 
     def test_consume_unknown_token_fails(self):
         store = oidc_module._NonceStore(ttl_seconds=60)
-        assert store.consume("nope") is False
+        result = store.consume("nope")
+        assert result is False
 
     def test_expired_token_fails(self):
         store = oidc_module._NonceStore(ttl_seconds=0.05)
         token = store.create()
         time.sleep(0.1)
-        assert store.consume(token) is False
+        result = store.consume(token)
+        assert result is False
 
 
 class TestAuthorizationUrl:
