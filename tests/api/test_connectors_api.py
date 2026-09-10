@@ -99,7 +99,8 @@ def fake_connector(monkeypatch):
 
 async def _connect(store, fake_connector) -> str:
     result = await connectors_api.connect_database(
-        ConnectRequest(type="postgresql", connection_string="postgresql://u:p@h:5432/db")
+        ConnectRequest(type="postgresql", connection_string="postgresql://u:p@h:5432/db"),
+        user=None,
     )
     return result["connection_id"]
 
@@ -108,7 +109,8 @@ class TestConnectRegistersConnection:
     @pytest.mark.asyncio
     async def test_connect_returns_connection_id_and_schema(self, store, fake_connector):
         result = await connectors_api.connect_database(
-            ConnectRequest(type="postgresql", connection_string="postgresql://u:p@h:5432/db")
+            ConnectRequest(type="postgresql", connection_string="postgresql://u:p@h:5432/db"),
+            user=None,
         )
         assert result["status"] == "connected"
         assert "connection_id" in result
@@ -119,7 +121,8 @@ class TestConnectRegistersConnection:
         """The live connection must not be held open across requests — a
         later request can land on a different uvicorn worker process."""
         await connectors_api.connect_database(
-            ConnectRequest(type="postgresql", connection_string="postgresql://u:p@h:5432/db")
+            ConnectRequest(type="postgresql", connection_string="postgresql://u:p@h:5432/db"),
+            user=None,
         )
         fake_connector.disconnect.assert_called_once()
 
@@ -274,7 +277,7 @@ class TestDisconnect:
     async def test_disconnect_success(self, store, fake_connector):
         connection_id = await _connect(store, fake_connector)
 
-        result = await connectors_api.disconnect_database(connection_id)
+        result = await connectors_api.disconnect_database(connection_id, user=None)
 
         assert result == {"status": "disconnected"}
         with pytest.raises(HTTPException):

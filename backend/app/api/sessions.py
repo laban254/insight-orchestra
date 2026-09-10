@@ -3,10 +3,12 @@ import logging
 import secrets
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from app.auth import require_role
 from app.config import settings
+from app.services.user_store import Role, UserRecord
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 logger = logging.getLogger(__name__)
@@ -46,7 +48,9 @@ def _evict_expired() -> None:
 
 
 @router.post("/share")
-async def create_share_link(req: ShareRequest):
+async def create_share_link(
+    req: ShareRequest, _user: UserRecord | None = Depends(require_role(Role.MEMBER))
+):
     try:
         serialized = json.dumps(req.session_data)
     except (TypeError, ValueError) as e:
@@ -74,6 +78,10 @@ async def create_share_link(req: ShareRequest):
 
 @router.get("/shared/{token}")
 async def get_shared_session(token: str):
+    # Deliberately unauthenticated even when AUTH_ENABLED=True: the whole
+    # point of a share link is that anyone who has the (unguessable) token
+    # can open it without an account. The token itself is the access
+    # control here, not a role.
     if _redis:
         try:
             raw = _redis.get(f"shared:{token}")

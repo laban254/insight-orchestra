@@ -352,11 +352,11 @@ OUTPUT (JSON only):
 
         user_prompt = f"Schema:\n{schema_prompt}\n\nStatistics:\n{stats_summary}"
 
-        if self.llm is None:
+        if self.llm is None:  # type: ignore[attr-defined]
             return fallback
 
         try:
-            response = self.llm.complete_json(system_prompt, user_prompt)
+            response = self.llm.complete_json(system_prompt, user_prompt)  # type: ignore[attr-defined]
             hypotheses = response.get("hypotheses") or fallback["hypotheses"]
             hypotheses = list(dict.fromkeys(hypotheses))[:8]
             return {

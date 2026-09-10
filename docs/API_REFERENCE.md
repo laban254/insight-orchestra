@@ -14,7 +14,57 @@ Insight Orchestra provides a **RESTful API** built with FastAPI. All endpoints r
 
 ## Authentication
 
-Insight Orchestra runs in **local/internal deployment mode** with no built-in authentication. For network-facing deployments, restrict access via firewall rules or a reverse proxy (see [Setup Guide](SETUP.md#security)).
+Auth is **off by default** (`AUTH_ENABLED=false`) — Insight Orchestra runs in local/internal
+deployment mode with no login, exactly as before. For network-facing deployments, either
+restrict access via firewall rules / a reverse proxy (see [Setup Guide](SETUP.md#security)),
+or turn on the built-in auth layer described below.
+
+When `AUTH_ENABLED=true`, every endpoint that isn't explicitly public (see below) requires
+a signed-in identity: either the `io_session` httponly cookie set by `/auth/login` or
+`/auth/oidc/callback`, or an API key as `Authorization: Bearer <key>`. Three roles:
+
+| Role | Can do |
+|------|--------|
+| `admin` | Everything — config/provider switching, connector connect/disconnect, user management, audit log |
+| `member` | Upload, analyze (`/process`, `/nlq`), query connected databases, export, save workspaces |
+| `viewer` | Read-only — view datasets, sessions, workspaces, exports; cannot upload, analyze, or change anything |
+
+`GET /api/v1/sessions/shared/{token}` is always public, auth on or off — the share token
+itself is the access control there, by design.
+
+### `POST /api/v1/auth/login`
+```json
+{"email": "admin@example.com", "password": "..."}
+```
+Sets the `io_session` cookie. `401` on a wrong password or an SSO-only account.
+
+### `POST /api/v1/auth/logout`
+Revokes the session and clears the cookie.
+
+### `GET /api/v1/auth/me`
+```json
+{"auth_enabled": true, "oidc_configured": false, "user": {"id": "...", "email": "...", "role": "admin", "...": "..."}}
+```
+Safe to call with auth off — `user` is just `null`.
+
+### `GET /api/v1/auth/oidc/login` / `GET /api/v1/auth/oidc/callback`
+SSO via OIDC (Authorization Code flow, discovery + JWKS-verified — see `OIDC_ISSUER` /
+`OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` / `OIDC_REDIRECT_URI` in the [Setup Guide](SETUP.md)).
+The first person ever to sign in via SSO becomes `admin`; everyone after starts as `member`.
+SAML is not supported.
+
+### API keys — `POST` / `GET` / `DELETE /api/v1/auth/api-keys`
+Self-service, for headless callers. `POST` returns the raw key exactly once
+(`{"key": "iok_...", ...}`) — it's never shown or stored again, only its hash and a short
+display prefix.
+
+### User management (admin-only) — `GET`/`POST /api/v1/auth/users`, `PATCH`/`DELETE /api/v1/auth/users/{id}`
+Create/list/update-role/deactivate/delete accounts.
+
+### Audit log (admin-only)
+`GET /api/v1/audit/log` (recent entries) and `GET /api/v1/audit/export` (full history as
+JSON Lines, for a SIEM) — covers login/logout, config changes, connector connect/disconnect,
+dataset deletes, and user/API-key management.
 
 ---
 
@@ -369,6 +419,9 @@ schema, then closes it; only the connection metadata (type, connection
 string, cached schema) is persisted (in Redis, with a sliding TTL — see
 `DB_CONNECTION_TTL_SECONDS` in the [Setup Guide](SETUP.md)). `/load-table`
 reconnects fresh each time it's called.
+
+> With auth on, connecting/disconnecting/listing local DB files is **admin-only** — running
+> a query against an already-connected database (`POST /connectors/query`) is `member`+.
 
 #### `POST /api/v1/connectors/connect`
 

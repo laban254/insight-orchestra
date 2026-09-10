@@ -2,7 +2,12 @@
 App-level tests: route versioning and the standardized error envelope.
 """
 
+import pytest
+from app.auth import SESSION_COOKIE_NAME, hash_password
+from app.config import settings
 from app.main import app
+from app.services.auth_session import get_auth_session_store
+from app.services.user_store import Role, get_user_store
 from starlette.testclient import TestClient
 
 client = TestClient(app)
@@ -67,3 +72,67 @@ class TestErrorEnvelope:
     def test_response_carries_a_request_id_header(self):
         resp = client.get("/health")
         assert resp.headers["X-Request-ID"]
+
+
+class TestAuthGatingIntegration:
+    """End-to-end (real TestClient, real FastAPI dependency injection —
+    unlike the direct function calls in tests/api/test_endpoints.py) checks
+    that AUTH_ENABLED actually gates the app when turned on, and doesn't
+    touch anything when it's off (the default, exercised implicitly by
+    every other test in this file running with no AUTH_ENABLED set)."""
+
+    @pytest.fixture
+    def auth_on(self, monkeypatch):
+        monkeypatch.setattr(settings, "auth_enabled", True)
+        users = get_user_store()
+        sessions = get_auth_session_store()
+        created_user_ids = []
+        created_tokens = []
+
+        def make_session(role: Role) -> str:
+            user = users.create(
+                email=f"{role.value}-{len(created_user_ids)}@example.com",
+                name=role.value,
+                role=role,
+                password_hash=hash_password("irrelevant"),
+            )
+            created_user_ids.append(user["id"])
+            token = sessions.create(user["id"])
+            created_tokens.append(token)
+            return token
+
+        yield make_session
+
+        for uid in created_user_ids:
+            users.delete(uid)
+        for token in created_tokens:
+            sessions.revoke(token)
+
+    def test_config_requires_auth_when_enabled(self, auth_on):
+        resp = client.get("/api/v1/config")
+        assert resp.status_code == 401
+
+    def test_config_forbidden_for_non_admin(self, auth_on):
+        token = auth_on(Role.MEMBER)
+        resp = client.get("/api/v1/config", cookies={SESSION_COOKIE_NAME: token})
+        assert resp.status_code == 403
+
+    def test_config_reachable_for_admin(self, auth_on):
+        token = auth_on(Role.ADMIN)
+        resp = client.get("/api/v1/config", cookies={SESSION_COOKIE_NAME: token})
+        assert resp.status_code == 200
+
+    def test_demo_list_requires_any_authenticated_role(self, auth_on):
+        resp = client.get("/api/v1/demo/list")
+        assert resp.status_code == 401
+
+        token = auth_on(Role.VIEWER)
+        resp = client.get("/api/v1/demo/list", cookies={SESSION_COOKIE_NAME: token})
+        assert resp.status_code == 200
+
+    def test_shared_session_link_stays_public_even_with_auth_on(self, auth_on):
+        """Deliberately ungated (see api/sessions.py) — reaches the real
+        handler (404 for an unknown token) rather than being blocked by auth
+        (which would be 401)."""
+        resp = client.get("/api/v1/sessions/shared/does-not-exist")
+        assert resp.status_code == 404

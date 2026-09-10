@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Database, FileUp, Waypoints, PanelLeft, Download, Plus, Clock, Moon, Command, Share2, Sparkles, ShieldCheck, Loader2 } from "lucide-react";
 import { useTheme } from "@/lib/theme";
 import { useToast } from "@/lib/toast";
+import { useIsAdmin } from "@/lib/auth";
+import { UserMenu } from "@/components/ui/UserMenu";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { ModelSwitcher } from "@/components/ui/ModelSwitcher";
 import { CostMeter } from "@/components/ui/CostMeter";
@@ -56,6 +58,10 @@ function Logo({ size = 8 }: { size?: number }) {
 export default function Home() {
     const theme = useTheme();
     const toast = useToast();
+    // Connecting a database is admin-only once auth is on (see
+    // backend/app/api/connectors.py) — hide the tab rather than let a
+    // member/viewer reach a form whose submit always 403s.
+    const isAdmin = useIsAdmin();
 
     const [datasetId, setDatasetId] = useState<string | null>(null);
     const [datasetInfo, setDatasetInfo] = useState<DatasetInfo | null>(null);
@@ -310,7 +316,7 @@ export default function Home() {
                                 <Command size={13} /> <kbd className="font-mono">⌘K</kbd>
                             </button>
                             <CostMeter tokens={cost.tokens} cost={cost.cost} />
-                            <ModelSwitcher />
+                            {isAdmin && <ModelSwitcher />}
                             <button
                                 onClick={handleShare}
                                 className="grid h-9 w-9 place-items-center rounded-lg border border-border bg-surface text-muted transition-colors hover:text-fg"
@@ -326,6 +332,7 @@ export default function Home() {
                                 availableDatasets={availableDatasets}
                             />
                             <ThemeToggle />
+                            <UserMenu />
                         </div>
                     </header>
 
@@ -384,11 +391,15 @@ export default function Home() {
 
                         <div className="rounded-2xl border border-border bg-surface shadow-[var(--shadow)]">
                             <div className="flex overflow-hidden rounded-t-2xl border-b border-border">
-                                {([
-                                    { id: "demo", label: "Try a Demo", shortLabel: "Demo", Icon: Sparkles },
-                                    { id: "file", label: "Upload CSV", shortLabel: "Upload", Icon: FileUp },
-                                    { id: "db", label: "Connect Database", shortLabel: "Database", Icon: Database },
-                                ] as const).map(({ id, label, shortLabel, Icon }) => {
+                                {(
+                                    [
+                                        { id: "demo", label: "Try a Demo", shortLabel: "Demo", Icon: Sparkles },
+                                        { id: "file", label: "Upload CSV", shortLabel: "Upload", Icon: FileUp },
+                                        ...(isAdmin
+                                            ? [{ id: "db", label: "Connect Database", shortLabel: "Database", Icon: Database }]
+                                            : []),
+                                    ] as { id: "demo" | "file" | "db"; label: string; shortLabel: string; Icon: typeof Sparkles }[]
+                                ).map(({ id, label, shortLabel, Icon }) => {
                                     const active = uploadMode === id;
                                     return (
                                         <button
@@ -419,9 +430,9 @@ export default function Home() {
                                     )
                                 ) : uploadMode === "file" ? (
                                     <FileUpload onUploadSuccess={handleUploadSuccess} />
-                                ) : (
+                                ) : isAdmin ? (
                                     <DatabaseConnect onDataReady={handleUploadSuccess} />
-                                )}
+                                ) : null}
                             </div>
                         </div>
                         <p className="mt-6 text-center text-xs text-faint">

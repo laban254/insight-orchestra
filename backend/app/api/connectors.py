@@ -3,19 +3,23 @@ import os
 import uuid
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from app.auth import require_role
 from app.connectors import DuckDBConnector, MySQLConnector, PostgreSQLConnector, SQLiteConnector
+from app.services.audit_log import get_audit_log_store
 from app.services.connection_store import get_connection_store
 from app.services.dataset_registry import DATASET_DIR, get_dataset_registry
 from app.services.db_nlq_agent import DatabaseNLQAgent
+from app.services.user_store import Role, UserRecord
 from app.utils.file_utils import UPLOAD_DIR
 
 router = APIRouter(prefix="/connectors", tags=["connectors"])
 
 _store = get_connection_store()
 _datasets = get_dataset_registry()
+_audit = get_audit_log_store()
 
 CONNECTOR_MAP = {
     "postgresql": PostgreSQLConnector,
@@ -42,7 +46,9 @@ class ConnectRequest(BaseModel):
 
 
 @router.get("/local-files")
-async def list_local_database_files():
+async def list_local_database_files(
+    _user: UserRecord | None = Depends(require_role(Role.ADMIN)),
+):
     """SQLite/DuckDB files the backend can actually reach.
 
     The backend runs in a container, so a path from the user's own machine
@@ -79,7 +85,10 @@ def _validate_connection_string(db_type: str, connection_string: str) -> None:
 
 
 @router.post("/connect")
-async def connect_database(req: ConnectRequest):
+async def connect_database(
+    req: ConnectRequest,
+    user: UserRecord | None = Depends(require_role(Role.ADMIN)),
+):
     if req.type not in CONNECTOR_MAP:
         raise HTTPException(400, f"Unsupported connector: {req.type}")
 
@@ -105,11 +114,19 @@ async def connect_database(req: ConnectRequest):
         connector.disconnect()
 
     connection_id = _store.register(req.type, req.connection_string, schema)
+    if user is not None:
+        _audit.record(
+            "connector_connect",
+            actor_user_id=user["id"],
+            actor_email=user["email"],
+            resource=connection_id,
+            detail={"type": req.type},
+        )
     return {"status": "connected", "connection_id": connection_id, "schema": schema}
 
 
 @router.get("/schema")
-async def get_schema():
+async def get_schema(_user: UserRecord | None = Depends(require_role(Role.ADMIN))):
     """Returns active connection schema for the agent context"""
     # This is a placeholder; active sessions would store this internally.
     return {"status": "not_implemented"}
@@ -135,7 +152,9 @@ def _quote_identifier(db_type: str, name: str) -> str:
 
 
 @router.post("/load-table")
-async def load_table(req: LoadTableRequest):
+async def load_table(
+    req: LoadTableRequest, _user: UserRecord | None = Depends(require_role(Role.ADMIN))
+):
     """Materialize a table from a DB connection into a CSV so it can flow
     through the same analysis pipeline (/process, /nlq) as an uploaded file."""
     meta = _store.get(req.connection_id)
@@ -180,7 +199,9 @@ class DatabaseQueryRequest(BaseModel):
 
 
 @router.post("/query")
-async def query_database(req: DatabaseQueryRequest):
+async def query_database(
+    req: DatabaseQueryRequest, _user: UserRecord | None = Depends(require_role(Role.MEMBER))
+):
     """Multi-table NL->SQL: answer a question directly against the connected
     database — JOIN-capable across every table in scope — instead of
     materializing a single table first like /load-table + /nlq do. A
@@ -218,7 +239,17 @@ async def query_database(req: DatabaseQueryRequest):
 
 
 @router.delete("/{connection_id}")
-async def disconnect_database(connection_id: str):
+async def disconnect_database(
+    connection_id: str,
+    user: UserRecord | None = Depends(require_role(Role.ADMIN)),
+):
     if not _store.remove(connection_id):
         raise HTTPException(404, "Connection not found or already expired.")
+    if user is not None:
+        _audit.record(
+            "connector_disconnect",
+            actor_user_id=user["id"],
+            actor_email=user["email"],
+            resource=connection_id,
+        )
     return {"status": "disconnected"}

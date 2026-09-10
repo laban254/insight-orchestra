@@ -7,13 +7,15 @@ from typing import Any, Literal
 
 import pandas as pd
 import requests
-from fastapi import APIRouter, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from app.agent_progress import close_queue, get_queue, push_event, push_sentinel
+from app.auth import require_role, require_user
 from app.config import settings
 from app.services.adk_agents import DataJanitorAgent, HypothesisBotAgent, InsightOrchestraWorkflow
+from app.services.audit_log import get_audit_log_store
 from app.services.dataset_cache import get_cleaned
 from app.services.dataset_registry import (
     DATASET_DIR,
@@ -25,6 +27,7 @@ from app.services.nlq_agent import NaturalLanguageQueryAgent, NLQResponse
 from app.services.query_cache import get_query_cache
 from app.services.session_manager import get_session_manager
 from app.services.summarizer_agent import InsightSummarizerAgent
+from app.services.user_store import Role, UserRecord
 from app.utils.dataset_io import describe_dataset, read_dataset, sample_for_analysis
 from app.utils.file_utils import discard_upload, save_upload_file
 from app.utils.json_sanitize import sanitize_json
@@ -38,6 +41,7 @@ router = APIRouter()
 # Session manager (Redis-backed with in-memory fallback)
 _session_manager = get_session_manager()
 _datasets = get_dataset_registry()
+_audit = get_audit_log_store()
 
 
 class ProcessRequest(BaseModel):
@@ -83,7 +87,9 @@ def get_df(dataset_id: str) -> pd.DataFrame:
 
 
 @router.post("/upload")
-async def upload_csv(file: UploadFile = File(...)):
+async def upload_csv(
+    file: UploadFile = File(...), _user: UserRecord | None = Depends(require_role(Role.MEMBER))
+):
     """Upload a CSV, returning its shape, column types and a preview."""
     try:
         file_path = save_upload_file(file)
@@ -115,7 +121,9 @@ async def upload_csv(file: UploadFile = File(...)):
 
 
 @router.post("/process")
-async def process_data(request: ProcessRequest):
+async def process_data(
+    request: ProcessRequest, _user: UserRecord | None = Depends(require_role(Role.MEMBER))
+):
     """Run full Insight Orchestra workflow with real-time agent progress events."""
     path = resolve_dataset_path(request.dataset_id)
     workflow = InsightOrchestraWorkflow()
@@ -261,7 +269,9 @@ async def process_data(request: ProcessRequest):
             ),
         ) from e
     except Exception as e:
-        logger.error(f"[session={sid}] /process failed: {e}")
+        # sid is client-supplied and unvalidated — repr() it so a newline or
+        # control char can't forge extra log lines (CodeQL: log injection).
+        logger.error(f"[session={sid!r}] /process failed: {e}")
         push_event(sid, agent_id="pipeline", status="error", output=str(e))
         push_sentinel(sid)
         # workflow.llm is None when no provider could be constructed at all
@@ -354,7 +364,9 @@ async def process_data(request: ProcessRequest):
 
 
 @router.post("/nlq")
-async def natural_language_query(request: NLQRequest):
+async def natural_language_query(
+    request: NLQRequest, _user: UserRecord | None = Depends(require_role(Role.MEMBER))
+):
     """Natural language query with LLM-powered code generation."""
     sid = request.session_id
     path = resolve_dataset_path(request.dataset_id)
@@ -519,7 +531,9 @@ async def natural_language_query(request: NLQRequest):
 
 
 @router.post("/bigquery")
-async def bigquery_fetch(request: BigQueryRequest):
+async def bigquery_fetch(
+    request: BigQueryRequest, _user: UserRecord | None = Depends(require_role(Role.MEMBER))
+):
     """Fetch data from BigQuery.
 
     Experimental: `google-cloud-bigquery` is an optional dependency and is
@@ -550,9 +564,10 @@ async def bigquery_fetch(request: BigQueryRequest):
         raise HTTPException(status_code=500, detail=f"BigQuery error: {str(e)}") from e
 
 
-# NOTE (F7): unauthenticated by design for single-tenant / localhost use.
-# POST /config switches the live provider/model for everyone; gate it (and
-# the /workspaces routes) behind a shared secret before any public URL.
+# POST /config switches the live provider/model for everyone, so it (and GET,
+# which reveals which providers have keys configured) is admin-only once
+# AUTH_ENABLED=True. With auth off — the default, single-tenant/localhost
+# case — require_role() is a no-op and this stays open, as before.
 class ConfigUpdate(BaseModel):
     provider: str | None = None
     model: str | None = None
@@ -595,7 +610,7 @@ def _provider_readiness() -> dict[str, bool]:
 
 
 @router.get("/config")
-async def get_config():
+async def get_config(_user: UserRecord | None = Depends(require_role(Role.ADMIN))):
     """Current LLM provider/model and what's switchable."""
     from app import runtime_config
 
@@ -608,7 +623,10 @@ async def get_config():
 
 
 @router.post("/config")
-async def update_config(update: ConfigUpdate):
+async def update_config(
+    update: ConfigUpdate,
+    user: UserRecord | None = Depends(require_role(Role.ADMIN)),
+):
     """Switch provider/model at runtime (no restart needed)."""
     from app import runtime_config
 
@@ -624,11 +642,18 @@ async def update_config(update: ConfigUpdate):
         )
         raise HTTPException(status_code=400, detail=detail)
     runtime_config.set_override(update.provider, update.model)
+    if user is not None:
+        _audit.record(
+            "config_change",
+            actor_user_id=user["id"],
+            actor_email=user["email"],
+            detail={"provider": update.provider, "model": update.model},
+        )
     return runtime_config.current()
 
 
 @router.get("/datasets/{dataset_id}")
-async def get_dataset(dataset_id: str):
+async def get_dataset(dataset_id: str, _user: UserRecord | None = Depends(require_user)):
     """Whether a dataset is still usable, and what it looks like.
 
     The UI calls this when reopening a saved workspace so it can say the
@@ -669,6 +694,7 @@ async def get_dataset_rows(
     dataset_id: str,
     offset: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=MAX_PAGE_SIZE),
+    _user: UserRecord | None = Depends(require_user),
 ):
     """A page of rows from the dataset, for browsing past the fixed preview."""
     df = get_df(dataset_id)
@@ -695,7 +721,11 @@ class TransformRequest(BaseModel):
 
 
 @router.post("/datasets/{dataset_id}/transform")
-async def transform_dataset(dataset_id: str, request: TransformRequest):
+async def transform_dataset(
+    dataset_id: str,
+    request: TransformRequest,
+    _user: UserRecord | None = Depends(require_role(Role.MEMBER)),
+):
     """Apply a deterministic column transform, without needing the LLM to
     write and run pandas code for what's really a fixed, well-known
     operation. Non-destructive: writes the result as a new derived dataset
@@ -748,28 +778,40 @@ async def transform_dataset(dataset_id: str, request: TransformRequest):
 
 
 @router.delete("/datasets/{dataset_id}")
-async def delete_dataset(dataset_id: str):
+async def delete_dataset(
+    dataset_id: str,
+    user: UserRecord | None = Depends(require_role(Role.MEMBER)),
+):
     """Forget a dataset and remove its file."""
     if not _datasets.delete(dataset_id):
         raise HTTPException(status_code=404, detail="Dataset not found.")
+    if user is not None:
+        _audit.record(
+            "dataset_delete",
+            actor_user_id=user["id"],
+            actor_email=user["email"],
+            resource=dataset_id,
+        )
     return {"status": "deleted"}
 
 
 @router.get("/sessions/{session_id}")
-async def get_session(session_id: str):
+async def get_session(session_id: str, _user: UserRecord | None = Depends(require_user)):
     """Get session context."""
     return {"session_id": session_id, "history": _session_manager.get(session_id)}
 
 
 @router.delete("/sessions/{session_id}")
-async def clear_session(session_id: str):
+async def clear_session(
+    session_id: str, _user: UserRecord | None = Depends(require_role(Role.MEMBER))
+):
     """Clear session context."""
     _session_manager.delete(session_id)
     return {"status": "cleared"}
 
 
 @router.get("/demo/list")
-async def list_demo_datasets():
+async def list_demo_datasets(_user: UserRecord | None = Depends(require_user)):
     """List all available demo datasets."""
     if not DEMO_MODE:
         raise HTTPException(status_code=404, detail="Demo endpoint disabled in production")
@@ -791,7 +833,9 @@ async def list_demo_datasets():
 
 
 @router.get("/demo/load")
-async def load_demo_data(dataset_id: str = "sales"):
+async def load_demo_data(
+    dataset_id: str = "sales", _user: UserRecord | None = Depends(require_role(Role.MEMBER))
+):
     """Load a demo dataset by ID."""
     if not DEMO_MODE:
         raise HTTPException(status_code=404, detail="Demo endpoint disabled in production")
@@ -821,7 +865,7 @@ async def load_demo_data(dataset_id: str = "sales"):
 
 
 @router.get("/agents/stream/{session_id}")
-async def stream_agent_logs(session_id: str):
+async def stream_agent_logs(session_id: str, _user: UserRecord | None = Depends(require_user)):
     """
     Stream real agent progress events for the UI.
 

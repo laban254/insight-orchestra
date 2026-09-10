@@ -34,7 +34,29 @@ const apiClient = axios.create({
     headers: {
         'Content-Type': 'application/json',
     },
+    // Harmless when auth is off (no cookie exists to send); required once
+    // AUTH_ENABLED=true so the io_session cookie rides along with every
+    // request — without it every call would look unauthenticated.
+    withCredentials: true,
 });
+
+// A 401 here only ever means "auth is on and this session is missing/expired"
+// (every other deliberate error in the API is 400/404/409/500 with a string
+// `detail`) — bounce to the login page rather than letting the caller render
+// a broken, half-authenticated view.
+apiClient.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        if (
+            error?.response?.status === 401 &&
+            typeof window !== 'undefined' &&
+            !window.location.pathname.startsWith('/login')
+        ) {
+            window.location.href = '/login';
+        }
+        return Promise.reject(error);
+    }
+);
 
 export const api = {
     // ConnectORS
