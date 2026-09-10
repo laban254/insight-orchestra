@@ -7,16 +7,43 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.endpoints import router as api_router
+from app.auth import hash_password
 from app.config import settings
 from app.logging_config import RequestIDMiddleware, configure_logging
 from app.rate_limit import RateLimitMiddleware
 from app.services.retention import run_periodic_sweep
+from app.services.user_store import Role, get_user_store
 
 configure_logging(settings.log_level)
 
 
+def _bootstrap_admin() -> None:
+    """Create the first admin account from ADMIN_EMAIL/ADMIN_PASSWORD.
+
+    Only runs when auth is enabled, both env vars are set, and no users
+    exist yet — so it's a one-time bootstrap, not something that fights
+    with an admin who has since changed their password or been demoted.
+    An OIDC-only deployment can leave these unset entirely (the first person
+    to sign in via SSO becomes admin instead — see api/auth.py).
+    """
+    if not settings.auth_enabled or not (settings.admin_email and settings.admin_password):
+        return
+    users = get_user_store()
+    if users.count() > 0:
+        return
+    users.create(
+        email=settings.admin_email,
+        name="Admin",
+        role=Role.ADMIN,
+        password_hash=hash_password(settings.admin_password),
+        auth_provider="local",
+    )
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    _bootstrap_admin()
+
     # Reaps expired datasets and deletes orphaned upload files on a
     # schedule — nothing else in the backend ever deletes an upload on its
     # own. Runs once, in-process; with multiple uvicorn workers each one
@@ -99,6 +126,14 @@ app.include_router(sessions_router, prefix=API_PREFIX)
 from app.api.workspaces import router as workspaces_router  # noqa: E402
 
 app.include_router(workspaces_router, prefix=API_PREFIX)
+
+from app.api.auth import router as auth_router  # noqa: E402
+
+app.include_router(auth_router, prefix=API_PREFIX)
+
+from app.api.audit import router as audit_router  # noqa: E402
+
+app.include_router(audit_router, prefix=API_PREFIX)
 
 
 @app.get("/health")

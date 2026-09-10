@@ -3,20 +3,22 @@ import threading
 import time
 from collections.abc import Callable
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from app.auth import require_role, require_user
+from app.services.user_store import Role, UserRecord
 from app.services.workspace_store import get_workspace_store
 
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
 _store = get_workspace_store()
 
-# Auth posture (F7): Insight Orchestra is single-tenant by design, so these
-# routes — and POST /config — are intentionally unauthenticated for a
-# localhost deployment. Any read/write/list here reaches every workspace.
-# Before exposing the backend on a public URL, gate the mutating routes
-# behind the shared-secret tracked in the launch plan; the /sessions/share
-# size cap (MAX_SHARE_BYTES) is the one hard limit that applies regardless.
+# Auth posture: with AUTH_ENABLED=False (the default, single-tenant/localhost
+# case) these routes stay exactly as unauthenticated as before — every
+# read/write/list reaches every workspace, same as always. Once auth is on,
+# reads require any signed-in role and writes require member/admin (see
+# require_role below); the /sessions/share size cap (MAX_SHARE_BYTES) is the
+# one hard limit that applies regardless.
 
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
@@ -59,13 +61,13 @@ class WorkspaceUpsert(BaseModel):
 
 
 @router.get("")
-async def list_workspaces():
+async def list_workspaces(_user: UserRecord | None = Depends(require_user)):
     """List saved workspaces (metadata only), most recently updated first."""
     return {"workspaces": _store.list_metas()}
 
 
 @router.get("/{workspace_id}")
-async def get_workspace(workspace_id: str):
+async def get_workspace(workspace_id: str, _user: UserRecord | None = Depends(require_user)):
     """Fetch a full workspace record (metadata + saved state)."""
     record = _store.get(_validate_id(workspace_id))
     if record is None:
@@ -74,7 +76,11 @@ async def get_workspace(workspace_id: str):
 
 
 @router.put("/{workspace_id}")
-async def upsert_workspace(workspace_id: str, payload: WorkspaceUpsert):
+async def upsert_workspace(
+    workspace_id: str,
+    payload: WorkspaceUpsert,
+    _user: UserRecord | None = Depends(require_role(Role.MEMBER)),
+):
     """Create or update a workspace. The saved state replaces any previous one."""
     _validate_id(workspace_id)
     now_ms = _now_ms()
@@ -91,7 +97,9 @@ async def upsert_workspace(workspace_id: str, payload: WorkspaceUpsert):
 
 
 @router.delete("/{workspace_id}")
-async def delete_workspace(workspace_id: str):
+async def delete_workspace(
+    workspace_id: str, _user: UserRecord | None = Depends(require_role(Role.MEMBER))
+):
     """Delete a saved workspace."""
     _store.delete(_validate_id(workspace_id))
     return {"status": "deleted"}

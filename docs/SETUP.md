@@ -253,6 +253,21 @@ Or run all of the above (plus Docker, port, and Ollama model checks) in one shot
 | `DEMO_MODE` | `true` | Enable demo endpoints (disable in production) |
 | `LOG_LEVEL` | `INFO` | Logging level: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 
+### Authentication & Access Control
+
+Off by default — set `AUTH_ENABLED=true` only if you're exposing the backend somewhere
+other than your own machine and want real login/RBAC. See [API_REFERENCE.md](API_REFERENCE.md#authentication)
+for the full auth API and role model.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AUTH_ENABLED` | `false` | Turn on login + role-based access control. Everything below is a no-op while this is `false` |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | *(unset)* | Bootstrap the first account (role `admin`) on startup, if no users exist yet. Leave unset for an OIDC-only deployment — the first person to sign in via SSO becomes admin instead |
+| `AUTH_SESSION_TTL_SECONDS` | `2592000` | How long a login session cookie stays valid (30 days) |
+| `OIDC_ISSUER` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` / `OIDC_REDIRECT_URI` | *(unset)* | SSO via OpenID Connect. All four are required together for `/auth/oidc/login` to work; SAML is not supported |
+| `API_KEY_TTL_SECONDS` | `0` | Expiry for self-service API keys created via `POST /auth/api-keys`. `0` = no expiry |
+| `AUDIT_LOG_MAX_ENTRIES` | `50000` | Oldest audit log entries are dropped past this count |
+
 ### Redis Configuration
 
 | Variable | Default | Description |

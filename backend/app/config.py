@@ -96,6 +96,27 @@ class Settings(BaseSettings):
         "http://localhost:8501,http://localhost:3000", alias="ALLOWED_ORIGINS"
     )
 
+    # Auth is off by default — the app stays single-tenant/no-auth exactly as
+    # documented until an operator explicitly sets AUTH_ENABLED=true. Once on,
+    # ADMIN_EMAIL + ADMIN_PASSWORD bootstrap the first account (admin role) on
+    # startup; leave them unset for an OIDC-only deployment with no local admin.
+    auth_enabled: bool = Field(False, alias="AUTH_ENABLED")
+    admin_email: str = Field("", alias="ADMIN_EMAIL")
+    admin_password: str = Field("", alias="ADMIN_PASSWORD")
+    auth_session_ttl_seconds: int = Field(30 * 24 * 3600, alias="AUTH_SESSION_TTL_SECONDS")
+
+    # SSO (OIDC). SAML is intentionally not supported yet — see PLAN.md.
+    oidc_issuer: str = Field("", alias="OIDC_ISSUER")
+    oidc_client_id: str = Field("", alias="OIDC_CLIENT_ID")
+    oidc_client_secret: str = Field("", alias="OIDC_CLIENT_SECRET")
+    oidc_redirect_uri: str = Field("", alias="OIDC_REDIRECT_URI")
+
+    # API keys for headless (non-browser) callers, once auth is enabled.
+    api_key_ttl_seconds: int = Field(0, alias="API_KEY_TTL_SECONDS")  # 0 = no expiry
+
+    # Audit log retention (entries beyond this count are dropped, oldest first).
+    audit_log_max_entries: int = Field(50_000, alias="AUDIT_LOG_MAX_ENTRIES")
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
