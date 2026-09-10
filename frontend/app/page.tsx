@@ -358,6 +358,7 @@ export default function Home() {
                             </button>
                         )}
                         <ThemeToggle />
+                        <UserMenu />
                     </div>
 
                     <HistoryDrawer
