@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect } from "react";
 import { X, Plus, Trash2, Clock, Table2 } from "lucide-react";
 import type { WorkspaceMeta } from "@/lib/workspaces";
+import { useCloseMenus } from "@/lib/menus";
 
 function timeAgo(ts: number): string {
     const s = Math.floor((Date.now() - ts) / 1000);
@@ -22,6 +24,19 @@ interface Props {
 }
 
 export function HistoryDrawer({ open, onClose, workspaces, activeId, onOpen, onDelete, onNew }: Props) {
+    const closeMenus = useCloseMenus();
+    useEffect(() => {
+        if (open) closeMenus();
+    }, [open, closeMenus]);
+
+    // Close on Escape while the drawer is up.
+    useEffect(() => {
+        if (!open) return;
+        const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [open, onClose]);
+
     return (
         <>
             {/* Scrim */}

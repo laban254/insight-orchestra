@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Cpu, ChevronDown, Check, Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { AppConfig } from "@/lib/types";
+import { useMenu } from "@/lib/menus";
 import { useToast } from "@/lib/toast";
 
 const LABELS: Record<string, string> = {
@@ -15,33 +16,24 @@ const LABELS: Record<string, string> = {
 
 export function ModelSwitcher() {
     const [config, setConfig] = useState<AppConfig | null>(null);
-    const [open, setOpen] = useState(false);
     const [busy, setBusy] = useState(false);
-    const ref = useRef<HTMLDivElement>(null);
+    const { open, toggle, close, ref } = useMenu("model");
     const toast = useToast();
 
     useEffect(() => {
         api.getConfig().then(setConfig).catch(() => {});
     }, []);
 
-    useEffect(() => {
-        const onClick = (e: MouseEvent) => {
-            if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-        };
-        document.addEventListener("mousedown", onClick);
-        return () => document.removeEventListener("mousedown", onClick);
-    }, []);
-
     if (!config) return null;
 
     const choose = async (provider: string) => {
-        if (provider === config.provider) return setOpen(false);
+        if (provider === config.provider) return close();
         setBusy(true);
         try {
             const next = await api.setConfig({ provider });
             setConfig({ ...config, ...next });
             toast(`Switched to ${LABELS[next.provider] ?? next.provider}`, "success");
-            setOpen(false);
+            close();
         } catch (e: unknown) {
             const detail =
                 typeof e === "object" && e !== null && "response" in e
@@ -56,7 +48,7 @@ export function ModelSwitcher() {
     return (
         <div ref={ref} className="relative">
             <button
-                onClick={() => setOpen((o) => !o)}
+                onClick={toggle}
                 className="flex items-center gap-2 rounded-lg border border-border bg-surface px-2.5 py-2 text-xs font-medium text-muted transition-colors hover:text-fg"
                 title="Switch model"
             >

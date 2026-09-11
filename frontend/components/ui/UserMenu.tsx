@@ -1,25 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronDown, LogOut, Shield, User } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { useMenu } from "@/lib/menus";
 
 /** Signed-in user badge + logout. Renders nothing when auth is off or no one is signed in. */
 export function UserMenu() {
     const { authEnabled, user, logout } = useAuth();
     const router = useRouter();
-    const [open, setOpen] = useState(false);
-    const ref = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        const onClick = (e: MouseEvent) => {
-            if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-        };
-        document.addEventListener("mousedown", onClick);
-        return () => document.removeEventListener("mousedown", onClick);
-    }, []);
+    const { open, toggle, close, ref } = useMenu("user");
 
     if (!authEnabled || !user) return null;
 
@@ -31,7 +22,7 @@ export function UserMenu() {
     return (
         <div ref={ref} className="relative">
             <button
-                onClick={() => setOpen((o) => !o)}
+                onClick={toggle}
                 className="flex items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 py-2 text-xs font-medium text-muted transition-colors hover:text-fg"
                 title={user.email}
             >
@@ -49,7 +40,7 @@ export function UserMenu() {
                     {user.role === "admin" && (
                         <Link
                             href="/admin"
-                            onClick={() => setOpen(false)}
+                            onClick={close}
                             className="flex w-full items-center gap-2 border-b border-border-soft px-3 py-2.5 text-left text-sm text-muted transition-colors hover:bg-surface-2 hover:text-fg"
                         >
                             <Shield size={14} /> Admin panel

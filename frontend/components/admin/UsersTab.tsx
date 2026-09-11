@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { apiErrorMessage } from "@/lib/apiError";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/lib/toast";
+import { Select } from "@/components/ui/Select";
 import type { AdminUser, UserRole } from "@/lib/types";
 
 const ROLES: UserRole[] = ["admin", "member", "viewer"];
@@ -121,18 +122,19 @@ export function UsersTab() {
                                     </td>
                                     <td className="px-3 py-2.5 text-muted">{u.name}</td>
                                     <td className="px-3 py-2.5">
-                                        <select
+                                        <Select
+                                            dense
+                                            wrapperClassName="w-[7.5rem]"
                                             value={u.role}
                                             disabled={busy || isSelf}
                                             onChange={(e) => patch(u.id, { role: e.target.value as UserRole })}
-                                            className="rounded-md border border-border bg-surface px-2 py-1 text-xs text-fg outline-none disabled:opacity-50"
                                         >
                                             {ROLES.map((r) => (
                                                 <option key={r} value={r}>
                                                     {r}
                                                 </option>
                                             ))}
-                                        </select>
+                                        </Select>
                                     </td>
                                     <td className="px-3 py-2.5 text-muted">{u.auth_provider}</td>
                                     <td className="px-3 py-2.5">
@@ -228,17 +230,13 @@ function AddUserForm({ onCreated }: { onCreated: () => void }) {
                     onChange={(e) => setPassword(e.target.value)}
                     className={input}
                 />
-                <select
-                    value={role}
-                    onChange={(e) => setRole(e.target.value as UserRole)}
-                    className={input}
-                >
+                <Select value={role} onChange={(e) => setRole(e.target.value as UserRole)}>
                     {ROLES.map((r) => (
                         <option key={r} value={r}>
                             {r}
                         </option>
                     ))}
-                </select>
+                </Select>
             </div>
             {error && <p className="mt-3 text-sm text-red-400">{error}</p>}
             <button

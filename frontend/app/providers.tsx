@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { AuthProvider, useAuth } from "@/lib/auth";
+import { MenuProvider } from "@/lib/menus";
 import { ThemeProvider } from "@/lib/theme";
 import { ToastProvider } from "@/lib/toast";
 
@@ -35,7 +36,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <ThemeProvider>
             <ToastProvider>
                 <AuthProvider>
-                    <AuthGate>{children}</AuthGate>
+                    <MenuProvider>
+                        <AuthGate>{children}</AuthGate>
+                    </MenuProvider>
                 </AuthProvider>
             </ToastProvider>
         </ThemeProvider>
