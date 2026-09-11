@@ -6,6 +6,8 @@ import { ProcessResponse, ScoredHypothesis } from "@/lib/types";
 import { ChartRenderer } from "@/components/viz/ChartRenderer";
 import { DataTable } from "@/components/viz/DataTable";
 import { LazyMount } from "@/components/viz/LazyMount";
+import { AnalysisProgress } from "@/components/agents/AnalysisProgress";
+import type { Agent } from "@/components/agents/AgentTimeline";
 
 export interface QueryResult {
     id: number;
@@ -16,6 +18,8 @@ export interface QueryResult {
 
 interface CanvasPaneProps {
     loading: boolean;
+    /** Live agent stream driving the loading state — see AnalysisProgress. */
+    loadingAgents: Agent[];
     error: string | null;
     result: ProcessResponse | null;
     datasetName: string;
@@ -155,6 +159,7 @@ function Skeleton() {
 
 export function CanvasPane({
     loading,
+    loadingAgents,
     error,
     result,
     datasetName,
@@ -299,7 +304,14 @@ export function CanvasPane({
                 </div>
             ) : (
             <div className="min-h-0 flex-1 overflow-y-auto p-5">
-                {loading && <Skeleton />}
+                {loading && (
+                    <div className="space-y-8">
+                        <AnalysisProgress agents={loadingAgents} datasetName={datasetName} />
+                        <div className="opacity-50">
+                            <Skeleton />
+                        </div>
+                    </div>
+                )}
 
                 {error && !loading && (
                     <div className="flex h-full items-center justify-center">
