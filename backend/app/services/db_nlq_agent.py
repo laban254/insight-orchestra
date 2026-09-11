@@ -20,6 +20,7 @@ from app.connectors.base import BaseConnector
 from app.services.llm_service import LLMService
 from app.utils.chart_heuristics import pick_fallback_chart
 from app.utils.log_utils import safe_log_value
+from app.utils.markdown import df_to_markdown_table
 
 logger = logging.getLogger(__name__)
 
@@ -159,11 +160,11 @@ OUTPUT (JSON only):
     def _build_answer(df: pd.DataFrame) -> str:
         if df.empty:
             return "No results found for your query."
-        preview = df.head(5).to_string(index=False)
-        return (
-            f"Found {len(df)} row(s) with columns: {', '.join(df.columns.tolist())}\n\n"
-            f"Top {min(5, len(df))} rows:\n{preview}"
-        )
+        if df.shape == (1, 1):
+            v = df.iat[0, 0]
+            return f"The answer is {v:,.2f}." if isinstance(v, float) else f"The answer is {v}."
+        table = df_to_markdown_table(df)
+        return table if len(df) <= 12 else f"{len(df):,} rows — showing the first 12:\n\n{table}"
 
     def run(
         self,
