@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth";
 import { apiErrorMessage } from "@/lib/apiError";
 import { Logo } from "@/components/ui/Logo";
 import { LoginArt } from "@/components/ui/LoginArt";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 
 const HIGHLIGHTS = [
     {
@@ -69,7 +70,11 @@ export default function LoginPage() {
     }
 
     return (
-        <main className="grid min-h-screen bg-bg lg:grid-cols-2">
+        <main className="relative grid min-h-screen bg-bg lg:grid-cols-2">
+            <div className="absolute right-4 top-4 z-20 lg:right-6 lg:top-6">
+                <ThemeToggle />
+            </div>
+
             {/* Branding panel — what you're signing into. Desktop only; the
                 form panel carries a compact version of this on small screens. */}
             <div className="relative hidden overflow-hidden border-border bg-surface lg:flex lg:flex-col lg:justify-between lg:border-r lg:p-12">
