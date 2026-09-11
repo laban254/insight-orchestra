@@ -6,7 +6,7 @@ Complete reference for Insight Orchestra's multi-agent system.
 
 ## Overview
 
-Insight Orchestra uses a **4-stage agent pipeline** where each specialized agent handles one processing stage. Agents execute sequentially, passing data between stages. The pipeline is orchestrated by [`InsightOrchestraWorkflow`](backend/app/services/adk_agents.py:226) and progress is streamed to the frontend via SSE.
+Insight Orchestra uses a **4-stage agent pipeline** where each specialized agent handles one processing stage. Agents execute sequentially, passing data between stages. The pipeline is orchestrated by [`InsightOrchestraWorkflow`](backend/app/services/adk_agents.py) and progress is streamed to the frontend via SSE.
 
 ```
 ┌─────────────────┐
@@ -51,7 +51,7 @@ Insight Orchestra uses a **4-stage agent pipeline** where each specialized agent
 
 ## Stage 1: Data Janitor Agent
 
-**File**: [`adk_agents.py`](backend/app/services/adk_agents.py:8) → `DataJanitorAgent`
+**File**: [`adk_agents.py`](backend/app/services/adk_agents.py) → `DataJanitorAgent`
 
 **Purpose**: Preprocess and validate raw data before analysis.
 
@@ -107,14 +107,14 @@ DataFrame:
 **Output**:
 ```json
 {
-  "cleaned_data": [...],
+  "cleaned_df": "<pandas DataFrame>",
   "report": {
     "initial_shape": [5, 4],
     "duplicates_found": 1,
     "duplicates_removed": 1,
     "missing_values": {"age": 2, "salary": 1, "department": 0},
     "total_missing": 3,
-    "bias_flags": ["Column 'salary' missing for 20.0% of rows."],
+    "bias_flags": ["Column 'salary' missing 20.0% of rows — results may be biased."],
     "outlier_flags": ["salary: 0 outlier(s) detected (IQR method)"],
     "constant_columns": [],
     "final_shape": [4, 4]
@@ -129,20 +129,20 @@ The agent inherits from `google.adk.Agent` and implements a single `run(data, **
 ```python
 class DataJanitorAgent(Agent):
     def run(self, data, **kwargs):
-        df = pd.DataFrame(data)
+        df = _as_frame(data).copy()
         # Duplicate detection & removal
-        # Missing value imputation (median for numeric, mode for categorical)
+        # Missing value imputation (median for numeric/datetime, mode for categorical)
         # Bias flagging (>30% missing)
         # Outlier detection via IQR
         # Constant column detection
-        return {"cleaned_data": [...], "report": {...}}
+        return {"cleaned_df": df, "report": {...}}
 ```
 
 ---
 
 ## Stage 2: Hypothesis Bot Agent
 
-**File**: [`adk_agents.py`](backend/app/services/adk_agents.py:60) → `HypothesisBotAgent`
+**File**: [`adk_agents.py`](backend/app/services/adk_agents.py) → `HypothesisBotAgent`
 
 **Purpose**: Generate 5–8 specific, directional, evidence-backed insights from the cleaned dataset using an LLM grounded in actual statistics.
 
@@ -193,10 +193,9 @@ class HypothesisBotAgent(Agent):
         # Descriptive stats, correlations > 0.3, category distributions
         ...
 
-    def run(self, cleaned_data, **kwargs):
-        df = pd.DataFrame(cleaned_data)
+    def run(self, df: pd.DataFrame, stats_summary: str | None = None, **kwargs):
         schema_prompt = DataFrameSchema.to_prompt(DataFrameSchema.from_dataframe(df))
-        stats_summary = self._build_stats_summary(df)
+        stats_summary = stats_summary or self._build_stats_summary(df)
         # Call LLM with both schema and stats
         # Fall back to heuristic group/correlation analysis if LLM fails
 ```
@@ -205,7 +204,7 @@ class HypothesisBotAgent(Agent):
 
 ## Stage 3: Debate Manager Agent
 
-**File**: [`adk_agents.py`](backend/app/services/adk_agents.py:193) → `DebateManagerAgent`
+**File**: [`adk_agents.py`](backend/app/services/adk_agents.py) → `DebateManagerAgent`
 
 **Purpose**: Score and rank hypotheses using an LLM that receives the actual data statistics as evidence — not just the hypothesis text.
 
@@ -267,7 +266,7 @@ Output: {scored_hypotheses, summary}
 
 ## Stage 4: Viz Whiz Agent
 
-**File**: [`adk_agents.py`](backend/app/services/adk_agents.py:272) → `VizWhizAgent`
+**File**: [`adk_agents.py`](backend/app/services/adk_agents.py) → `VizWhizAgent`
 
 **Purpose**: Auto-select visualization types and generate up to 6 Plotly charts, using LLM-based column selection grounded in the consensus insight.
 
@@ -338,7 +337,7 @@ Duplicates are filtered by `(type, title)`. Maximum 6 charts returned.
 
 ## Orchestration: InsightOrchestraWorkflow
 
-**File**: [`adk_agents.py`](backend/app/services/adk_agents.py:437) → `InsightOrchestraWorkflow`
+**File**: [`adk_agents.py`](backend/app/services/adk_agents.py) → `InsightOrchestraWorkflow`
 
 ### Sequential Execution
 
@@ -352,28 +351,28 @@ class InsightOrchestraWorkflow:
         self.viz        = VizWhizAgent(name="VizWhizAgent", llm_service=self.llm)
 
     def run(self, data):
-        cleaner_result  = self.cleaner.run(data)
-        cleaned_data    = cleaner_result["cleaned_data"]
-        df              = pd.DataFrame(cleaned_data)
+        cleaner_result = self.cleaner.run(data)
+        df             = cleaner_result["cleaned_df"]
 
         # Build stats once — shared by Hypothesis Bot AND Debate Manager
-        stats_summary     = HypothesisBotAgent._build_stats_summary(df)
+        stats_summary = HypothesisBotAgent._build_stats_summary(df)
 
-        hypothesis_result = self.hypothesis.run(cleaned_data)
-        hypotheses        = hypothesis_result["hypotheses"]
+        hypothesis_result = self.hypothesis.run(df, stats_summary)
+        hypotheses         = hypothesis_result["hypotheses"]
 
         # Debate Manager receives actual data stats for evidence-based scoring
-        debate_result  = self.debate.run(hypotheses, data_stats=stats_summary)
-        consensus      = debate_result["summary"].get("consensus")
+        debate_result = self.debate.run(hypotheses, data_stats=stats_summary)
+        consensus     = debate_result["summary"].get("consensus")
 
-        viz_result = self.viz.run(cleaned_data, consensus, hypotheses=hypotheses)
+        viz_result = self.viz.run(df, consensus, hypotheses=hypotheses)
 
         return {
-            "cleaner":    cleaner_result,
-            "hypothesis": hypothesis_result,
-            "debate":     debate_result,
-            "viz":        viz_result,
-            "stats":      stats_summary,
+            "cleaner":     cleaner_result,
+            "hypothesis":  hypothesis_result,
+            "debate":      debate_result,
+            "viz":         viz_result,
+            "stats":       stats_summary,
+            "audit_table": "...",  # markdown summary table; see API Reference
         }
 ```
 
@@ -385,7 +384,7 @@ The `/process` endpoint runs this workflow, then passes results to `InsightSumma
 
 ### NLQ Agent (Natural Language Query)
 
-**File**: [`nlq_agent.py`](backend/app/services/nlq_agent.py:40) → `NaturalLanguageQueryAgent`
+**File**: [`nlq_agent.py`](backend/app/services/nlq_agent.py) → `NaturalLanguageQueryAgent`
 
 **Purpose**: Answer user questions in real-time by converting natural language to pandas code.
 
@@ -408,18 +407,28 @@ Return: NLQResponse {answer, code, reasoning, plot_json, success flag}
 - Ambiguity detection — if the LLM identifies an ambiguous question, it requests clarification
 - Retry with error feedback — failed code is sent back to the LLM for fixing
 - Plotly fallback — if the code generates a `fig`, it's captured as `plot_json`
+- Identical questions against an unchanged dataset are served from a short-lived query cache (`query_cache.py`) instead of re-calling the LLM
 
-### Explain Agent
+### Database NLQ Agent (multi-table)
 
-**File**: [`explain_agent.py`](backend/app/services/explain_agent.py:2) → `ExplainabilityAgent`
+**File**: [`db_nlq_agent.py`](backend/app/services/db_nlq_agent.py) → `DatabaseNLQAgent`
 
-**Purpose**: Generate plain-English explanations for Plotly charts using hardcoded rules (not LLM-powered).
+**Purpose**: Answer a question directly against a *connected* database — JOIN-capable across every table in the connection's schema — instead of requiring a table to be materialized into a CSV first. Reached via `POST /connectors/query`, a separate code path from the CSV-pipeline NLQ agent above, which stays scoped to one already-materialized table.
 
-**Logic**: Matches chart type and column names against predefined templates. For example, a scatter plot of `age` vs `salary` generates: *"This scatter plot shows the relationship between age and salary. Each point represents an observation."*
+**Process**:
+```
+User question + full database schema (every table, not just one)
+  ↓
+LLM generates read-only SQL (not pandas code)
+  ↓
+Executed through the live connector
+  ↓
+Return: DatabaseNLQResponse {answer, sql, reasoning, plot_json, tables_used, ...}
+```
 
 ### Insight Summarizer Agent
 
-**File**: [`summarizer_agent.py`](backend/app/services/summarizer_agent.py:2) → `InsightSummarizerAgent`
+**File**: [`summarizer_agent.py`](backend/app/services/summarizer_agent.py) → `InsightSummarizerAgent`
 
 **Purpose**: LLM-powered agent that writes a concise narrative summary of the full pipeline results and generates specific follow-up questions using actual column names.
 
@@ -438,12 +447,6 @@ Return: {narrative: "...", suggested_questions: [...]}
 ```
 
 The narrative and suggested questions are shown to the user in the chat immediately after the pipeline completes.
-
-### Report Generator Agent
-
-**File**: [`report_agent.py`](backend/app/services/report_agent.py:5) → `ReportGeneratorAgent`
-
-**Purpose**: Generate an HTML report from workflow results. Produces a basic HTML document with embedded results.
 
 ---
 

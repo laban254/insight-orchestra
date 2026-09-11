@@ -5,11 +5,12 @@ This is the Next.js frontend for [Insight Orchestra](https://github.com/laban254
 ## Overview
 
 The frontend provides an interactive UI for:
-- CSV file uploads and database connections
-- Natural language queries against your data
+- File uploads (CSV/TSV/Excel/JSON/Parquet) and database connections
+- Natural language queries against your data, including multi-table queries against a connected database
 - Interactive visualizations with Plotly
-- Session management and history
-- Export capabilities (CSV, JSON, PDF)
+- Workspaces (save/reopen an analysis), session history, and read-only share links
+- Export as an interactive HTML report, PDF, Markdown summary, or Q&A CSV
+- Optional login, role-based access control, and an admin panel when the backend has `AUTH_ENABLED=true`
 
 ## Tech Stack
 
@@ -17,7 +18,7 @@ The frontend provides an interactive UI for:
 - React
 - Tailwind CSS
 - Plotly.js for visualizations
-- shadcn/ui components
+- Hand-built UI primitives in `components/ui/` (not a shadcn/ui install)
 
 ## Getting Started
 
@@ -42,7 +43,8 @@ yarn install
 npm run dev
 ```
 
-The frontend will be available at `http://localhost:8501`.
+The frontend will be available at `http://localhost:3000` (Next.js's default dev port —
+different from the `8501` the Docker image binds to; see below).
 
 ### Environment Variables
 
@@ -93,14 +95,19 @@ The frontend communicates with the backend API at `NEXT_PUBLIC_API_URL`. The API
 frontend/
 ├── app/                 # Next.js app router
 │   ├── page.tsx       # Main dashboard
+│   ├── login/         # Sign-in page (shown only when AUTH_ENABLED=true)
 │   ├── layout.tsx     # Root layout
 │   └── globals.css    # Global styles
 ├── components/
-│   ├── agents/        # Agent pipeline components
-│   ├── chat/          # Chat interface
-│   ├── export/        # Export functionality
-│   ├── upload/        # File upload & DB connections
-│   └── viz/           # Visualization components
+│   ├── workspace/      # Workspace, CanvasPane — the chat + canvas shell
+│   ├── agents/         # AgentTimeline (SSE progress), AnalysisProgress (loading state)
+│   ├── chat/           # MessageBubble, CodeBlock
+│   ├── upload/          # FileUpload, DatabaseConnect
+│   ├── viz/             # ChartRenderer, DataTable
+│   ├── export/          # ExportMenu-driven export (HTML/PDF/Markdown/CSV)
+│   ├── admin/           # Users, API keys, audit log — admin-only, auth on
+│   ├── share/           # Read-only shared-session view
+│   └── ui/              # Hand-built UI primitives
 └── public/            # Static assets
 ```
 

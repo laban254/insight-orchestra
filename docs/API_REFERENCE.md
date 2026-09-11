@@ -291,78 +291,76 @@ Forget a dataset and delete its file.
 
 ---
 
-### Summarize
+### Runtime Config
 
-#### `POST /api/v1/summarize`
+#### `GET /api/v1/config`
 
-Generate a text summary of workflow results.
-
-**Request Body**:
-```json
-{
-  "workflow_results": {
-    "cleaner": {...},
-    "hypothesis": {...},
-    "debate": {...},
-    "viz": {...}
-  }
-}
-```
+Current LLM provider/model, and which providers are actually ready to serve a request right now (API key configured, or Ollama reachable). Admin-only.
 
 **Response** `200 OK`:
 ```json
 {
-  "summary": "The dataset had 15 columns and 1000 rows. 5 duplicates were removed. 5 hypotheses were generated..."
+  "provider": "deepseek",
+  "model": "deepseek-chat",
+  "available": ["openai", "anthropic", "deepseek", "ollama"],
+  "ready": {"openai": false, "anthropic": false, "deepseek": true, "ollama": false}
 }
 ```
+
+#### `POST /api/v1/config`
+
+Switch the LLM provider and/or model at runtime — no restart needed. Admin-only.
+
+**Request Body**:
+```json
+{"provider": "openai", "model": "gpt-4o-mini"}
+```
+
+**Errors**:
+| Status | Detail |
+|--------|--------|
+| `400` | `Unknown provider '...'.` |
+| `400` | `Ollama is not reachable at ...` / `No API key configured for '...' on the server.` |
 
 ---
 
-### Explain
+### Dataset Rows & Transform
 
-#### `POST /api/v1/explain`
+#### `GET /api/v1/datasets/{dataset_id}/rows`
 
-Generate a plain-English explanation for a Plotly chart (rule-based, not LLM-powered).
+A page of rows from the dataset, for browsing past the fixed 20-row preview returned by `/upload` and `GET /datasets/{id}`.
 
-**Request Body**:
-```json
-{
-  "plot": {
-    "chart_type": "scatter",
-    "x_column": "age",
-    "y_column": "salary"
-  }
-}
-```
+**Query parameters**: `offset` (default `0`), `limit` (default `50`, max `500`)
 
 **Response** `200 OK`:
 ```json
 {
-  "explanation": "This scatter plot shows the relationship between age and salary."
+  "columns": ["date", "region", "revenue"],
+  "rows": [{"date": "2024-01-01T00:00:00", "region": "North", "revenue": 100.0}],
+  "total_rows": 995,
+  "offset": 0,
+  "limit": 50,
+  "has_more": true
 }
 ```
 
----
+#### `POST /api/v1/datasets/{dataset_id}/transform`
 
-### Generate Report
-
-#### `POST /api/v1/report`
-
-Generate an HTML report from workflow results.
+Apply a deterministic column transform — `normalize` (min-max to 0–1), `scale` (z-score), or `encode` (integer-code each distinct value) — without needing the LLM to write pandas code for a fixed, well-known operation. Non-destructive: writes the result as a new dataset rather than mutating the original. Member+.
 
 **Request Body**:
 ```json
-{
-  "workflow_results": {...}
-}
+{"column": "salary", "operation": "normalize", "new_column": "salary_normalized"}
 ```
+`new_column` is optional, defaulting to `{column}_{operation}`.
 
-**Response** `200 OK`:
-```json
-{
-  "report_path": "/tmp/report_abc123.html"
-}
-```
+**Response** `200 OK`: a new `dataset_id` plus the same shape/preview body as `/upload`.
+
+**Errors**:
+| Status | Detail |
+|--------|--------|
+| `400` | `Column '...' not found.` |
+| `400` | `'normalize'/'scale' needs a numeric column; '...' is ...` |
 
 ---
 
@@ -411,17 +409,29 @@ Connecting a database is a three-step flow: connect (get a schema + a
 through the normal analysis pipeline (`/api/v1/process`, `/api/v1/nlq`) exactly like an
 uploaded file.
 
-The live connection itself is never held open between requests — the
-backend runs multiple uvicorn workers, so a socket held in one worker's
-memory would be invisible to requests handled by another. Instead, `/connect`
+The live connection itself is never held open between requests, regardless — `/connect`
 opens the connection just long enough to validate credentials and read the
 schema, then closes it; only the connection metadata (type, connection
 string, cached schema) is persisted (in Redis, with a sliding TTL — see
-`DB_CONNECTION_TTL_SECONDS` in the [Setup Guide](SETUP.md)). `/load-table`
-reconnects fresh each time it's called.
+`DB_CONNECTION_TTL_SECONDS` in the [Setup Guide](SETUP.md)). `/load-table` and `/query`
+reconnect fresh each time they're called.
 
 > With auth on, connecting/disconnecting/listing local DB files is **admin-only** — running
 > a query against an already-connected database (`POST /connectors/query`) is `member`+.
+
+#### `GET /api/v1/connectors/local-files`
+
+SQLite/DuckDB files the backend can actually reach — the uploads directory is
+bind-mounted into the container, so it's the one place a user can drop a
+database file and have a path resolve. Admin-only.
+
+**Response** `200 OK`:
+```json
+{
+  "host_directory": "./backend/uploads",
+  "files": [{"name": "sample.duckdb", "path": "/app/uploads/sample.duckdb"}]
+}
+```
 
 #### `POST /api/v1/connectors/connect`
 
@@ -495,6 +505,41 @@ Pass `dataset_id` to `/api/v1/process` or `/api/v1/nlq` just like an uploaded fi
 | `400` | `Unknown table: ...` — table isn't in the connection's schema |
 | `400` | `Failed to load table: ...` — query failed against the live database |
 
+#### `POST /api/v1/connectors/query`
+
+Multi-table NL→SQL: answer a question directly against the connected
+database — JOIN-capable across every table in scope — instead of
+materializing a single table first like `/load-table` + `/nlq` do. Member+.
+
+**Request Body**:
+```json
+{
+  "connection_id": "5518441615654de8b110d090db78de1f",
+  "question": "How many orders did each customer place last month?"
+}
+```
+
+**Response** `200 OK`:
+```json
+{
+  "answer": "Customer 'Acme Corp' placed the most orders (14) last month...",
+  "sql": "SELECT c.name, COUNT(*) FROM orders o JOIN customers c ON ... GROUP BY c.name",
+  "reasoning": "Joined orders to customers and grouped by customer.",
+  "plot_json": null,
+  "tables_used": ["orders", "customers"],
+  "needs_clarification": false,
+  "clarification_question": null,
+  "execution_success": true,
+  "error": null
+}
+```
+
+**Errors**:
+| Status | Detail |
+|--------|--------|
+| `404` | `Connection not found or expired. Please reconnect to the database.` |
+| `400` | `Failed to connect: ...` |
+
 #### `DELETE /api/v1/connectors/{connection_id}`
 
 Disconnect and forget a connection before its TTL expires.
@@ -506,6 +551,43 @@ Disconnect and forget a connection before its TTL expires.
 
 Placeholder — not yet implemented (always returns `{"status": "not_implemented"}`).
 Use the `schema` field returned by `/api/v1/connectors/connect` instead.
+
+---
+
+### Workspaces
+
+A saved snapshot of the frontend's UI state (pinned results, chat history, dataset
+reference) — lets a user close the tab and reopen the same analysis later, from any
+browser. With auth on, reads require any signed-in role and writes require `member`+;
+with auth off, unauthenticated, same as everything else.
+
+#### `GET /api/v1/workspaces`
+
+List saved workspaces (metadata only), most recently updated first.
+
+**Response** `200 OK`:
+```json
+{"workspaces": [{"id": "ws_abc", "datasetName": "sales.csv", "datasetId": "...", "createdAt": 1730000000000, "updatedAt": 1730000500000}]}
+```
+
+#### `GET /api/v1/workspaces/{workspace_id}`
+
+Fetch a full workspace record (metadata + saved UI state). `404` if not found.
+
+#### `PUT /api/v1/workspaces/{workspace_id}`
+
+Create or update a workspace — the saved state replaces any previous one. Member+.
+
+**Request Body**:
+```json
+{"datasetName": "sales.csv", "datasetId": "8f14e45fceea167a5a36dedd4bea2543", "state": {"...": "..."}}
+```
+
+**Errors**: `400` — `Invalid workspace id.` (must match `^[A-Za-z0-9_-]{1,64}$`)
+
+#### `DELETE /api/v1/workspaces/{workspace_id}`
+
+Delete a saved workspace. Member+.
 
 ---
 
@@ -661,7 +743,7 @@ Load a demo dataset by ID. Disabled when `DEMO_MODE=false`.
 
 #### `GET /api/v1/agents/stream/{session_id}`
 
-Server-Sent Events endpoint that streams real-time agent progress. Used by the frontend [`AgentPipeline`](frontend/components/agents/AgentPipeline.tsx) component.
+Server-Sent Events endpoint that streams real-time agent progress. Used by the frontend [`AgentTimeline`](frontend/components/agents/AgentTimeline.tsx) component.
 
 Events are consumed after calling `/api/v1/process` or `/api/v1/nlq` with a matching `session_id`.
 
