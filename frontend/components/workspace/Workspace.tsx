@@ -26,6 +26,8 @@ export function Workspace({ workspaceId, datasetId, datasetName, restore, onPers
     const [analysisLoading, setAnalysisLoading] = useState(!reopened);
     const [analysisResult, setAnalysisResult] = useState<ProcessResponse | null>(restore?.analysisResult ?? null);
     const [analysisError, setAnalysisError] = useState<string | null>(null);
+    // Drives the Canvas's live progress view while the pipeline runs.
+    const [analysisAgents, setAnalysisAgents] = useState<Agent[]>([]);
 
     const [messages, setMessages] = useState<ChatMessage[]>(restore?.messages ?? []);
     const [input, setInput] = useState("");
@@ -193,6 +195,7 @@ export function Workspace({ workspaceId, datasetId, datasetName, restore, onPers
                                 flow={ANALYSIS_FLOW}
                                 runId={1}
                                 finished={false}
+                                onAgentsChange={setAnalysisAgents}
                             />
                         </div>
                     )}
@@ -345,6 +348,7 @@ export function Workspace({ workspaceId, datasetId, datasetName, restore, onPers
             {/* ── Canvas pane ───────────────────────────────────────────── */}
             <CanvasPane
                 loading={analysisLoading}
+                loadingAgents={analysisAgents}
                 error={analysisError}
                 result={analysisResult}
                 datasetName={datasetName}
