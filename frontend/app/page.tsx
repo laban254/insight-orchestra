@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Database, FileUp, Waypoints, PanelLeft, Download, Plus, Clock, Moon, Command, Share2, Sparkles, ShieldCheck, Loader2 } from "lucide-react";
+import { Database, FileUp, PanelLeft, Download, Plus, Clock, Moon, Command, Share2, Sparkles, ShieldCheck, Loader2 } from "lucide-react";
 import { useTheme } from "@/lib/theme";
 import { useToast } from "@/lib/toast";
 import { useIsAdmin } from "@/lib/auth";
+import { Logo } from "@/components/ui/Logo";
 import { UserMenu } from "@/components/ui/UserMenu";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { ModelSwitcher } from "@/components/ui/ModelSwitcher";
@@ -43,17 +44,6 @@ export interface DatasetInfo {
 }
 
 const newId = () => crypto.randomUUID();
-
-function Logo({ size = 8 }: { size?: number }) {
-    return (
-        <div
-            className="grid place-items-center rounded-xl bg-accent text-accent-fg"
-            style={{ width: `${size * 4}px`, height: `${size * 4}px` }}
-        >
-            <Waypoints size={size * 2.2} />
-        </div>
-    );
-}
 
 export default function Home() {
     const theme = useTheme();
@@ -436,7 +426,8 @@ export default function Home() {
                                 ) : null}
                             </div>
                         </div>
-                        <p className="mt-6 text-center text-xs text-faint">
+                        {/* ⌘K needs a keyboard — pointless noise on a touch-only device. */}
+                        <p className="mt-6 hidden text-center text-xs text-faint [@media(hover:hover)]:block">
                             Press <kbd className="rounded border border-border px-1 font-mono">⌘K</kbd> anytime for the command palette
                         </p>
                     </div>
