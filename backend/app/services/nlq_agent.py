@@ -22,6 +22,7 @@ from app.services.llm_service import DataFrameSchema, LLMProvider, LLMService, f
 from app.services.sandbox_executor import SandboxExecutor
 from app.utils.chart_heuristics import pick_fallback_chart
 from app.utils.log_utils import safe_log_value
+from app.utils.markdown import df_to_markdown_table
 
 logger = logging.getLogger(__name__)
 
@@ -409,22 +410,27 @@ Code: result = df[df['price'] > 100]
 
     def _build_answer(self, result: Any, question: str) -> str:
         """Build natural language answer from result."""
+        # A grouped/aggregated Series is the single most common shape; render it
+        # as a two-column table rather than letting str() dump it.
+        if isinstance(result, pd.Series):
+            result = result.rename(result.name or "value").reset_index()
+
         if isinstance(result, pd.DataFrame):
             if result.empty:
                 return "No results found for your query."
-
-            preview_rows = result.head(5)
-            preview_text = preview_rows.to_string(index=False)
-            return (
-                f"Found {len(result)} rows with columns: {', '.join(result.columns.tolist())}\n\n"
-                f"Top {min(5, len(result))} rows:\n{preview_text}"
-            )
+            if result.shape == (1, 1):
+                v = result.iat[0, 0]
+                return f"The answer is {v:,.2f}." if isinstance(v, float) else f"The answer is {v}."
+            table = df_to_markdown_table(result)
+            if len(result) <= 12:
+                return table
+            return f"{len(result):,} rows — showing the first 12:\n\n{table}"
 
         elif isinstance(result, int | float):
             return (
-                f"The answer is {result:,.2f}"
+                f"The answer is {result:,.2f}."
                 if isinstance(result, float)
-                else f"The answer is {result}"
+                else f"The answer is {result:,}."
             )
 
         elif isinstance(result, dict):

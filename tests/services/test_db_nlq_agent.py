@@ -79,7 +79,8 @@ class TestDatabaseNLQAgentRun:
 
         assert response.execution_success is True
         assert response.sql == "SELECT * FROM users"
-        assert "2 row(s)" in response.answer
+        assert "| id | name |" in response.answer  # markdown table
+        assert "| 1 | Alice |" in response.answer
         assert response.tables_used == ["users"]
         connector.execute_query.assert_called_once_with("SELECT * FROM users")
 
