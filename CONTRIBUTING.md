@@ -171,27 +171,38 @@ insight-orchestra/
 ├── backend/
 │   └── app/
 │       ├── api/            # FastAPI route handlers
-│       │   ├── endpoints.py    # Main API routes
-│       │   ├── connectors.py   # DB connection endpoints
+│       │   ├── endpoints.py    # Upload, process, nlq, config, datasets, demo, SSE
+│       │   ├── connectors.py   # DB connection + multi-table NL→SQL endpoints
+│       │   ├── workspaces.py   # Save/list/load/delete named workspaces
 │       │   ├── sessions.py     # Session sharing
-│       │   └── export.py       # Export endpoints
+│       │   ├── export.py       # Export endpoints
+│       │   ├── auth.py         # Login, OIDC, API keys, user management
+│       │   └── audit.py        # Audit log (admin-only)
 │       ├── services/        # Business logic & agents
-│       │   ├── adk_agents.py       # 4-agent pipeline
-│       │   ├── nlq_agent.py        # NL → code agent
+│       │   ├── adk_agents.py       # 4-agent pipeline (Janitor/Hypothesis/Debate/Viz)
+│       │   ├── nlq_agent.py        # NL → pandas code agent (single dataset)
+│       │   ├── db_nlq_agent.py     # NL → SQL agent (multi-table, live DB)
+│       │   ├── summarizer_agent.py # LLM narrative + follow-up questions
 │       │   ├── llm_service.py      # LLM provider abstraction
 │       │   ├── sandbox_executor.py # RestrictedPython sandbox
 │       │   ├── session_manager.py  # Redis/in-memory sessions
-│       │   └── ...                 # explain, summarizer, report
+│       │   ├── workspace_store.py  # Redis/in-memory workspaces
+│       │   ├── connection_store.py # Redis/in-memory DB connection metadata
+│       │   ├── dataset_registry.py # Opaque dataset_id → file path
+│       │   └── auth_session.py, user_store.py, oidc.py, api_keys.py, audit_log.py
 │       ├── connectors/       # Database connectors
-│       └── utils/            # file_utils, demo_data, bigquery
+│       └── utils/            # file_utils, demo_data, bigquery, markdown
 ├── frontend/
-│   ├── app/                 # Next.js App Router pages
+│   ├── app/                 # Next.js App Router pages (incl. login/)
 │   └── components/          # React components
-│       ├── agents/          # AgentPipeline SSE visualization
-│       ├── chat/            # ChatPanel, MessageBubble, CodeBlock
+│       ├── agents/          # AgentTimeline (SSE), AnalysisProgress (loading state)
+│       ├── workspace/       # Workspace, CanvasPane
+│       ├── chat/            # MessageBubble, CodeBlock
 │       ├── upload/          # FileUpload, DatabaseConnect
 │       ├── viz/             # ChartRenderer, DataTable
-│       └── export/          # ExportPanel, ShareButton
+│       ├── export/          # ExportMenu-driven export
+│       ├── admin/           # UsersTab, ApiKeysTab, AuditLogTab (auth on, admin only)
+│       └── ui/               # Hand-built UI primitives (not shadcn/ui)
 ├── docs/                    # Documentation
 └── tests/                   # Unit & integration tests
 ```
@@ -215,7 +226,7 @@ class MyNewAgent(Agent):
 
 ### Step 2: Integrate into Workflow
 
-Add to [`InsightOrchestraWorkflow`](backend/app/services/adk_agents.py:226):
+Add to [`InsightOrchestraWorkflow`](backend/app/services/adk_agents.py):
 
 ```python
 self.my_agent = MyNewAgent()

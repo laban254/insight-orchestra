@@ -122,10 +122,11 @@ Each stage streams real-time progress to the UI via SSE. See the [Agent Pipeline
 
 - **Natural Language Queries** — the NLQ agent generates pandas code, executes it in the RestrictedPython sandbox, and returns results + optional Plotly charts
 - **Four LLM Providers** — OpenAI, Anthropic, DeepSeek, or Ollama (any locally-hosted model); switch provider/model at runtime, no restart needed
-- **Multi-Database Support** — PostgreSQL, MySQL, SQLite, DuckDB, and CSV — all read-only, connected through the UI (BigQuery has an experimental endpoint; see the [API Reference](docs/API_REFERENCE.md))
+- **Multi-Database Support** — PostgreSQL, MySQL, SQLite, DuckDB, and CSV — all read-only, connected through the UI (BigQuery has an experimental endpoint; see the [API Reference](docs/API_REFERENCE.md)). Includes a JOIN-capable natural-language SQL agent that answers questions directly against a connected database, across every table in scope, without materializing a table first
 - **Sandboxed Code Execution** — no file I/O, no network access, no dangerous imports; configurable timeout
 - **Real-Time Agent Progress** — SSE streaming shows each agent's status, output, and duration
-- **Workspace, Share & Export** — pin and compare charts, workspace history saved server-side (reopen past runs from any browser), one-click read-only share links (72 h TTL), export as HTML / Markdown / CSV with embedded interactive charts
+- **Workspace, Share & Export** — pin and compare charts, workspace history saved server-side (reopen past runs from any browser), one-click read-only share links (72 h TTL), export as an interactive HTML report, PDF, Markdown summary, or Q&A CSV
+- **Optional Auth & Access Control** — off by default for local/single-user use; turn on `AUTH_ENABLED` for login, role-based access (admin/member/viewer), OIDC SSO, self-service API keys, and an audit log — see [API Reference](docs/API_REFERENCE.md#authentication)
 - **5 Demo Datasets** — try it without bringing your own data
 
 ## Documentation
@@ -139,7 +140,7 @@ Each stage streams real-time progress to the UI via SSE. See the [Agent Pipeline
 
 ## Roadmap
 
-Coming up: a JOIN-capable natural-language SQL agent for database connections. Have a request or want to influence priorities? [Open an issue](https://github.com/laban254/insight-orchestra/issues).
+Have a request or want to influence priorities? [Open an issue](https://github.com/laban254/insight-orchestra/issues).
 
 ## Contributing
 
