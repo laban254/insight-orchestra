@@ -6,6 +6,7 @@ import { Loader2, LogIn, MessageSquare, ShieldCheck, Sparkles } from "lucide-rea
 import { useAuth } from "@/lib/auth";
 import { apiErrorMessage } from "@/lib/apiError";
 import { Logo } from "@/components/ui/Logo";
+import { LoginArt } from "@/components/ui/LoginArt";
 
 const HIGHLIGHTS = [
     {
@@ -80,8 +81,20 @@ export default function LoginPage() {
                         backgroundSize: "22px 22px",
                     }}
                 />
-                <div aria-hidden className="pointer-events-none absolute -left-20 -top-20 h-96 w-96 rounded-full bg-accent/20 blur-3xl" />
-                <div aria-hidden className="pointer-events-none absolute -bottom-28 -right-12 h-80 w-80 rounded-full bg-accent-2/10 blur-3xl" />
+                <div
+                    aria-hidden
+                    className="animate-drift pointer-events-none absolute -left-20 -top-20 h-96 w-96 rounded-full bg-accent/20 blur-3xl"
+                />
+                <div
+                    aria-hidden
+                    className="animate-drift pointer-events-none absolute -bottom-28 -right-12 h-80 w-80 rounded-full bg-accent-2/10 blur-3xl"
+                    style={{ animationDelay: "-8s" }}
+                />
+                <div
+                    aria-hidden
+                    className="animate-drift pointer-events-none absolute right-1/3 top-1/4 h-64 w-64 rounded-full bg-success/10 blur-3xl"
+                    style={{ animationDelay: "-4s" }}
+                />
 
                 <div className="relative z-10 flex items-center gap-3">
                     <Logo size={9} />
@@ -89,10 +102,13 @@ export default function LoginPage() {
                 </div>
 
                 <div className="relative z-10 max-w-md">
-                    <h2 className="text-3xl font-bold leading-tight tracking-tight text-fg">
+                    <div className="-ml-2 h-40 w-[calc(100%+2rem)] sm:h-48">
+                        <LoginArt />
+                    </div>
+                    <h2 className="mt-2 text-3xl font-bold leading-tight tracking-tight text-fg">
                         Upload data. Ask questions. Get answers — in plain English.
                     </h2>
-                    <ul className="mt-9 space-y-5">
+                    <ul className="mt-7 space-y-4">
                         {HIGHLIGHTS.map(({ Icon, tone, title, body }) => (
                             <li key={title} className="flex gap-3.5">
                                 <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${tone}`}>
