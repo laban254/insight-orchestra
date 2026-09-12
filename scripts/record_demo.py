@@ -228,9 +228,7 @@ def record(args) -> Path:
         options = page.locator("#demo-dataset-list button")
         options.first.wait_for(state="visible", timeout=10_000)
 
-        target = page.locator(
-            f"#demo-dataset-list button:has-text('{args.dataset}')"
-        ).first
+        target = page.locator(f"#demo-dataset-list button:has-text('{args.dataset}')").first
         if target.count() == 0:
             log(f"no dataset matching {args.dataset!r}; using the first one")
             target = options.first
