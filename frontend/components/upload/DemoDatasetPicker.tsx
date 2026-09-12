@@ -60,7 +60,7 @@ export function DemoDatasetPicker({
     };
 
     return (
-        <div className="w-full space-y-2">
+        <div id="demo-dataset-list" className="w-full space-y-2">
             {Object.entries(datasets).map(([id, config]) => {
                 const loading = loadingId === id;
                 return (
