@@ -57,7 +57,7 @@ export default function Home() {
     const [datasetInfo, setDatasetInfo] = useState<DatasetInfo | null>(null);
     // "demo" leads: a first-time visitor rarely has a CSV or database ready,
     // so the fastest path to seeing the product work is the default tab.
-    const [uploadMode, setUploadMode] = useState<"demo" | "file" | "db">("demo");
+    const [uploadMode, setUploadMode] = useState<"demo" | "file" | "db">("file");
     const [availableDatasets, setAvailableDatasets] = useState<Record<string, DemoDataset> | null>(null);
 
     const [workspaceId, setWorkspaceId] = useState<string | null>(null);
@@ -384,11 +384,11 @@ export default function Home() {
                             <div className="flex overflow-hidden rounded-t-2xl border-b border-border">
                                 {(
                                     [
-                                        { id: "demo", label: "Try a Demo", shortLabel: "Demo", Icon: Sparkles },
                                         { id: "file", label: "Upload CSV", shortLabel: "Upload", Icon: FileUp },
                                         ...(isAdmin
                                             ? [{ id: "db", label: "Connect Database", shortLabel: "Database", Icon: Database }]
                                             : []),
+                                        { id: "demo", label: "Try a Demo", shortLabel: "Demo", Icon: Sparkles },
                                     ] as { id: "demo" | "file" | "db"; label: string; shortLabel: string; Icon: typeof Sparkles }[]
                                 ).map(({ id, label, shortLabel, Icon }) => {
                                     const active = uploadMode === id;
