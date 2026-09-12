@@ -62,7 +62,7 @@ jobs:
       # with no link back to this repo and no README on the package page.
       - name: Derive image labels
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component }}
 
@@ -125,7 +125,7 @@ jobs:
       # semver tags automatically, and withheld from prereleases (v1.0.0-rc1).
       - name: Derive tags
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component }}
           # The semver patterns only match tag refs, so a manual
