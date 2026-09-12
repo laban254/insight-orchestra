@@ -86,19 +86,11 @@ export default function LoginPage() {
                         backgroundSize: "22px 22px",
                     }}
                 />
+                {/* One quiet glow, not a mesh gradient — a hint of depth behind
+                    the illustration rather than a wash across the panel. */}
                 <div
                     aria-hidden
-                    className="animate-drift pointer-events-none absolute -left-20 -top-20 h-96 w-96 rounded-full bg-accent/20 blur-3xl"
-                />
-                <div
-                    aria-hidden
-                    className="animate-drift pointer-events-none absolute -bottom-28 -right-12 h-80 w-80 rounded-full bg-accent-2/10 blur-3xl"
-                    style={{ animationDelay: "-8s" }}
-                />
-                <div
-                    aria-hidden
-                    className="animate-drift pointer-events-none absolute right-1/3 top-1/4 h-64 w-64 rounded-full bg-success/10 blur-3xl"
-                    style={{ animationDelay: "-4s" }}
+                    className="animate-drift pointer-events-none absolute -left-16 top-32 h-72 w-72 rounded-full bg-accent/10 blur-3xl"
                 />
 
                 <div className="relative z-10 flex items-center gap-3">

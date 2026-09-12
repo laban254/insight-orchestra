@@ -28,8 +28,7 @@ export function LoginArt() {
             <defs>
                 <linearGradient id="login-art-flow" x1="0%" y1="0%" x2="100%" y2="0%">
                     <stop offset="0%" stopColor="var(--border)" />
-                    <stop offset="30%" stopColor="var(--accent)" />
-                    <stop offset="65%" stopColor="var(--accent-2)" />
+                    <stop offset="45%" stopColor="var(--accent)" />
                     <stop offset="100%" stopColor="var(--accent)" />
                 </linearGradient>
             </defs>
