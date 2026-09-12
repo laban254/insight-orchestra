@@ -268,6 +268,14 @@ for the full auth API and role model.
 | `API_KEY_TTL_SECONDS` | `0` | Expiry for self-service API keys created via `POST /auth/api-keys`. `0` = no expiry |
 | `AUDIT_LOG_MAX_ENTRIES` | `50000` | Oldest audit log entries are dropped past this count |
 
+#### Signing in, once it's on
+
+1. Set `AUTH_ENABLED=true` plus `ADMIN_EMAIL`/`ADMIN_PASSWORD` in `backend/.env` and restart the backend (`docker compose up -d --force-recreate backend`, or just restart the process for a non-Docker setup) — this bootstraps one `admin` account on that first startup. Skip both if you're going OIDC-only; the first person to sign in via SSO becomes admin instead.
+2. Open the app. Any page other than `/login` and a shared-session link now redirects there if you're not signed in.
+3. Sign in with the admin email/password from step 1 (or click "Continue with SSO" if OIDC is configured).
+4. As admin, an **Admin** link appears in the account menu (top right), leading to `/admin` — three tabs: **Users** (create a `member`/`viewer` account for everyone else, or promote/deactivate one), **API keys**, and the **audit log**.
+5. Signing out (same account menu) clears the session and sends you back to `/login`; so does an expired session (`AUTH_SESSION_TTL_SECONDS`) on your next request.
+
 ### Redis Configuration
 
 | Variable | Default | Description |
