@@ -38,7 +38,7 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # linux/amd64 -> linux-amd64, for artifact names (slashes aren't allowed).
       - name: Normalise platform name
