@@ -46,7 +46,16 @@ export function AgentTimeline({ sessionId, flow, runId, finished, onAgentsChange
         if (runId === null) return;
         setAgents(flow.map((id) => ({ id, status: "waiting" as AgentStatus })));
 
-        const source = new EventSource(`${API_BASE}/agents/stream/${sessionId}`);
+        // withCredentials: the session cookie won't cross the :3000 -> :8000
+        // origin boundary otherwise (EventSource defaults to false, unlike
+        // the axios clients in lib/api.ts and lib/auth.tsx) — with
+        // AUTH_ENABLED=true this endpoint 401s without it, and the SSE
+        // stream fails silently (the pipeline still completes via the
+        // /process response; only the live per-agent status updates are
+        // lost).
+        const source = new EventSource(`${API_BASE}/agents/stream/${sessionId}`, {
+            withCredentials: true,
+        });
         sourceRef.current = source;
 
         source.onmessage = (e) => {
