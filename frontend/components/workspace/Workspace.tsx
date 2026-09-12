@@ -71,6 +71,12 @@ export function Workspace({ workspaceId, datasetId, datasetName, restore, onPers
 
     const liveAgents = useRef<Agent[]>([]);
     const scrollRef = useRef<HTMLDivElement>(null);
+    const scrollContentRef = useRef<HTMLDivElement>(null);
+    // Whether the user was already at (or near) the bottom before the last
+    // resize -- so we keep following new content the way a chat app should,
+    // without yanking the view back down on someone who scrolled up to
+    // reread something.
+    const stickToBottomRef = useRef(true);
 
     // ── Auto-analysis on mount (skipped when reopening a saved run) ──────
     useEffect(() => {
@@ -94,9 +100,38 @@ export function Workspace({ workspaceId, datasetId, datasetName, restore, onPers
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [datasetId]);
 
+    // Auto-follow the conversation as it grows -- including word-by-word,
+    // *during* a streaming reveal, not just when a message is added or
+    // removed. A plain effect keyed on [messages, analysisResult, ...] only
+    // fires on those transitions: it can't see MessageBubble's internal
+    // reveal state, so the one scroll it did fire would land wherever the
+    // still-mostly-empty streaming bubble happened to be at that instant
+    // (often skipping straight past it to whatever renders right after,
+    // e.g. the suggested-questions list) and then never correct itself as
+    // the bubble kept growing. Watching the content's actual size instead
+    // keeps following it regardless of *why* it grew.
     useEffect(() => {
-        scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-    }, [messages, isLoading, analysisLoading, analysisResult]);
+        const scrollEl = scrollRef.current;
+        const onScroll = () => {
+            if (!scrollEl) return;
+            const distanceFromBottom = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight;
+            stickToBottomRef.current = distanceFromBottom < 120;
+        };
+        scrollEl?.addEventListener("scroll", onScroll, { passive: true });
+        return () => scrollEl?.removeEventListener("scroll", onScroll);
+    }, []);
+
+    useEffect(() => {
+        const contentEl = scrollContentRef.current;
+        if (!contentEl) return;
+        const observer = new ResizeObserver(() => {
+            if (stickToBottomRef.current) {
+                scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+            }
+        });
+        observer.observe(contentEl);
+        return () => observer.disconnect();
+    }, []);
 
     // Persist the workspace whenever meaningful state changes.
     useEffect(() => {
@@ -182,114 +217,116 @@ export function Workspace({ workspaceId, datasetId, datasetName, restore, onPers
                     <h2 className="text-sm font-semibold text-fg">Conversation</h2>
                 </div>
 
-                <div ref={scrollRef} className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5">
-                    {/* Live analysis pipeline */}
-                    {analysisLoading && (
-                        <div className="rounded-2xl border border-border bg-surface p-4">
-                            <p className="mb-3 flex items-center gap-2 text-xs font-medium text-muted">
-                                <Loader2 size={13} className="animate-spin text-accent" />
-                                The orchestra is analyzing <span className="text-fg">{datasetName}</span>…
-                            </p>
-                            <AgentTimeline
-                                sessionId={sessionId}
-                                flow={ANALYSIS_FLOW}
-                                runId={1}
-                                finished={false}
-                                onAgentsChange={setAnalysisAgents}
-                            />
-                        </div>
-                    )}
-
-                    {analysisError && (
-                        <div className="rounded-2xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
-                            Could not complete analysis: {analysisError}
-                        </div>
-                    )}
-
-                    {/* Degraded-run notice: the pipeline still returns 200 when the LLM is
-                        unreachable, so the output must say it was never interpreted. */}
-                    {analysisResult?.degraded && !analysisLoading && (
-                        <div
-                            role="status"
-                            className="rounded-2xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning"
-                        >
-                            <p className="font-medium">Statistics only — these results were not interpreted.</p>
-                            <p className="mt-1 text-xs opacity-90">
-                                {analysisResult.degraded_reason ??
-                                    "No language model was available for this run."}
-                            </p>
-                        </div>
-                    )}
-
-                    {/* Narrative intro */}
-                    {analysisResult && !analysisLoading && (
-                        <MessageBubble
-                            role="assistant"
-                            content={analysisResult.narrative}
-                            intro
-                            collapsible
-                            stream={!reopened}
-                        />
-                    )}
-
-                    {/* Sampling notice — never imply the analysis covered
-                        rows it never saw. */}
-                    {analysisResult?.sampling?.sampled && (
-                        <div className="rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-xs text-muted">
-                            Analysed the first{" "}
-                            <span className="font-medium text-fg">
-                                {analysisResult.sampling.analyzed_rows.toLocaleString()}
-                            </span>{" "}
-                            of{" "}
-                            <span className="font-medium text-fg">
-                                {analysisResult.sampling.total_rows.toLocaleString()}
-                            </span>{" "}
-                            rows. Raise <code className="font-mono">MAX_ANALYSIS_ROWS</code> to cover the whole file.
-                        </div>
-                    )}
-
-                    {/* Suggested questions */}
-                    {suggested.length > 0 && messages.length === 0 && !isLoading && (
-                        <div className="space-y-2">
-                            <p className="text-xs font-medium text-faint">Suggested questions</p>
-                            <div className="flex flex-col gap-2">
-                                {suggested.map((s, i) => (
-                                    <button
-                                        key={i}
-                                        onClick={() => submitQuery(s)}
-                                        title={s}
-                                        className="group flex items-start gap-2 rounded-xl border border-border bg-surface px-3.5 py-2.5 text-left text-sm text-muted transition-colors hover:border-accent/50 hover:text-fg"
-                                    >
-                                        <Sparkles size={13} className="mt-0.5 shrink-0 text-accent opacity-60 group-hover:opacity-100" />
-                                        <span className="line-clamp-2">{s}</span>
-                                    </button>
-                                ))}
+                <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+                    <div ref={scrollContentRef} className="space-y-5">
+                        {/* Live analysis pipeline */}
+                        {analysisLoading && (
+                            <div className="rounded-2xl border border-border bg-surface p-4">
+                                <p className="mb-3 flex items-center gap-2 text-xs font-medium text-muted">
+                                    <Loader2 size={13} className="animate-spin text-accent" />
+                                    The orchestra is analyzing <span className="text-fg">{datasetName}</span>…
+                                </p>
+                                <AgentTimeline
+                                    sessionId={sessionId}
+                                    flow={ANALYSIS_FLOW}
+                                    runId={1}
+                                    finished={false}
+                                    onAgentsChange={setAnalysisAgents}
+                                />
                             </div>
-                        </div>
-                    )}
+                        )}
 
-                    {/* Conversation */}
-                    {messages.map((m, i) => (
-                        <MessageBubble
-                            key={i}
-                            {...m}
-                            onViewChart={() => setCanvasTab("results")}
-                            stream={i === messages.length - 1 && m.role === "assistant" && !isLoading}
-                        />
-                    ))}
+                        {analysisError && (
+                            <div className="rounded-2xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+                                Could not complete analysis: {analysisError}
+                            </div>
+                        )}
 
-                    {/* Live NLQ pipeline */}
-                    {isLoading && (
-                        <div className="rounded-2xl border border-border bg-surface p-4">
-                            <AgentTimeline
-                                sessionId={sessionId}
-                                flow={NLQ_FLOW}
-                                runId={nlqRunId}
-                                finished={false}
-                                onAgentsChange={(a) => (liveAgents.current = a)}
+                        {/* Degraded-run notice: the pipeline still returns 200 when the LLM is
+                            unreachable, so the output must say it was never interpreted. */}
+                        {analysisResult?.degraded && !analysisLoading && (
+                            <div
+                                role="status"
+                                className="rounded-2xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning"
+                            >
+                                <p className="font-medium">Statistics only — these results were not interpreted.</p>
+                                <p className="mt-1 text-xs opacity-90">
+                                    {analysisResult.degraded_reason ??
+                                        "No language model was available for this run."}
+                                </p>
+                            </div>
+                        )}
+
+                        {/* Narrative intro */}
+                        {analysisResult && !analysisLoading && (
+                            <MessageBubble
+                                role="assistant"
+                                content={analysisResult.narrative}
+                                intro
+                                collapsible
+                                stream={!reopened}
                             />
-                        </div>
-                    )}
+                        )}
+
+                        {/* Sampling notice — never imply the analysis covered
+                            rows it never saw. */}
+                        {analysisResult?.sampling?.sampled && (
+                            <div className="rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-xs text-muted">
+                                Analysed the first{" "}
+                                <span className="font-medium text-fg">
+                                    {analysisResult.sampling.analyzed_rows.toLocaleString()}
+                                </span>{" "}
+                                of{" "}
+                                <span className="font-medium text-fg">
+                                    {analysisResult.sampling.total_rows.toLocaleString()}
+                                </span>{" "}
+                                rows. Raise <code className="font-mono">MAX_ANALYSIS_ROWS</code> to cover the whole file.
+                            </div>
+                        )}
+
+                        {/* Suggested questions */}
+                        {suggested.length > 0 && messages.length === 0 && !isLoading && (
+                            <div className="space-y-2">
+                                <p className="text-xs font-medium text-faint">Suggested questions</p>
+                                <div className="flex flex-col gap-2">
+                                    {suggested.map((s, i) => (
+                                        <button
+                                            key={i}
+                                            onClick={() => submitQuery(s)}
+                                            title={s}
+                                            className="group flex items-start gap-2 rounded-xl border border-border bg-surface px-3.5 py-2.5 text-left text-sm text-muted transition-colors hover:border-accent/50 hover:text-fg"
+                                        >
+                                            <Sparkles size={13} className="mt-0.5 shrink-0 text-accent opacity-60 group-hover:opacity-100" />
+                                            <span className="line-clamp-2">{s}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Conversation */}
+                        {messages.map((m, i) => (
+                            <MessageBubble
+                                key={i}
+                                {...m}
+                                onViewChart={() => setCanvasTab("results")}
+                                stream={i === messages.length - 1 && m.role === "assistant" && !isLoading}
+                            />
+                        ))}
+
+                        {/* Live NLQ pipeline */}
+                        {isLoading && (
+                            <div className="rounded-2xl border border-border bg-surface p-4">
+                                <AgentTimeline
+                                    sessionId={sessionId}
+                                    flow={NLQ_FLOW}
+                                    runId={nlqRunId}
+                                    finished={false}
+                                    onAgentsChange={(a) => (liveAgents.current = a)}
+                                />
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {/* Input */}
