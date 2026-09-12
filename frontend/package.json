@@ -21,7 +21,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.3.3",
-    "@types/node": "20.19.37",
+    "@types/node": "26.5.0",
     "@types/plotly.js": "2.35.14",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.7",
