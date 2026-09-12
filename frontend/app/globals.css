@@ -19,7 +19,8 @@
   /* Text */
   --fg:          #0b1220;
   --muted:       #4a566b;
-  --faint:       #8b97ac;
+  /* 4.5:1 on --bg (AA for body text) — the previous #8b97ac measured ~2.75:1. */
+  --faint:       #65728a;
 
   /* Brand / accents */
   --accent:        #0891b2;  /* cyan-600 — primary, AA on white */
@@ -35,7 +36,6 @@
   --info:     #2563eb;
 
   /* Effects */
-  --glow:    0 0 0 0 transparent;
   --ring:    color-mix(in oklab, var(--accent) 40%, transparent);
   --shadow:  0 1px 2px rgb(11 18 32 / 0.06), 0 4px 16px rgb(11 18 32 / 0.05);
 
@@ -53,7 +53,8 @@
 
   --fg:          #e8eefc;
   --muted:       #9aa7c2;
-  --faint:       #5e6c89;
+  /* 5:1 on --bg (AA for body text) — the previous #5e6c89 measured ~3.7:1. */
+  --faint:       #748299;
 
   --accent:        #22d3ee;  /* electric cyan */
   --accent-fg:     #04141a;
@@ -68,7 +69,6 @@
 
   --ring:    color-mix(in oklab, var(--accent) 55%, transparent);
   --shadow:  0 1px 2px rgb(0 0 0 / 0.4), 0 8px 30px rgb(0 0 0 / 0.35);
-  --glow:    0 0 24px -6px color-mix(in oklab, var(--accent) 55%, transparent);
 
   --chart-grid: rgba(232, 238, 252, 0.08);
 }
@@ -132,9 +132,6 @@ html.theme-ready * {
 }
 *::-webkit-scrollbar-thumb:hover { background: var(--border); }
 
-/* Utility: subtle accent glow for hero/active elements */
-.glow-accent { box-shadow: var(--glow); }
-
 @keyframes shimmer {
   100% { transform: translateX(100%); }
 }
@@ -150,6 +147,30 @@ html.theme-ready * {
   to   { opacity: 1; }
 }
 .animate-fade { animation: fade-in 0.3s ease both; }
+
+/* A breathing ring — the "still alive" cue behind a long-running wait
+   (see components/agents/AnalysisProgress.tsx). */
+@keyframes pulse-ring {
+  0%   { transform: scale(0.6); opacity: 0.45; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+.animate-pulse-ring { animation: pulse-ring 1.8s ease-out infinite; }
+
+/* A single dash traveling along an SVG path (see components/ui/LoginArt.tsx)
+   — the offset is exactly one dash+gap cycle (8 + 40 = 48) so the loop has
+   no visible seam. */
+@keyframes login-flow {
+  to { stroke-dashoffset: -48; }
+}
+.animate-login-flow { animation: login-flow 3s linear infinite; }
+
+/* Slow ambient drift for the login page's background glows. */
+@keyframes drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50%      { transform: translate(22px, -16px) scale(1.08); }
+}
+.animate-drift { animation: drift 16s ease-in-out infinite; }
+
 .shimmer::after {
   content: "";
   position: absolute;

@@ -6,7 +6,7 @@ HTML_TEMPLATE = """
 <head>
   <meta charset="utf-8">
   <title>{{ title }} — Insight Orchestra Report</title>
-  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <style>
     body { font-family: -apple-system, sans-serif; max-width: 960px;
            margin: 0 auto; padding: 40px 20px; color: #1a1a1a; }
@@ -66,7 +66,7 @@ HTML_TEMPLATE = """
 class ExportService:
     def to_html(self, session_data: dict) -> str:
         """Generate self-contained HTML report"""
-        env = Environment(loader=BaseLoader())
+        env = Environment(loader=BaseLoader(), autoescape=True)
         template = env.from_string(HTML_TEMPLATE)
         return str(template.render(**session_data))
 

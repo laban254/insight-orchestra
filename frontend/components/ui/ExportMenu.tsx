@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Download, FileCode2, FileText, Table2 } from "lucide-react";
+import { Download, FileCode2, FileText, Printer, Table2 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { api } from "@/lib/api";
+import { useMenu } from "@/lib/menus";
 
 function downloadUrl(url: string) {
     const a = document.createElement("a");
@@ -14,23 +14,22 @@ function downloadUrl(url: string) {
     a.remove();
 }
 
-export function ExportMenu({ sessionId, onReport }: { sessionId: string; onReport: () => void }) {
-    const [open, setOpen] = useState(false);
-    const ref = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        const h = (e: MouseEvent) => {
-            if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-        };
-        document.addEventListener("mousedown", h);
-        return () => document.removeEventListener("mousedown", h);
-    }, []);
+export function ExportMenu({
+    sessionId,
+    onReport,
+    onPdf,
+}: {
+    sessionId: string;
+    onReport: () => void;
+    onPdf: () => void;
+}) {
+    const { open, toggle, close, ref } = useMenu("export");
 
     const item = (Icon: LucideIcon, label: string, sub: string, onClick: () => void) => (
         <button
             onClick={() => {
                 onClick();
-                setOpen(false);
+                close();
             }}
             className="flex w-full items-start gap-2.5 px-3 py-2.5 text-left transition-colors hover:bg-surface-2"
         >
@@ -45,7 +44,7 @@ export function ExportMenu({ sessionId, onReport }: { sessionId: string; onRepor
     return (
         <div ref={ref} className="relative">
             <button
-                onClick={() => setOpen((o) => !o)}
+                onClick={toggle}
                 title="Export"
                 className="grid h-9 w-9 place-items-center rounded-lg border border-border bg-surface text-muted transition-colors hover:text-fg"
             >
@@ -57,6 +56,7 @@ export function ExportMenu({ sessionId, onReport }: { sessionId: string; onRepor
                         Export
                     </p>
                     {item(FileCode2, "Interactive report", "HTML with live charts", onReport)}
+                    {item(Printer, "PDF", "Print preview — save as PDF", onPdf)}
                     {item(FileText, "Summary", "Markdown report", () =>
                         downloadUrl(api.getExportUrl(sessionId, "markdown"))
                     )}

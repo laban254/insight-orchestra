@@ -1,6 +1,6 @@
 {
   "name": "frontend",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -9,28 +9,27 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@monaco-editor/react": "^4.6.0",
-    "axios": "^1.6.7",
-    "lucide-react": "^0.460.0",
-    "next": "16.1.6",
-    "plotly.js": "^2.29.1",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "react-markdown": "^9.1.0",
-    "react-plotly.js": "^2.6.0",
-    "remark-gfm": "^4.0.1"
+    "axios": "1.20.0",
+    "lucide-react": "1.43.0",
+    "next": "16.3.4",
+    "plotly.js": "4.1.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-markdown": "10.1.0",
+    "react-plotly.js": "4.1.0",
+    "remark-gfm": "4.0.1"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/plotly.js": "^2.33.3",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "@types/react-plotly.js": "^2.6.3",
-    "@types/trusted-types": "^2.0.7",
-    "eslint": "^9",
-    "eslint-config-next": "16.1.6",
-    "tailwindcss": "^4",
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/node": "26.5.0",
+    "@types/plotly.js": "2.35.14",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "@types/react-plotly.js": "2.6.4",
+    "@types/trusted-types": "2.0.7",
+    "eslint": "9.39.4",
+    "eslint-config-next": "16.3.4",
+    "tailwindcss": "4.3.3",
     "typescript": "5.9.3"
   }
 }

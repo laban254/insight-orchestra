@@ -1,8 +1,8 @@
 "use client";
 
 import { X, ChevronDown, Table2 } from "lucide-react";
-import { useState } from "react";
 import { DemoDataset } from "@/lib/types";
+import { useMenu } from "@/lib/menus";
 
 interface DatasetInfo {
     name: string;
@@ -24,7 +24,7 @@ export function DatasetInfoPanel({
     onSwitch?: (datasetId: string) => void | Promise<void>;
     availableDatasets?: Record<string, DemoDataset> | null;
 }) {
-    const [showMenu, setShowMenu] = useState(false);
+    const { open: showMenu, toggle, close, ref } = useMenu("switch-dataset");
 
     if (!info) return null;
 
@@ -43,9 +43,9 @@ export function DatasetInfoPanel({
 
             {/* Switch */}
             {onSwitch && availableDatasets && (
-                <div className="relative">
+                <div ref={ref} className="relative">
                     <button
-                        onClick={() => setShowMenu((v) => !v)}
+                        onClick={toggle}
                         className="flex items-center gap-1 rounded-lg border border-border bg-surface px-2.5 py-2 text-xs font-medium text-muted transition-colors hover:text-fg"
                         title="Switch dataset"
                     >
@@ -60,7 +60,7 @@ export function DatasetInfoPanel({
                                     key={id}
                                     onClick={() => {
                                         onSwitch?.(id);
-                                        setShowMenu(false);
+                                        close();
                                     }}
                                     className="w-full border-b border-border-soft px-3 py-2 text-left transition-colors last:border-0 hover:bg-surface-2"
                                 >

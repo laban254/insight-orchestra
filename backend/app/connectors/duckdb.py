@@ -1,3 +1,5 @@
+import os
+
 import duckdb
 import pandas as pd
 
@@ -19,11 +21,25 @@ class DuckDBConnector(BaseConnector):
         self.connection = None
 
     def connect(self, path: str = ":memory:") -> None:
+        """Open an existing DuckDB database read-only.
+
+        As with SQLite, `duckdb.connect` creates a missing file rather than
+        failing, and an in-memory database has no tables to browse — both
+        surfaced to the user as "0 tables found" on what looked like a
+        successful connection.
         """
-        path = ":memory:" for in-memory (fastest)
-        path = "/path/to/file.db" for persistent
-        """
-        self.connection = duckdb.connect(path)
+        path = path.strip()
+        if path == ":memory:":
+            raise ValueError(
+                "An in-memory DuckDB database is always empty. Point at a database file instead."
+            )
+        if not os.path.isfile(path):
+            raise ValueError(
+                f"No database file at {path}. Copy it into the uploads "
+                f"directory (mounted at ./backend/uploads) and use the path "
+                f"shown there."
+            )
+        self.connection = duckdb.connect(path, read_only=True)
 
     def load_csv(self, file_path: str, table_name: str = "data") -> None:
         """Load CSV directly — no pandas needed, much faster"""

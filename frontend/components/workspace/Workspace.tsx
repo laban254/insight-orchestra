@@ -12,20 +12,22 @@ import type { SavedState } from "@/lib/workspaces";
 
 interface WorkspaceProps {
     workspaceId: string;
-    filePath: string;
+    datasetId: string;
     datasetName: string;
     restore?: SavedState | null;
     onPersist: (state: SavedState) => void;
     onCost?: (delta: { tokens: number; cost: number }) => void;
 }
 
-export function Workspace({ workspaceId, filePath, datasetName, restore, onPersist, onCost }: WorkspaceProps) {
+export function Workspace({ workspaceId, datasetId, datasetName, restore, onPersist, onCost }: WorkspaceProps) {
     const sessionId = workspaceId;
     const reopened = !!restore?.analysisResult;
 
     const [analysisLoading, setAnalysisLoading] = useState(!reopened);
     const [analysisResult, setAnalysisResult] = useState<ProcessResponse | null>(restore?.analysisResult ?? null);
     const [analysisError, setAnalysisError] = useState<string | null>(null);
+    // Drives the Canvas's live progress view while the pipeline runs.
+    const [analysisAgents, setAnalysisAgents] = useState<Agent[]>([]);
 
     const [messages, setMessages] = useState<ChatMessage[]>(restore?.messages ?? []);
     const [input, setInput] = useState("");
@@ -43,13 +45,38 @@ export function Workspace({ workspaceId, filePath, datasetName, restore, onPersi
     persistRef.current = onPersist;
     const costRef = useRef(onCost);
     costRef.current = onCost;
+    // Strictly increasing chart ids. Date.now() alone collides when two
+    // results arrive in the same millisecond, which duplicates React keys.
+    const resultSeq = useRef<number>(Date.now());
 
     const togglePin = useCallback((id: number) => {
         setPinned((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
     }, []);
 
+    // Order in `pinned` is what the compare grid renders in, and it's part
+    // of the persisted workspace state — so reordering here is also what
+    // makes a saved/reopened workspace remember a named dashboard's layout.
+    const reorderPin = useCallback((draggedId: number, targetId: number) => {
+        if (draggedId === targetId) return;
+        setPinned((prev) => {
+            const from = prev.indexOf(draggedId);
+            const to = prev.indexOf(targetId);
+            if (from === -1 || to === -1) return prev;
+            const next = [...prev];
+            next.splice(from, 1);
+            next.splice(to, 0, draggedId);
+            return next;
+        });
+    }, []);
+
     const liveAgents = useRef<Agent[]>([]);
     const scrollRef = useRef<HTMLDivElement>(null);
+    const scrollContentRef = useRef<HTMLDivElement>(null);
+    // Whether the user was already at (or near) the bottom before the last
+    // resize -- so we keep following new content the way a chat app should,
+    // without yanking the view back down on someone who scrolled up to
+    // reread something.
+    const stickToBottomRef = useRef(true);
 
     // ── Auto-analysis on mount (skipped when reopening a saved run) ──────
     useEffect(() => {
@@ -57,7 +84,7 @@ export function Workspace({ workspaceId, filePath, datasetName, restore, onPersi
         let cancelled = false;
         setAnalysisLoading(true);
         setAnalysisError(null);
-        api.processData(filePath, sessionId)
+        api.processData(datasetId, sessionId)
             .then((result) => {
                 if (!cancelled) setAnalysisResult(result);
             })
@@ -71,11 +98,40 @@ export function Workspace({ workspaceId, filePath, datasetName, restore, onPersi
             cancelled = true;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [filePath]);
+    }, [datasetId]);
+
+    // Auto-follow the conversation as it grows -- including word-by-word,
+    // *during* a streaming reveal, not just when a message is added or
+    // removed. A plain effect keyed on [messages, analysisResult, ...] only
+    // fires on those transitions: it can't see MessageBubble's internal
+    // reveal state, so the one scroll it did fire would land wherever the
+    // still-mostly-empty streaming bubble happened to be at that instant
+    // (often skipping straight past it to whatever renders right after,
+    // e.g. the suggested-questions list) and then never correct itself as
+    // the bubble kept growing. Watching the content's actual size instead
+    // keeps following it regardless of *why* it grew.
+    useEffect(() => {
+        const scrollEl = scrollRef.current;
+        const onScroll = () => {
+            if (!scrollEl) return;
+            const distanceFromBottom = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight;
+            stickToBottomRef.current = distanceFromBottom < 120;
+        };
+        scrollEl?.addEventListener("scroll", onScroll, { passive: true });
+        return () => scrollEl?.removeEventListener("scroll", onScroll);
+    }, []);
 
     useEffect(() => {
-        scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-    }, [messages, isLoading, analysisLoading, analysisResult]);
+        const contentEl = scrollContentRef.current;
+        if (!contentEl) return;
+        const observer = new ResizeObserver(() => {
+            if (stickToBottomRef.current) {
+                scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+            }
+        });
+        observer.observe(contentEl);
+        return () => observer.disconnect();
+    }, []);
 
     // Persist the workspace whenever meaningful state changes.
     useEffect(() => {
@@ -104,14 +160,14 @@ export function Workspace({ workspaceId, filePath, datasetName, restore, onPersi
 
             try {
                 const res = await api.naturalLanguageQuery({
-                    file_path: filePath,
+                    dataset_id: datasetId,
                     question,
                     session_id: sessionId,
                 });
                 if (res.tokens_used || res.cost_usd) {
                     costRef.current?.({ tokens: res.tokens_used ?? 0, cost: res.cost_usd ?? 0 });
                 }
-                const resultId = res.plot_json ? Date.now() : undefined;
+                const resultId = res.plot_json ? (resultSeq.current += 1) : undefined;
                 if (res.plot_json && resultId) {
                     setResults((prev) => [
                         { id: resultId, question, answer: res.answer, plotJson: res.plot_json! },
@@ -139,7 +195,7 @@ export function Workspace({ workspaceId, filePath, datasetName, restore, onPersi
                 setIsLoading(false);
             }
         },
-        [filePath, sessionId, isLoading, analysisLoading]
+        [datasetId, sessionId, isLoading, analysisLoading]
     );
 
     const refineResult = useCallback(
@@ -161,80 +217,116 @@ export function Workspace({ workspaceId, filePath, datasetName, restore, onPersi
                     <h2 className="text-sm font-semibold text-fg">Conversation</h2>
                 </div>
 
-                <div ref={scrollRef} className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5">
-                    {/* Live analysis pipeline */}
-                    {analysisLoading && (
-                        <div className="rounded-2xl border border-border bg-surface p-4">
-                            <p className="mb-3 flex items-center gap-2 text-xs font-medium text-muted">
-                                <Loader2 size={13} className="animate-spin text-accent" />
-                                The orchestra is analyzing <span className="text-fg">{datasetName}</span>…
-                            </p>
-                            <AgentTimeline
-                                sessionId={sessionId}
-                                flow={ANALYSIS_FLOW}
-                                runId={1}
-                                finished={false}
-                            />
-                        </div>
-                    )}
-
-                    {analysisError && (
-                        <div className="rounded-2xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
-                            Could not complete analysis: {analysisError}
-                        </div>
-                    )}
-
-                    {/* Narrative intro */}
-                    {analysisResult && !analysisLoading && (
-                        <MessageBubble
-                            role="assistant"
-                            content={analysisResult.narrative}
-                            intro
-                            stream
-                        />
-                    )}
-
-                    {/* Suggested questions */}
-                    {suggested.length > 0 && messages.length === 0 && !isLoading && (
-                        <div className="space-y-2">
-                            <p className="text-xs font-medium text-faint">Suggested questions</p>
-                            <div className="flex flex-col gap-2">
-                                {suggested.map((s, i) => (
-                                    <button
-                                        key={i}
-                                        onClick={() => submitQuery(s)}
-                                        className="group flex items-center gap-2 rounded-xl border border-border bg-surface px-3.5 py-2.5 text-left text-sm text-muted transition-colors hover:border-accent/50 hover:text-fg"
-                                    >
-                                        <Sparkles size={13} className="shrink-0 text-accent opacity-60 group-hover:opacity-100" />
-                                        {s}
-                                    </button>
-                                ))}
+                <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+                    <div ref={scrollContentRef} className="space-y-5">
+                        {/* Live analysis pipeline */}
+                        {analysisLoading && (
+                            <div className="rounded-2xl border border-border bg-surface p-4">
+                                <p className="mb-3 flex items-center gap-2 text-xs font-medium text-muted">
+                                    <Loader2 size={13} className="animate-spin text-accent" />
+                                    The orchestra is analyzing <span className="text-fg">{datasetName}</span>…
+                                </p>
+                                <AgentTimeline
+                                    sessionId={sessionId}
+                                    flow={ANALYSIS_FLOW}
+                                    runId={1}
+                                    finished={false}
+                                    onAgentsChange={setAnalysisAgents}
+                                />
                             </div>
-                        </div>
-                    )}
+                        )}
 
-                    {/* Conversation */}
-                    {messages.map((m, i) => (
-                        <MessageBubble
-                            key={i}
-                            {...m}
-                            onViewChart={() => setCanvasTab("results")}
-                            stream={i === messages.length - 1 && m.role === "assistant" && !isLoading}
-                        />
-                    ))}
+                        {analysisError && (
+                            <div className="rounded-2xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
+                                Could not complete analysis: {analysisError}
+                            </div>
+                        )}
 
-                    {/* Live NLQ pipeline */}
-                    {isLoading && (
-                        <div className="rounded-2xl border border-border bg-surface p-4">
-                            <AgentTimeline
-                                sessionId={sessionId}
-                                flow={NLQ_FLOW}
-                                runId={nlqRunId}
-                                finished={false}
-                                onAgentsChange={(a) => (liveAgents.current = a)}
+                        {/* Degraded-run notice: the pipeline still returns 200 when the LLM is
+                            unreachable, so the output must say it was never interpreted. */}
+                        {analysisResult?.degraded && !analysisLoading && (
+                            <div
+                                role="status"
+                                className="rounded-2xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning"
+                            >
+                                <p className="font-medium">Statistics only — these results were not interpreted.</p>
+                                <p className="mt-1 text-xs opacity-90">
+                                    {analysisResult.degraded_reason ??
+                                        "No language model was available for this run."}
+                                </p>
+                            </div>
+                        )}
+
+                        {/* Narrative intro */}
+                        {analysisResult && !analysisLoading && (
+                            <MessageBubble
+                                role="assistant"
+                                content={analysisResult.narrative}
+                                intro
+                                collapsible
+                                stream={!reopened}
                             />
-                        </div>
-                    )}
+                        )}
+
+                        {/* Sampling notice — never imply the analysis covered
+                            rows it never saw. */}
+                        {analysisResult?.sampling?.sampled && (
+                            <div className="rounded-xl border border-border bg-surface-2 px-3.5 py-2.5 text-xs text-muted">
+                                Analysed the first{" "}
+                                <span className="font-medium text-fg">
+                                    {analysisResult.sampling.analyzed_rows.toLocaleString()}
+                                </span>{" "}
+                                of{" "}
+                                <span className="font-medium text-fg">
+                                    {analysisResult.sampling.total_rows.toLocaleString()}
+                                </span>{" "}
+                                rows. Raise <code className="font-mono">MAX_ANALYSIS_ROWS</code> to cover the whole file.
+                            </div>
+                        )}
+
+                        {/* Suggested questions */}
+                        {suggested.length > 0 && messages.length === 0 && !isLoading && (
+                            <div className="space-y-2">
+                                <p className="text-xs font-medium text-faint">Suggested questions</p>
+                                <div className="flex flex-col gap-2">
+                                    {suggested.map((s, i) => (
+                                        <button
+                                            key={i}
+                                            onClick={() => submitQuery(s)}
+                                            title={s}
+                                            className="group flex items-start gap-2 rounded-xl border border-border bg-surface px-3.5 py-2.5 text-left text-sm text-muted transition-colors hover:border-accent/50 hover:text-fg"
+                                        >
+                                            <Sparkles size={13} className="mt-0.5 shrink-0 text-accent opacity-60 group-hover:opacity-100" />
+                                            <span className="line-clamp-2">{s}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Conversation */}
+                        {messages.map((m, i) => (
+                            <MessageBubble
+                                key={i}
+                                {...m}
+                                onViewChart={() => setCanvasTab("results")}
+                                stream={i === messages.length - 1 && m.role === "assistant" && !isLoading}
+                            />
+                        ))}
+
+                        {/* Live NLQ pipeline */}
+                        {isLoading && (
+                            <div className="rounded-2xl border border-border bg-surface p-4">
+                                <AgentTimeline
+                                    sessionId={sessionId}
+                                    flow={NLQ_FLOW}
+                                    runId={nlqRunId}
+                                    finished={false}
+                                    onAgentsChange={(a) => (liveAgents.current = a)}
+                                />
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {/* Input */}
@@ -247,7 +339,8 @@ export function Workspace({ workspaceId, filePath, datasetName, restore, onPersi
                                     key={i}
                                     onClick={() => submitQuery(s)}
                                     disabled={isLoading}
-                                    className="shrink-0 rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-muted transition-colors hover:border-accent/50 hover:text-fg disabled:opacity-50"
+                                    title={s}
+                                    className="max-w-[240px] shrink-0 truncate rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-muted transition-colors hover:border-accent/50 hover:text-fg disabled:opacity-50"
                                 >
                                     {s}
                                 </button>
@@ -292,12 +385,14 @@ export function Workspace({ workspaceId, filePath, datasetName, restore, onPersi
             {/* ── Canvas pane ───────────────────────────────────────────── */}
             <CanvasPane
                 loading={analysisLoading}
+                loadingAgents={analysisAgents}
                 error={analysisError}
                 result={analysisResult}
                 datasetName={datasetName}
                 results={results}
                 pinned={pinned}
                 onTogglePin={togglePin}
+                onReorderPin={reorderPin}
                 onRefine={refineResult}
                 activeTab={canvasTab}
                 onTab={setCanvasTab}

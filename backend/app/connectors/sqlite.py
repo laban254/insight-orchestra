@@ -1,3 +1,4 @@
+import os
 import sqlite3
 
 import pandas as pd
@@ -11,7 +12,26 @@ class SQLiteConnector(BaseConnector):
         self.cursor = None
 
     def connect(self, connection_string: str) -> None:
-        self.connection = sqlite3.connect(connection_string)
+        """Open an existing SQLite database read-only.
+
+        `sqlite3.connect(path)` *creates* the file when it doesn't exist, so
+        a mistyped path used to connect successfully, report zero tables,
+        and leave an empty database behind. The URI form with mode=ro fails
+        instead — and, since nothing here should ever write, rules out
+        modifying the user's database at all.
+        """
+        path = connection_string.strip()
+        if path == ":memory:":
+            raise ValueError(
+                "An in-memory SQLite database is always empty. Point at a database file instead."
+            )
+        if not os.path.isfile(path):
+            raise ValueError(
+                f"No database file at {path}. Copy it into the uploads "
+                f"directory (mounted at ./backend/uploads) and use the path "
+                f"shown there."
+            )
+        self.connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
         self.cursor = self.connection.cursor()
 
     def get_schema(self) -> dict:

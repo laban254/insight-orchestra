@@ -60,7 +60,10 @@ export function SharedReport({ datasetName, analysisResult, results }: SharedPay
                 {consensus && (
                     <section className="rounded-2xl border border-accent/30 bg-accent-soft/20 p-5">
                         <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-accent">
-                            <TrendingUp size={13} /> Top insight · {Math.round(consensus.confidence * 100)}% confidence
+                            <TrendingUp size={13} /> Top insight ·{" "}
+                            {consensus.confidence == null
+                                ? "confidence not assessed"
+                                : `${Math.round(consensus.confidence * 100)}% confidence`}
                         </p>
                         <p className="mt-2 text-[15px] text-fg">{consensus.hypothesis}</p>
                         {consensus.statistical_argument && (

@@ -20,20 +20,98 @@ export interface LoadTableRequest {
 }
 
 export interface LoadTableResponse {
-  file_path: string;
+  dataset_id: string;
   table_name: string;
   row_count: number;
   column_count: number;
   columns: string[];
 }
 
+/** Multi-table NL->SQL against a live connection — JOIN-capable, a
+ * separate mode from the single-table CSV-pipeline NLQ (NLQRequest). */
+export interface DatabaseQueryRequest {
+  connection_id: string;
+  question: string;
+}
+
+export interface DatabaseQueryResponse {
+  answer: string;
+  sql: string;
+  reasoning: string;
+  plot_json: string | null;
+  tables_used: string[] | null;
+  needs_clarification: boolean;
+  clarification_question: string | null;
+  execution_success: boolean;
+  error: string | null;
+}
+
+/** What the reader had to assume to parse the file, so we can tell the user. */
+export interface ParseAssumptions {
+  encoding: string;
+  delimiter: string;
+  datetime_columns: string[];
+}
+
+export interface UploadResponse {
+  dataset_id: string;
+  name: string;
+  rows: number;
+  columns: number;
+  column_names: string[];
+  dtypes: Record<string, string>;
+  null_counts: Record<string, number>;
+  preview: Record<string, unknown>[];
+  assumptions: ParseAssumptions;
+}
+
+export interface DatasetRowsResponse {
+  columns: string[];
+  rows: Record<string, unknown>[];
+  total_rows: number;
+  offset: number;
+  limit: number;
+  has_more: boolean;
+}
+
+export type TransformOperation = "normalize" | "scale" | "encode";
+
+export interface TransformRequest {
+  column: string;
+  operation: TransformOperation;
+  new_column?: string;
+}
+
+export interface TransformResponse {
+  dataset_id: string;
+  new_column: string;
+  operation: TransformOperation;
+  rows: number;
+  columns: number;
+  column_names: string[];
+  dtypes: Record<string, string>;
+  null_counts: Record<string, number>;
+  preview: Record<string, unknown>[];
+}
+
+export interface LocalDatabaseFile {
+  name: string;
+  path: string;
+}
+
+export interface LocalDatabaseFilesResponse {
+  host_directory: string;
+  files: LocalDatabaseFile[];
+}
+
 export interface NLQRequest {
-  file_path: string;
+  dataset_id: string;
   question: string;
   session_id?: string;
 }
 
 export interface NLQResponse {
+  sampling?: SamplingNotice | null;
   answer: string;
   code: string;
   reasoning: string;
@@ -68,8 +146,8 @@ export interface DemoDatasetListResponse {
 }
 
 export interface DemoDatasetLoadResponse {
-  file_path: string;
   dataset_id: string;
+  demo_id: string;
   dataset_name: string;
   columns: string[];
   row_count: number;
@@ -80,8 +158,9 @@ export interface DemoDatasetLoadResponse {
 
 export interface ScoredHypothesis {
   hypothesis: string;
-  confidence: number;
-  business_value: number;
+  /** null when no LLM was available to score the claim — render "not assessed", never 0%. */
+  confidence: number | null;
+  business_value: number | null;
   statistical_argument: string;
   business_argument: string;
 }
@@ -129,4 +208,55 @@ export interface ProcessResponse {
     columns: string[];
     rows: Record<string, unknown>[];
   };
+  sampling?: SamplingNotice | null;
+  /** True when one or more LLM stages fell back to statistics-only output. */
+  degraded?: boolean;
+  degraded_stages?: string[];
+  degraded_reason?: string | null;
+}
+
+/** Present when the dataset exceeded the analysis row cap. */
+export interface SamplingNotice {
+  sampled: boolean;
+  analyzed_rows: number;
+  total_rows: number;
+}
+
+// ---- Auth admin (only meaningful when the backend has AUTH_ENABLED=true) ----
+
+export type UserRole = "admin" | "member" | "viewer";
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  auth_provider: string;
+  created_at: number;
+  is_active: boolean;
+}
+
+export interface ApiKey {
+  id: string;
+  name: string;
+  display_prefix: string;
+  created_at: number;
+  expires_at: number | null;
+  last_used_at: number | null;
+}
+
+/** Returned once, on creation — the raw key is never retrievable again. */
+export interface ApiKeyWithSecret extends ApiKey {
+  key: string;
+}
+
+export interface AuditEntry {
+  id: string;
+  timestamp: number;
+  actor_user_id: string | null;
+  actor_email: string | null;
+  action: string;
+  resource: string | null;
+  detail: Record<string, unknown> | null;
+  ip_address: string | null;
 }

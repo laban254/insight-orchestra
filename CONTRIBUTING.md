@@ -16,10 +16,20 @@ cd insight-orchestra
 ### 2. Run the App
 
 ```bash
-./setup.sh
+./setup.sh --build
 ```
 
 This is the same Docker-first setup used in the [README](README.md#quick-start) and [Setup Guide](docs/SETUP.md) — it writes `backend/.env`, starts the containers, and pulls the Ollama model if you pick that provider. Use this to run the app end-to-end while you work.
+
+`--build` is the part that matters for development: without it, setup pulls the
+released images from GHCR and you'd be running published code rather than your
+own. It's shorthand for layering in the dev override:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+```
+
+Rebuild the same way after changing backend or frontend source.
 
 ### 3. Set Up Local Tooling (for linting, type-checking, and tests)
 
@@ -47,9 +57,21 @@ npm install
 ### 4. Run Tests
 
 ```bash
-# From project root
+# From project root, with the venv from step 3 activated
 pytest tests/ -v
 ```
+
+> **Use the venv, and use Python 3.11** (what CI runs). Running `pytest` against a system
+> Python with unrelated global packages installed typically fails during *collection* with a
+> wall of `ImportError`/`AttributeError` messages that look like real breakage but are just
+> version skew. If you see collection errors before a single test runs, check your interpreter
+> first. As an alternative, run the suite inside the backend container, which already has the
+> pinned dependencies:
+>
+> ```bash
+> docker compose exec backend pip install -q pytest pytest-asyncio
+> docker compose cp ../tests backend:/app/tests && docker compose exec -w /app backend pytest tests/ -q
+> ```
 
 ### 5. Run Linting
 
@@ -111,6 +133,37 @@ Nothing is published to a package registry or container registry as part of this
 
 ---
 
+## Re-recording the demo
+
+The demo assets are generated, not hand-captured. Re-record them whenever the workspace UI changes noticeably:
+
+```bash
+pip install playwright && playwright install chromium   # once
+./scripts/record_demo.py                 # light theme -> demo.{gif,mp4,webm}
+./scripts/record_demo.py --theme dark    # dark theme  -> demo-dark.{gif,mp4,webm}
+```
+
+Record **both** themes. The README picks one via `prefers-color-scheme` and the website follows its own theme toggle, so a missing take leaves half the readers looking at a recording that fights the page around it.
+
+The script drives a real browser against a running stack, waits for the agents to finish and the charts to paint, then writes each format via ffmpeg. Useful flags: `--dataset Customers` to change the story, `--target-seconds 40` for a longer cut, `--headed` to watch it work.
+
+The files are gitignored — a 30s GIF is around 8.5MB, well past the 500KB `check-added-large-files` limit. Publish them to [`media-assets`](https://github.com/laban254/insight-orchestra/releases/tag/media-assets) instead, which is where the README points:
+
+```bash
+gh release upload media-assets docs/assets/demo.gif docs/assets/demo-dark.gif \
+  docs/assets/demo.mp4 docs/assets/demo-dark.mp4 --clobber
+```
+
+`media-assets` is a pre-release with a non-version tag — it exists purely to host binaries and is never picked up as the repo's "Latest" release or by version-parsing tools. Don't upload demo assets to an actual version tag (e.g. `v1.0.0`): the README's links would then need updating on every release.
+
+The pipeline needs a working LLM — the script checks `/config` first and refuses to record if no provider is ready, or if the run falls back to statistics-only (which produces a video full of "not assessed" scores). Verify with:
+
+```bash
+curl -s localhost:8000/config | python3 -m json.tool
+```
+
+---
+
 ## Project Structure
 
 ```
@@ -118,27 +171,38 @@ insight-orchestra/
 ├── backend/
 │   └── app/
 │       ├── api/            # FastAPI route handlers
-│       │   ├── endpoints.py    # Main API routes
-│       │   ├── connectors.py   # DB connection endpoints
+│       │   ├── endpoints.py    # Upload, process, nlq, config, datasets, demo, SSE
+│       │   ├── connectors.py   # DB connection + multi-table NL→SQL endpoints
+│       │   ├── workspaces.py   # Save/list/load/delete named workspaces
 │       │   ├── sessions.py     # Session sharing
-│       │   └── export.py       # Export endpoints
+│       │   ├── export.py       # Export endpoints
+│       │   ├── auth.py         # Login, OIDC, API keys, user management
+│       │   └── audit.py        # Audit log (admin-only)
 │       ├── services/        # Business logic & agents
-│       │   ├── adk_agents.py       # 4-agent pipeline
-│       │   ├── nlq_agent.py        # NL → code agent
+│       │   ├── adk_agents.py       # 4-agent pipeline (Janitor/Hypothesis/Debate/Viz)
+│       │   ├── nlq_agent.py        # NL → pandas code agent (single dataset)
+│       │   ├── db_nlq_agent.py     # NL → SQL agent (multi-table, live DB)
+│       │   ├── summarizer_agent.py # LLM narrative + follow-up questions
 │       │   ├── llm_service.py      # LLM provider abstraction
 │       │   ├── sandbox_executor.py # RestrictedPython sandbox
 │       │   ├── session_manager.py  # Redis/in-memory sessions
-│       │   └── ...                 # explain, summarizer, report
+│       │   ├── workspace_store.py  # Redis/in-memory workspaces
+│       │   ├── connection_store.py # Redis/in-memory DB connection metadata
+│       │   ├── dataset_registry.py # Opaque dataset_id → file path
+│       │   └── auth_session.py, user_store.py, oidc.py, api_keys.py, audit_log.py
 │       ├── connectors/       # Database connectors
-│       └── utils/            # file_utils, demo_data, bigquery
+│       └── utils/            # file_utils, demo_data, bigquery, markdown
 ├── frontend/
-│   ├── app/                 # Next.js App Router pages
+│   ├── app/                 # Next.js App Router pages (incl. login/)
 │   └── components/          # React components
-│       ├── agents/          # AgentPipeline SSE visualization
-│       ├── chat/            # ChatPanel, MessageBubble, CodeBlock
+│       ├── agents/          # AgentTimeline (SSE), AnalysisProgress (loading state)
+│       ├── workspace/       # Workspace, CanvasPane
+│       ├── chat/            # MessageBubble, CodeBlock
 │       ├── upload/          # FileUpload, DatabaseConnect
 │       ├── viz/             # ChartRenderer, DataTable
-│       └── export/          # ExportPanel, ShareButton
+│       ├── export/          # ExportMenu-driven export
+│       ├── admin/           # UsersTab, ApiKeysTab, AuditLogTab (auth on, admin only)
+│       └── ui/               # Hand-built UI primitives (not shadcn/ui)
 ├── docs/                    # Documentation
 └── tests/                   # Unit & integration tests
 ```
@@ -162,7 +226,7 @@ class MyNewAgent(Agent):
 
 ### Step 2: Integrate into Workflow
 
-Add to [`InsightOrchestraWorkflow`](backend/app/services/adk_agents.py:226):
+Add to [`InsightOrchestraWorkflow`](backend/app/services/adk_agents.py):
 
 ```python
 self.my_agent = MyNewAgent()

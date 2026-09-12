@@ -1,0 +1,20 @@
+# Build from source instead of pulling the released GHCR images.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+#   ./setup.sh --build          # same thing, via the setup wizard
+#
+# `pull_policy: build` keeps compose from reaching for the registry when a
+# locally built image is already tagged with the same name.
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    pull_policy: build
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    pull_policy: build

@@ -40,6 +40,8 @@ export interface ChatMessage {
     chartResultId?: number;
     /** The opening narrative message rendered without the chat avatar chrome. */
     intro?: boolean;
+    /** Clamp a long intro to a few lines behind a "show full analysis" toggle. */
+    collapsible?: boolean;
 }
 
 interface MessageBubbleProps extends ChatMessage {
@@ -85,10 +87,14 @@ function Markdown({ children }: { children: string }) {
     );
 }
 
-export function MessageBubble({ role, content, code, reasoning, isError, agents, intro, chartResultId, onViewChart, stream }: MessageBubbleProps) {
+export function MessageBubble({ role, content, code, reasoning, isError, agents, intro, collapsible, chartResultId, onViewChart, stream }: MessageBubbleProps) {
     const isUser = role === "user";
     const [showReasoning, setShowReasoning] = useState(false);
     const { shown, done } = useReveal(content, !!stream && !isUser && !isError);
+    // A long narrative shouldn't be a wall of text at the top of every
+    // conversation — clamp it once it has finished streaming.
+    const canClamp = !!collapsible && !stream && content.length > 320;
+    const [expanded, setExpanded] = useState(false);
 
     if (isUser) {
         return (
@@ -107,7 +113,7 @@ export function MessageBubble({ role, content, code, reasoning, isError, agents,
         <div className="flex gap-2.5">
             <div
                 className={`mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg ${
-                    isError ? "bg-danger/15 text-danger" : "bg-accent-2/15 text-accent-2"
+                    isError ? "bg-danger/15 text-danger" : "bg-accent/15 text-accent"
                 }`}
             >
                 <Sparkles size={14} />
@@ -130,9 +136,25 @@ export function MessageBubble({ role, content, code, reasoning, isError, agents,
                             <p className="text-sm leading-relaxed">{content}</p>
                         ) : (
                             <div className="relative">
-                                <Markdown>{stream ? shown : content}</Markdown>
+                                <div
+                                    className={
+                                        canClamp && !expanded
+                                            ? "relative max-h-[7.5rem] overflow-hidden [mask-image:linear-gradient(to_bottom,black_60%,transparent)]"
+                                            : ""
+                                    }
+                                >
+                                    <Markdown>{stream ? shown : content}</Markdown>
+                                </div>
                                 {stream && !done && (
                                     <span className="ml-0.5 inline-block h-3.5 w-1.5 -translate-y-px animate-pulse rounded-sm bg-accent align-middle" />
+                                )}
+                                {canClamp && (
+                                    <button
+                                        onClick={() => setExpanded((v) => !v)}
+                                        className="mt-1 text-xs font-medium text-accent transition-opacity hover:opacity-80"
+                                    >
+                                        {expanded ? "Show less" : "Show full analysis"}
+                                    </button>
                                 )}
                             </div>
                         )}
@@ -154,7 +176,7 @@ export function MessageBubble({ role, content, code, reasoning, isError, agents,
                     <div>
                         <button
                             onClick={() => setShowReasoning((v) => !v)}
-                            className="flex items-center gap-1.5 text-xs font-medium text-accent-2 transition-opacity hover:opacity-80"
+                            className="flex items-center gap-1.5 text-xs font-medium text-faint transition-colors hover:text-fg"
                         >
                             <Lightbulb size={13} className={showReasoning ? "fill-current" : ""} />
                             {showReasoning ? "Hide reasoning" : "How I figured this out"}

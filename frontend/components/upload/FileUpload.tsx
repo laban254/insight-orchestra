@@ -3,8 +3,23 @@
 import { useState, useCallback } from "react";
 import { UploadCloud, Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
+import { ParseAssumptions } from "@/lib/types";
 
-export function FileUpload({ onUploadSuccess }: { onUploadSuccess: (filePath: string) => void }) {
+interface UploadInfo {
+    type: "uploaded" | "demo";
+    name: string;
+    rows: number | string;
+    columns: number | string;
+    description?: string;
+    use_cases?: string[];
+    assumptions?: ParseAssumptions;
+}
+
+export function FileUpload({
+    onUploadSuccess,
+}: {
+    onUploadSuccess: (datasetId: string, info: UploadInfo) => void;
+}) {
     const [isDragging, setIsDragging] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -30,7 +45,13 @@ export function FileUpload({ onUploadSuccess }: { onUploadSuccess: (filePath: st
         setIsUploading(true);
         try {
             const result = await api.uploadFile(file);
-            onUploadSuccess(result.file_path);
+            onUploadSuccess(result.dataset_id, {
+                name: result.name || file.name,
+                type: "uploaded",
+                rows: result.rows,
+                columns: result.columns,
+                assumptions: result.assumptions,
+            });
         } catch (err: unknown) {
             setError(getErrorMessage(err, "Upload failed"));
         } finally {
@@ -65,23 +86,10 @@ export function FileUpload({ onUploadSuccess }: { onUploadSuccess: (filePath: st
         }
     };
 
-    const loadDemo = async () => {
-        setError(null);
-        setIsUploading(true);
-        try {
-            const result = await api.loadDemoData();
-            onUploadSuccess(result.file_path);
-        } catch (err: unknown) {
-            setError(getErrorMessage(err, "Failed to load demo"));
-        } finally {
-            setIsUploading(false);
-        }
-    };
-
     return (
         <div className="w-full space-y-4">
             <div
-                className={`cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition-colors ${
+                className={`cursor-pointer rounded-xl border p-8 text-center transition-colors ${
                     isDragging ? "border-accent bg-accent-soft/30" : "border-border hover:border-accent/50"
                 }`}
                 onDragEnter={handleDrag}
@@ -89,7 +97,13 @@ export function FileUpload({ onUploadSuccess }: { onUploadSuccess: (filePath: st
                 onDragOver={handleDrag}
                 onDrop={handleDrop}
             >
-                <input type="file" accept=".csv" className="hidden" id="file-upload" onChange={handleChange} />
+                <input
+                    type="file"
+                    accept=".csv,.tsv,.xlsx,.json,.parquet"
+                    className="hidden"
+                    id="file-upload"
+                    onChange={handleChange}
+                />
                 <label htmlFor="file-upload" className="flex cursor-pointer flex-col items-center gap-2">
                     {isUploading ? (
                         <>
@@ -102,7 +116,7 @@ export function FileUpload({ onUploadSuccess }: { onUploadSuccess: (filePath: st
                                 <UploadCloud size={22} />
                             </div>
                             <p className="text-sm font-medium text-fg">Click to upload or drag and drop</p>
-                            <p className="text-xs text-faint">CSV files only</p>
+                            <p className="text-xs text-faint">CSV, TSV, Excel, JSON, or Parquet</p>
                         </>
                     )}
                 </label>
@@ -111,17 +125,6 @@ export function FileUpload({ onUploadSuccess }: { onUploadSuccess: (filePath: st
             {error && (
                 <div className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2.5 text-sm text-danger">{error}</div>
             )}
-
-            <div className="flex items-center justify-between">
-                <span className="text-sm text-faint">Don&apos;t have a dataset?</span>
-                <button
-                    onClick={loadDemo}
-                    disabled={isUploading}
-                    className="text-sm font-medium text-accent transition-opacity hover:opacity-80 disabled:opacity-50"
-                >
-                    Use demo dataset
-                </button>
-            </div>
         </div>
     );
 }

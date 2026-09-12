@@ -99,7 +99,8 @@ def fake_connector(monkeypatch):
 
 async def _connect(store, fake_connector) -> str:
     result = await connectors_api.connect_database(
-        ConnectRequest(type="postgresql", connection_string="postgresql://u:p@h:5432/db")
+        ConnectRequest(type="postgresql", connection_string="postgresql://u:p@h:5432/db"),
+        user=None,
     )
     return result["connection_id"]
 
@@ -108,7 +109,8 @@ class TestConnectRegistersConnection:
     @pytest.mark.asyncio
     async def test_connect_returns_connection_id_and_schema(self, store, fake_connector):
         result = await connectors_api.connect_database(
-            ConnectRequest(type="postgresql", connection_string="postgresql://u:p@h:5432/db")
+            ConnectRequest(type="postgresql", connection_string="postgresql://u:p@h:5432/db"),
+            user=None,
         )
         assert result["status"] == "connected"
         assert "connection_id" in result
@@ -119,7 +121,8 @@ class TestConnectRegistersConnection:
         """The live connection must not be held open across requests — a
         later request can land on a different uvicorn worker process."""
         await connectors_api.connect_database(
-            ConnectRequest(type="postgresql", connection_string="postgresql://u:p@h:5432/db")
+            ConnectRequest(type="postgresql", connection_string="postgresql://u:p@h:5432/db"),
+            user=None,
         )
         fake_connector.disconnect.assert_called_once()
 
@@ -136,8 +139,17 @@ class TestLoadTable:
         assert result["table_name"] == "users"
         assert result["row_count"] == 2
         assert result["column_count"] == 2
-        loaded = pd.read_csv(result["file_path"])
-        assert list(loaded["name"]) == ["Alice", "Bob"]
+        # The table is materialized under an opaque dataset id; the client
+        # never receives a server path.
+        assert "file_path" not in result
+        from app.services.dataset_registry import get_dataset_registry
+
+        registry = get_dataset_registry()
+        try:
+            loaded = pd.read_csv(registry.resolve_path(result["dataset_id"]))
+            assert list(loaded["name"]) == ["Alice", "Bob"]
+        finally:
+            registry.delete(result["dataset_id"])
 
         query = fake_connector.execute_query.call_args[0][0]
         assert '"users"' in query
@@ -189,12 +201,83 @@ class TestLoadTable:
         assert "Failed to load table" in exc.value.detail
 
 
+class TestQueryDatabase:
+    @pytest.mark.asyncio
+    async def test_query_returns_agent_response(self, store, fake_connector, monkeypatch):
+        connection_id = await _connect(store, fake_connector)
+
+        from app.services.db_nlq_agent import DatabaseNLQResponse
+
+        mock_agent = MagicMock()
+        mock_agent.run.return_value = DatabaseNLQResponse(
+            answer="Found 2 rows",
+            sql="SELECT * FROM users",
+            reasoning="direct lookup",
+            tables_used=["users"],
+            execution_success=True,
+        )
+        monkeypatch.setattr(connectors_api, "DatabaseNLQAgent", MagicMock(return_value=mock_agent))
+
+        result = await connectors_api.query_database(
+            connectors_api.DatabaseQueryRequest(
+                connection_id=connection_id, question="who are the users?"
+            )
+        )
+
+        assert result["answer"] == "Found 2 rows"
+        assert result["sql"] == "SELECT * FROM users"
+        assert result["tables_used"] == ["users"]
+        assert result["execution_success"] is True
+        mock_agent.run.assert_called_once()
+        # Schema and a real connector instance are handed to the agent, not
+        # just the connection id — the agent needs both to generate SQL and
+        # to actually execute it.
+        args, _ = mock_agent.run.call_args
+        assert args[0] is fake_connector
+        assert "users" in args[1]
+
+    @pytest.mark.asyncio
+    async def test_query_disconnects_after(self, store, fake_connector, monkeypatch):
+        connection_id = await _connect(store, fake_connector)
+        fake_connector.disconnect.reset_mock()
+
+        from app.services.db_nlq_agent import DatabaseNLQResponse
+
+        mock_agent = MagicMock()
+        mock_agent.run.return_value = DatabaseNLQResponse(answer="ok", sql="SELECT 1")
+        monkeypatch.setattr(connectors_api, "DatabaseNLQAgent", MagicMock(return_value=mock_agent))
+
+        await connectors_api.query_database(
+            connectors_api.DatabaseQueryRequest(connection_id=connection_id, question="q")
+        )
+        fake_connector.disconnect.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_query_unknown_connection_404(self, store):
+        with pytest.raises(HTTPException) as exc:
+            await connectors_api.query_database(
+                connectors_api.DatabaseQueryRequest(connection_id="nope", question="q")
+            )
+        assert exc.value.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_query_connect_failure_gives_400(self, store, fake_connector):
+        connection_id = await _connect(store, fake_connector)
+        fake_connector.connect.side_effect = RuntimeError("connection refused")
+
+        with pytest.raises(HTTPException) as exc:
+            await connectors_api.query_database(
+                connectors_api.DatabaseQueryRequest(connection_id=connection_id, question="q")
+            )
+        assert exc.value.status_code == 400
+
+
 class TestDisconnect:
     @pytest.mark.asyncio
     async def test_disconnect_success(self, store, fake_connector):
         connection_id = await _connect(store, fake_connector)
 
-        result = await connectors_api.disconnect_database(connection_id)
+        result = await connectors_api.disconnect_database(connection_id, user=None)
 
         assert result == {"status": "disconnected"}
         with pytest.raises(HTTPException):

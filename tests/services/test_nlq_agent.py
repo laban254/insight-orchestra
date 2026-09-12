@@ -200,24 +200,41 @@ class TestNaturalLanguageQueryAgent:
         assert call_args[1].get("use_fallback") is True or len(long_question) > 200
 
     def test_build_answer_dataframe(self, agent):
-        """Test building answer for DataFrame result."""
+        """A multi-row frame renders as a markdown table."""
         import pandas as pd
 
-        df = pd.DataFrame({"a": [1, 2, 3]})
+        df = pd.DataFrame({"region": ["West", "East"], "revenue": [1876057.42, 1351219.17]})
         answer = agent._build_answer(df, "Show data")
 
-        assert "3 rows" in answer
-        assert "a" in answer
+        assert "| region | revenue |" in answer
+        assert "| --- | --- |" in answer
+        assert "1,876,057.42" in answer  # thousands separators, 2dp
+
+    def test_build_answer_series(self, agent):
+        """A grouped Series becomes a two-column table, not a str() dump."""
+        import pandas as pd
+
+        s = pd.Series([100, 200], index=["a", "b"], name="total")
+        answer = agent._build_answer(s, "totals")
+        assert "| index | total |" in answer
+        assert "| a | 100 |" in answer
+
+    def test_build_answer_single_cell(self, agent):
+        """A 1x1 frame is a sentence, not a one-cell table."""
+        import pandas as pd
+
+        answer = agent._build_answer(pd.DataFrame({"n": [42]}), "count")
+        assert answer == "The answer is 42."
 
     def test_build_answer_numeric(self, agent):
         """Test building answer for numeric result."""
         answer = agent._build_answer(42, "What is the count?")
-        assert answer == "The answer is 42"
+        assert answer == "The answer is 42."
 
     def test_build_answer_float(self, agent):
         """Test building answer for float result."""
         answer = agent._build_answer(29.5, "What is the average?")
-        assert answer == "The answer is 29.50"
+        assert answer == "The answer is 29.50."
 
     def test_get_cost_summary(self, agent, mock_llm_service):
         """Test getting cost summary."""
@@ -237,3 +254,27 @@ class TestNaturalLanguageQueryAgent:
         assert "pandas DataFrame" in agent.SYSTEM_PROMPT
         assert "result" in agent.SYSTEM_PROMPT
         assert "JSON" in agent.SYSTEM_PROMPT
+
+
+class TestNoLlmConfigured:
+    """A deployment with no provider configured at all (every API key
+    empty, Ollama unreachable) must not crash the request — LLMService's
+    constructor raises ValueError for that case, and it's the same shape
+    real CI hits since it never has an ambient .env with a real key."""
+
+    def test_run_returns_a_clean_response_not_a_crash(self, sample_dataframe):
+        agent = NaturalLanguageQueryAgent(llm_service=None)
+        agent.llm = None  # force regardless of ambient env
+
+        response = agent.run(sample_dataframe, "what is the average age?")
+
+        assert response.execution_success is False
+        assert response.error == "no_llm_configured"
+        assert "No LLM provider is configured" in response.answer
+
+    def test_get_cost_summary_does_not_crash(self, sample_dataframe):
+        agent = NaturalLanguageQueryAgent(llm_service=None)
+        agent.llm = None
+
+        summary = agent.get_cost_summary()
+        assert summary == {"total_cost_usd": 0.0, "total_tokens": 0}

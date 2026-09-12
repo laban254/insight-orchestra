@@ -3,13 +3,22 @@ import threading
 import time
 from collections.abc import Callable
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from app.auth import require_role, require_user
+from app.services.user_store import Role, UserRecord
 from app.services.workspace_store import get_workspace_store
 
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
 _store = get_workspace_store()
+
+# Auth posture: with AUTH_ENABLED=False (the default, single-tenant/localhost
+# case) these routes stay exactly as unauthenticated as before — every
+# read/write/list reaches every workspace, same as always. Once auth is on,
+# reads require any signed-in role and writes require member/admin (see
+# require_role below); the /sessions/share size cap (MAX_SHARE_BYTES) is the
+# one hard limit that applies regardless.
 
 _ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
@@ -43,19 +52,22 @@ def _validate_id(workspace_id: str) -> str:
 
 class WorkspaceUpsert(BaseModel):
     datasetName: str = Field(min_length=1, max_length=200)
-    filePath: str = Field(default="", max_length=1000)
+    # Opaque dataset-registry id. Records written before the registry
+    # existed carry an empty string; the UI treats those as unloadable
+    # rather than restoring a workspace whose data it can't reach.
+    datasetId: str = Field(default="", max_length=64)
     createdAt: int | None = None
     state: dict
 
 
 @router.get("")
-async def list_workspaces():
+async def list_workspaces(_user: UserRecord | None = Depends(require_user)):
     """List saved workspaces (metadata only), most recently updated first."""
     return {"workspaces": _store.list_metas()}
 
 
 @router.get("/{workspace_id}")
-async def get_workspace(workspace_id: str):
+async def get_workspace(workspace_id: str, _user: UserRecord | None = Depends(require_user)):
     """Fetch a full workspace record (metadata + saved state)."""
     record = _store.get(_validate_id(workspace_id))
     if record is None:
@@ -64,7 +76,11 @@ async def get_workspace(workspace_id: str):
 
 
 @router.put("/{workspace_id}")
-async def upsert_workspace(workspace_id: str, payload: WorkspaceUpsert):
+async def upsert_workspace(
+    workspace_id: str,
+    payload: WorkspaceUpsert,
+    _user: UserRecord | None = Depends(require_role(Role.MEMBER)),
+):
     """Create or update a workspace. The saved state replaces any previous one."""
     _validate_id(workspace_id)
     now_ms = _now_ms()
@@ -72,7 +88,7 @@ async def upsert_workspace(workspace_id: str, payload: WorkspaceUpsert):
     record = {
         "id": workspace_id,
         "datasetName": payload.datasetName,
-        "filePath": payload.filePath,
+        "datasetId": payload.datasetId,
         "createdAt": payload.createdAt or (existing or {}).get("createdAt") or now_ms,
         "updatedAt": now_ms,
         "state": payload.state,
@@ -81,7 +97,9 @@ async def upsert_workspace(workspace_id: str, payload: WorkspaceUpsert):
 
 
 @router.delete("/{workspace_id}")
-async def delete_workspace(workspace_id: str):
+async def delete_workspace(
+    workspace_id: str, _user: UserRecord | None = Depends(require_role(Role.MEMBER))
+):
     """Delete a saved workspace."""
     _store.delete(_validate_id(workspace_id))
     return {"status": "deleted"}

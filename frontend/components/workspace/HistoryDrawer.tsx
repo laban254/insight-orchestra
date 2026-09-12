@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect } from "react";
 import { X, Plus, Trash2, Clock, Table2 } from "lucide-react";
 import type { WorkspaceMeta } from "@/lib/workspaces";
+import { useCloseMenus } from "@/lib/menus";
 
 function timeAgo(ts: number): string {
     const s = Math.floor((Date.now() - ts) / 1000);
@@ -22,6 +24,19 @@ interface Props {
 }
 
 export function HistoryDrawer({ open, onClose, workspaces, activeId, onOpen, onDelete, onNew }: Props) {
+    const closeMenus = useCloseMenus();
+    useEffect(() => {
+        if (open) closeMenus();
+    }, [open, closeMenus]);
+
+    // Close on Escape while the drawer is up.
+    useEffect(() => {
+        if (!open) return;
+        const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [open, onClose]);
+
     return (
         <>
             {/* Scrim */}
@@ -44,9 +59,10 @@ export function HistoryDrawer({ open, onClose, workspaces, activeId, onOpen, onD
                     </h2>
                     <button
                         onClick={onClose}
+                        aria-label="Close history"
                         className="grid h-8 w-8 place-items-center rounded-lg text-muted transition-colors hover:text-fg"
                     >
-                        <X size={16} />
+                        <X size={16} aria-hidden="true" />
                     </button>
                 </div>
 
@@ -83,12 +99,16 @@ export function HistoryDrawer({ open, onClose, workspaces, activeId, onOpen, onD
                                             <span className="block text-[11px] text-faint">{timeAgo(w.updatedAt)}</span>
                                         </span>
                                     </button>
+                                    {/* aria-label names the target: a bare "Delete" repeats
+                                        identically down the list and is ambiguous out of
+                                        visual context. */}
                                     <button
                                         onClick={() => onDelete(w.id)}
+                                        aria-label={`Delete analysis: ${w.datasetName}`}
                                         title="Delete"
-                                        className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-faint opacity-0 transition-all hover:text-danger group-hover:opacity-100"
+                                        className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-faint opacity-0 transition-all hover:text-danger group-hover:opacity-100 focus-visible:opacity-100"
                                     >
-                                        <Trash2 size={14} />
+                                        <Trash2 size={14} aria-hidden="true" />
                                     </button>
                                 </div>
                             );

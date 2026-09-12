@@ -181,3 +181,74 @@ result = fig is not None
 
         assert result.success is True
         assert result.result is True
+
+    def test_getattr_dunder_escape_blocked(self, executor, sample_dataframe):
+        """A dunder name built from string pieces must not reach __class__."""
+        code = "result = getattr(df, '__cla' + 'ss__')"
+        result = executor.execute(code, sample_dataframe)
+        assert result.success is False
+
+    def test_subclasses_walk_blocked(self, executor, sample_dataframe):
+        """The classic type/object __subclasses__ escape must be blocked."""
+        code = "result = ().__class__.__bases__[0].__subclasses__()"
+        result = executor.execute(code, sample_dataframe)
+        assert result.success is False
+
+    def test_type_and_object_not_exposed(self, executor, sample_dataframe):
+        """type() / object() are no longer handed to generated code."""
+        assert executor.execute("result = type(df)", sample_dataframe).success is False
+        assert executor.execute("result = object()", sample_dataframe).success is False
+
+    def test_literal_dunder_attribute_access_blocked(self, executor, sample_dataframe):
+        """Direct dot syntax (not just getattr()) must go through the same
+        guard — RestrictedPython's compiler refuses it outright."""
+        result = executor.execute("result = df.__class__", sample_dataframe)
+        assert result.success is False
+
+    def test_traceback_frame_escape_blocked(self, executor, sample_dataframe):
+        """A classic sandbox escape: walk an exception's __traceback__ to
+        reach a live frame's globals (and from there, real builtins)."""
+        code = "try:\n    1 / 0\nexcept Exception as e:\n    result = e.__traceback__"
+        result = executor.execute(code, sample_dataframe)
+        assert result.success is False
+
+    def test_globals_and_vars_builtins_not_available(self, executor, sample_dataframe):
+        """globals()/vars() aren't on the allowlist, so they're simply
+        undefined rather than sandboxed — confirm they fail closed."""
+        assert executor.execute("result = globals()", sample_dataframe).success is False
+        assert executor.execute("result = vars()", sample_dataframe).success is False
+
+    def test_builtins_dict_does_not_leak_the_real_import(self, executor, sample_dataframe):
+        """`__builtins__` itself is refused as a variable name at compile
+        time, closing off the "grab the guarded __import__ out of the
+        restricted builtins dict" route."""
+        code = "result = __builtins__['__import__']('os')"
+        result = executor.execute(code, sample_dataframe)
+        assert result.success is False
+
+    def test_attribute_assignment_is_blocked(self, executor, sample_dataframe):
+        """No `_write_` guard is configured, so any `obj.attr = value`
+        fails closed rather than silently allowing mutation."""
+        result = executor.execute("df.__class__ = int\nresult = 1", sample_dataframe)
+        assert result.success is False
+
+    def test_setattr_builtin_not_available(self, executor, sample_dataframe):
+        result = executor.execute("result = setattr(df, 'x', 1)", sample_dataframe)
+        assert result.success is False
+
+    def test_execute_with_retry_stops_at_limit(self, sample_dataframe):
+        """A persistently failing query runs exactly max_retries + 1 times."""
+        executor = SandboxExecutor(timeout_seconds=5)
+        calls = {"n": 0}
+        real_execute = executor.execute
+
+        def counting_execute(code, df=None, **kwargs):
+            calls["n"] += 1
+            return real_execute(code, df, **kwargs)
+
+        executor.execute = counting_execute  # type: ignore[method-assign]
+        result = executor.execute_with_retry(
+            "result = df['does_not_exist'].sum()", sample_dataframe, max_retries=2
+        )
+        assert result.success is False
+        assert calls["n"] == 3

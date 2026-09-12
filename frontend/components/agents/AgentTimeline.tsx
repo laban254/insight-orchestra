@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, X, Loader2, Minus } from "lucide-react";
 import { metaFor } from "@/lib/agents";
+import { getApiBaseUrl } from "@/lib/runtimeEnv";
 
 export type AgentStatus = "waiting" | "running" | "done" | "error" | "skipped";
 
@@ -13,7 +14,9 @@ export interface Agent {
     duration?: number;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+// Every backend route except /health, /docs and /redoc lives under this
+// versioned prefix (see backend/app/main.py).
+const API_BASE = `${getApiBaseUrl()}/api/v1`;
 
 interface Props {
     sessionId: string;
@@ -43,7 +46,16 @@ export function AgentTimeline({ sessionId, flow, runId, finished, onAgentsChange
         if (runId === null) return;
         setAgents(flow.map((id) => ({ id, status: "waiting" as AgentStatus })));
 
-        const source = new EventSource(`${API_BASE}/agents/stream/${sessionId}`);
+        // withCredentials: the session cookie won't cross the :3000 -> :8000
+        // origin boundary otherwise (EventSource defaults to false, unlike
+        // the axios clients in lib/api.ts and lib/auth.tsx) — with
+        // AUTH_ENABLED=true this endpoint 401s without it, and the SSE
+        // stream fails silently (the pipeline still completes via the
+        // /process response; only the live per-agent status updates are
+        // lost).
+        const source = new EventSource(`${API_BASE}/agents/stream/${sessionId}`, {
+            withCredentials: true,
+        });
         sourceRef.current = source;
 
         source.onmessage = (e) => {
@@ -170,17 +182,23 @@ export function AgentTimeline({ sessionId, flow, runId, finished, onAgentsChange
                                 )}
                             </div>
                             <p className="mt-0.5 text-xs text-faint">{meta.description}</p>
-                            {agent.output && (agent.status === "done" || agent.status === "error") && (
-                                <p
-                                    className={`mt-1.5 rounded-lg border px-3 py-2 text-xs leading-relaxed ${
-                                        agent.status === "error"
-                                            ? "border-danger/30 bg-danger/10 text-danger"
-                                            : "border-border-soft bg-surface-2 text-muted"
-                                    }`}
-                                >
-                                    {agent.output}
-                                </p>
-                            )}
+                            {agent.output &&
+                                (agent.status === "done" ||
+                                    agent.status === "error" ||
+                                    agent.status === "running") && (
+                                    <p
+                                        className={`mt-1.5 rounded-lg border px-3 py-2 text-xs leading-relaxed ${
+                                            agent.status === "error"
+                                                ? "border-danger/30 bg-danger/10 text-danger"
+                                                : "border-border-soft bg-surface-2 text-muted"
+                                        }`}
+                                    >
+                                        {agent.output}
+                                        {agent.status === "running" && (
+                                            <span className="animate-pulse text-accent">▍</span>
+                                        )}
+                                    </p>
+                                )}
                         </div>
                     </li>
                 );

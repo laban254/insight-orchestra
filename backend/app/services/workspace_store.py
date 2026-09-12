@@ -56,7 +56,7 @@ class WorkspaceStore:
     @staticmethod
     def _meta(record: dict[str, Any]) -> dict[str, Any]:
         return {
-            k: record.get(k) for k in ("id", "datasetName", "filePath", "createdAt", "updatedAt")
+            k: record.get(k) for k in ("id", "datasetName", "datasetId", "createdAt", "updatedAt")
         }
 
     def list_metas(self) -> list[dict[str, Any]]:

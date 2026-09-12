@@ -4,11 +4,13 @@ import json
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 
+from app.auth import require_user
 from app.services.export_service import ExportService
 from app.services.session_manager import get_session_manager
+from app.services.user_store import UserRecord
 
 router = APIRouter(prefix="/export", tags=["export"])
 export_service = ExportService()
@@ -81,7 +83,7 @@ def _build_session(session_id: str) -> dict:
 
 
 @router.get("/{session_id}/html")
-async def export_html(session_id: str):
+async def export_html(session_id: str, _user: UserRecord | None = Depends(require_user)):
     html = export_service.to_html(_build_session(session_id))
     return HTMLResponse(
         content=html,
@@ -90,7 +92,7 @@ async def export_html(session_id: str):
 
 
 @router.get("/{session_id}/markdown")
-async def export_markdown(session_id: str):
+async def export_markdown(session_id: str, _user: UserRecord | None = Depends(require_user)):
     md = export_service.to_markdown(_build_session(session_id))
     return PlainTextResponse(
         content=md,
@@ -99,7 +101,7 @@ async def export_markdown(session_id: str):
 
 
 @router.get("/{session_id}/csv")
-async def export_qa_csv(session_id: str):
+async def export_qa_csv(session_id: str, _user: UserRecord | None = Depends(require_user)):
     """Export the session's question/answer/code history as CSV."""
     history = _session_manager.get(session_id)
     if not history:

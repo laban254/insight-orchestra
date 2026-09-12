@@ -13,8 +13,17 @@ handles this) need to be sanitized before being returned.
 import math
 from typing import Any
 
+import pandas as pd
+
 
 def sanitize_json(obj: Any) -> Any:
+    # pandas' NaT is a datetime subclass, so FastAPI's encoder happily turns
+    # it into the literal string "NaT" and it renders as text in the preview
+    # table. It means "missing", so it becomes null like any other gap.
+    # Compared by identity: NaT is a singleton, and `!=` on an array-like
+    # would raise rather than answer.
+    if obj is pd.NaT:
+        return None
     if isinstance(obj, float):
         return None if (math.isnan(obj) or math.isinf(obj)) else obj
     if isinstance(obj, dict):

@@ -8,6 +8,16 @@ from .base import BaseConnector
 
 logger = logging.getLogger(__name__)
 
+# Word-boundary matched so a tab/newline before a keyword (whitespace SQL
+# treats identically to a space) can't slip past a literal " KEYWORD "
+# substring check, and so a column named e.g. "updated_at" is never a false
+# positive. This is defense in depth, not the primary control — connect()
+# also puts the session itself into read-only mode, which the database
+# enforces regardless of what this regex does or doesn't catch.
+_BLOCKED_KEYWORDS = re.compile(
+    r"\b(DROP|DELETE|INSERT|UPDATE|ALTER|TRUNCATE|CREATE|GRANT|REVOKE|EXEC|EXECUTE|CALL)\b"
+)
+
 
 class PostgreSQLConnector(BaseConnector):
     def __init__(self):
@@ -27,6 +37,10 @@ class PostgreSQLConnector(BaseConnector):
         # Log connection without credentials
         logger.info(f"Connecting to PostgreSQL: {self._mask_credentials(connection_string)}")
         self.connection = psycopg2.connect(connection_string)
+        # Primary safety control: the database itself rejects any write for
+        # the life of this connection, regardless of what the query-text
+        # keyword check below does or doesn't catch.
+        self.connection.set_session(readonly=True)
         self.cursor = self.connection.cursor()
 
     def get_schema(self) -> dict:
@@ -52,35 +66,15 @@ class PostgreSQLConnector(BaseConnector):
         return schema
 
     def execute_query(self, sql: str) -> pd.DataFrame:
-        # CRITICAL: read-only safety check - more comprehensive
-        sql_upper = sql.strip().upper()
-
-        # Block dangerous keywords anywhere in the query
-        blocked_keywords = [
-            "DROP",
-            "DELETE",
-            "INSERT",
-            "UPDATE",
-            "ALTER",
-            "TRUNCATE",
-            "CREATE",
-            "GRANT",
-            "REVOKE",
-            "EXEC",
-            "EXECUTE",
-            "CALL",
-        ]
-
         # Also check for semicolons (potential for multiple statements)
         if ";" in sql:
             raise ValueError("Multiple statements are not permitted")
 
-        for keyword in blocked_keywords:
-            # Use word boundary matching to prevent bypass attempts
-            if f" {keyword} " in sql_upper or sql_upper.startswith(keyword):
-                raise ValueError(
-                    f"Keyword '{keyword}' is not permitted. Only SELECT queries are allowed."
-                )
+        match = _BLOCKED_KEYWORDS.search(sql.upper())
+        if match:
+            raise ValueError(
+                f"Keyword '{match.group()}' is not permitted. Only SELECT queries are allowed."
+            )
 
         return pd.read_sql_query(sql, self.connection)
 

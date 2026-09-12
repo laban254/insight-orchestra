@@ -1,10 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { LayoutDashboard, TrendingUp, Lightbulb, AlertTriangle, Rows3, Columns3, CopyMinus, Wand2, BarChart3, MessageSquare, Pin, Columns2, Wand, CornerDownLeft } from "lucide-react";
+import { LayoutDashboard, TrendingUp, Lightbulb, AlertTriangle, Rows3, Columns3, CopyMinus, Wand2, BarChart3, MessageSquare, Pin, Columns2, Wand, CornerDownLeft, GripVertical } from "lucide-react";
 import { ProcessResponse, ScoredHypothesis } from "@/lib/types";
 import { ChartRenderer } from "@/components/viz/ChartRenderer";
 import { DataTable } from "@/components/viz/DataTable";
+import { LazyMount } from "@/components/viz/LazyMount";
+import { AnalysisProgress } from "@/components/agents/AnalysisProgress";
+import type { Agent } from "@/components/agents/AgentTimeline";
 
 export interface QueryResult {
     id: number;
@@ -15,12 +18,15 @@ export interface QueryResult {
 
 interface CanvasPaneProps {
     loading: boolean;
+    /** Live agent stream driving the loading state — see AnalysisProgress. */
+    loadingAgents: Agent[];
     error: string | null;
     result: ProcessResponse | null;
     datasetName: string;
     results: QueryResult[];
     pinned: number[];
     onTogglePin: (id: number) => void;
+    onReorderPin: (draggedId: number, targetId: number) => void;
     onRefine: (r: QueryResult, instruction: string) => void;
     activeTab: "overview" | "results";
     onTab: (t: "overview" | "results") => void;
@@ -66,7 +72,9 @@ function ResultCard({
                     <Pin size={13} className={pinned ? "fill-current" : ""} />
                 </button>
             </div>
-            <ChartRenderer plotJsonStr={r.plotJson} height={height} />
+            <LazyMount height={height}>
+                <ChartRenderer plotJsonStr={r.plotJson} height={height} />
+            </LazyMount>
             {!compact && onRefine && (
                 <div className="flex items-center gap-1.5 rounded-xl border border-border bg-surface px-2 py-1.5 focus-within:border-accent/50">
                     <Wand size={14} className="ml-1 shrink-0 text-accent-2" />
@@ -102,7 +110,20 @@ function Stat({ icon: Icon, label, value, tint }: { icon: typeof Rows3; label: s
     );
 }
 
-function Meter({ label, value, color }: { label: string; value: number; color: string }) {
+function Meter({ label, value, color }: { label: string; value: number | null; color: string }) {
+    // A null score means nothing assessed this claim. Showing an empty bar would read as
+    // "scored zero", so say so in words and drop the bar entirely.
+    if (value == null || Number.isNaN(value)) {
+        return (
+            <div>
+                <div className="mb-1 flex items-center justify-between text-[11px]">
+                    <span className="text-faint">{label}</span>
+                    <span className="font-mono font-medium text-faint">not assessed</span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full border border-dashed border-border-soft bg-transparent" />
+            </div>
+        );
+    }
     const pct = Math.round(value * 100);
     return (
         <div>
@@ -136,11 +157,30 @@ function Skeleton() {
     );
 }
 
-export function CanvasPane({ loading, error, result, datasetName, results, pinned, onTogglePin, onRefine, activeTab, onTab }: CanvasPaneProps) {
+export function CanvasPane({
+    loading,
+    loadingAgents,
+    error,
+    result,
+    datasetName,
+    results,
+    pinned,
+    onTogglePin,
+    onReorderPin,
+    onRefine,
+    activeTab,
+    onTab,
+}: CanvasPaneProps) {
+    const [draggedId, setDraggedId] = useState<number | null>(null);
+    const [dragOverId, setDragOverId] = useState<number | null>(null);
     const report = result?.cleaner.report;
     const pinnedResults = pinned
         .map((id) => results.find((r) => r.id === id))
         .filter((r): r is QueryResult => Boolean(r));
+    // "Compare" only means something with two or more charts side by side. With
+    // one pin, a separate section would just render the same chart twice (once
+    // compact here, once full in "All results" below).
+    const showCompare = pinnedResults.length >= 2;
     const consensus = result?.debate.summary.consensus;
     const scored = result?.debate.scored_hypotheses ?? [];
     const plots = result?.viz.chart_info.plots ?? [];
@@ -193,22 +233,49 @@ export function CanvasPane({ loading, error, result, datasetName, results, pinne
                         </div>
                     ) : (
                         <div className="space-y-7">
-                            {/* Pinned — side-by-side compare */}
-                            {pinnedResults.length > 0 && (
+                            {/* Pinned — side-by-side compare (2+ only) */}
+                            {showCompare && (
                                 <div>
                                     <h3 className="mb-3 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-accent">
                                         <Columns2 size={13} /> Pinned · compare
+                                        <span className="ml-auto flex items-center gap-1 text-[10px] font-normal normal-case text-faint">
+                                            <GripVertical size={11} /> Drag to reorder
+                                        </span>
                                     </h3>
-                                    <div className={`grid gap-4 ${pinnedResults.length > 1 ? "2xl:grid-cols-2" : "grid-cols-1"}`}>
+                                    <div className="grid gap-4 2xl:grid-cols-2">
                                         {pinnedResults.map((r) => (
-                                            <ResultCard
+                                            <div
                                                 key={`pin-${r.id}`}
-                                                r={r}
-                                                pinned
-                                                onTogglePin={onTogglePin}
-                                                height={300}
-                                                compact
-                                            />
+                                                draggable
+                                                onDragStart={() => setDraggedId(r.id)}
+                                                onDragEnter={() => draggedId !== null && setDragOverId(r.id)}
+                                                onDragOver={(e) => e.preventDefault()}
+                                                onDrop={(e) => {
+                                                    e.preventDefault();
+                                                    if (draggedId !== null) onReorderPin(draggedId, r.id);
+                                                    setDraggedId(null);
+                                                    setDragOverId(null);
+                                                }}
+                                                onDragEnd={() => {
+                                                    setDraggedId(null);
+                                                    setDragOverId(null);
+                                                }}
+                                                className={`cursor-grab rounded-2xl transition-[opacity,box-shadow] active:cursor-grabbing ${
+                                                    draggedId === r.id ? "opacity-40" : ""
+                                                } ${
+                                                    dragOverId === r.id && draggedId !== r.id
+                                                        ? "ring-2 ring-accent/60 ring-offset-2 ring-offset-surface"
+                                                        : ""
+                                                }`}
+                                            >
+                                                <ResultCard
+                                                    r={r}
+                                                    pinned
+                                                    onTogglePin={onTogglePin}
+                                                    height={300}
+                                                    compact
+                                                />
+                                            </div>
                                         ))}
                                     </div>
                                 </div>
@@ -216,7 +283,7 @@ export function CanvasPane({ loading, error, result, datasetName, results, pinne
 
                             {/* All results — newest first */}
                             <div>
-                                {pinnedResults.length > 0 && (
+                                {showCompare && (
                                     <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-faint">All results</h3>
                                 )}
                                 <div className="space-y-6">
@@ -237,7 +304,14 @@ export function CanvasPane({ loading, error, result, datasetName, results, pinne
                 </div>
             ) : (
             <div className="min-h-0 flex-1 overflow-y-auto p-5">
-                {loading && <Skeleton />}
+                {loading && (
+                    <div className="space-y-8">
+                        <AnalysisProgress agents={loadingAgents} datasetName={datasetName} />
+                        <div className="opacity-50">
+                            <Skeleton />
+                        </div>
+                    </div>
+                )}
 
                 {error && !loading && (
                     <div className="flex h-full items-center justify-center">
@@ -254,8 +328,18 @@ export function CanvasPane({ loading, error, result, datasetName, results, pinne
                         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                             <Stat icon={Rows3} label="Rows" value={report.final_shape[0].toLocaleString()} tint="#22d3ee" />
                             <Stat icon={Columns3} label="Columns" value={String(report.final_shape[1])} tint="#a78bfa" />
-                            <Stat icon={CopyMinus} label="Dupes removed" value={report.duplicates_removed.toLocaleString()} tint="#fbbf24" />
-                            <Stat icon={Wand2} label="Missing fixed" value={report.total_missing.toLocaleString()} tint="#34d399" />
+                            <Stat
+                                icon={CopyMinus}
+                                label="Dupes removed"
+                                value={report.duplicates_removed ? report.duplicates_removed.toLocaleString() : "None"}
+                                tint="#fbbf24"
+                            />
+                            <Stat
+                                icon={Wand2}
+                                label="Missing fixed"
+                                value={report.total_missing ? report.total_missing.toLocaleString() : "None"}
+                                tint="#34d399"
+                            />
                         </div>
 
                         {/* Top insight */}

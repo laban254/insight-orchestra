@@ -27,7 +27,8 @@ export interface SavedState {
 export interface WorkspaceMeta {
     id: string;
     datasetName: string;
-    filePath: string;
+    /** Opaque server-side dataset id. Older records may carry none. */
+    datasetId: string;
     createdAt: number;
     updatedAt: number;
 }
@@ -136,7 +137,7 @@ export async function saveWorkspace(
     try {
         await api.saveWorkspace(meta.id, {
             datasetName: meta.datasetName,
-            filePath: meta.filePath,
+            datasetId: meta.datasetId,
             createdAt: meta.createdAt,
             state,
         });

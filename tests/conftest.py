@@ -81,3 +81,25 @@ import plotly.express as px
 fig = px.bar(df, x='department', y='salary', title='Salary by Department')
 result = {'chart': 'bar', 'fig': fig}
 """
+
+
+@pytest.fixture
+def registered_dataset(tmp_path):
+    """Register a CSV with the dataset registry and yield its id.
+
+    Endpoints address datasets by opaque id now, so tests go through the
+    registry rather than handing over a filesystem path.
+    """
+    from app.services.dataset_registry import get_dataset_registry
+
+    csv_file = tmp_path / "registered.csv"
+    csv_file.write_text(
+        "name,age,department,salary\n"
+        "Alice,25,Engineering,75000\n"
+        "Bob,30,Sales,65000\n"
+        "Charlie,35,Engineering,85000\n"
+    )
+    registry = get_dataset_registry()
+    dataset_id = registry.register(str(csv_file), name="registered.csv", source="upload")
+    yield dataset_id
+    registry.delete(dataset_id, remove_file=False)
