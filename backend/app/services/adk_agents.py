@@ -104,6 +104,22 @@ class DataJanitorAgent(Agent):
             df = df.drop_duplicates()
         report["duplicates_removed"] = num_duplicates
 
+        # Parse object columns that look like dates into real datetime64 dtype.
+        # Left as strings, a date column gets treated as categorical downstream
+        # (e.g. "'2025-09-20' leads 'date'..."), which is meaningless — a single
+        # near-unique value can't meaningfully "lead" a group.
+        for col in df.select_dtypes(include=["object", "string"]).columns:
+            sample = df[col].dropna()
+            if sample.empty:
+                continue
+            # Numeric-as-string columns (zip codes, IDs) can be misread as
+            # epoch-like dates — skip anything that's mostly numeric.
+            if pd.to_numeric(sample, errors="coerce").notna().mean() > 0.5:
+                continue
+            parsed = pd.to_datetime(df[col], errors="coerce", format="mixed")
+            if parsed.notna().mean() >= 0.9:
+                df[col] = parsed
+
         # Missing value analysis
         missing_summary = df.isnull().sum().to_dict()
         report["total_missing"] = int(sum(missing_summary.values()))
@@ -184,13 +200,20 @@ class HypothesisBotAgent(Agent):
         object.__setattr__(self, "llm", llm)
 
     def _generate_fallback_hypotheses(self, df: pd.DataFrame) -> dict[str, Any]:
+        n_rows = max(len(df), 1)
+
+        def is_high_cardinality(col: str) -> bool:
+            # A near-unique column (raw IDs, timestamps) can't meaningfully
+            # "lead" a group — every group has ~1 row.
+            return bool(df[col].nunique(dropna=False) / n_rows > 0.9)
+
         numeric_cols = [
             c for c in df.select_dtypes(include="number").columns if not is_id_like(c, df[c])
         ]
         categorical_cols = [
             c
             for c in df.select_dtypes(include=["object", "string", "category"]).columns
-            if not is_id_like(c, df[c])
+            if not is_id_like(c, df[c]) and not is_high_cardinality(c)
         ]
         datetime_cols = list(df.select_dtypes(include="datetime").columns)
 
@@ -277,7 +300,7 @@ class HypothesisBotAgent(Agent):
         }
 
     @staticmethod
-    def _build_stats_summary(df: pd.DataFrame) -> str:
+    def _build_stats_summary(df: pd.DataFrame, bias_flags: list[str] | None = None) -> str:
         lines = []
         numeric = df.select_dtypes(include="number")
         if not numeric.empty:
@@ -312,22 +335,47 @@ class HypothesisBotAgent(Agent):
                     f"({(hi - lo).days} days, {values.nunique()} distinct values)"
                 )
 
+        # Near-unique columns (IDs, raw timestamps) waste the LLM's limited
+        # context budget on noise — a value_counts() of an ID column is just
+        # a list of singletons, so skip anything above a 90% unique ratio.
         categorical = df.select_dtypes(include=["object", "string", "category"])
         if not categorical.empty:
-            lines.append("\nCategorical distributions:")
-            for col in categorical.columns[:6]:
-                top = df[col].value_counts().head(4).to_dict()
-                lines.append(f"  {col}: {top}")
+            n_rows = max(len(df), 1)
+            informative = [
+                c
+                for c in categorical.columns
+                if categorical[c].nunique(dropna=False) / n_rows <= 0.9
+            ]
+            if informative:
+                lines.append("\nCategorical distributions:")
+                for col in informative[:6]:
+                    top = df[col].value_counts().head(4).to_dict()
+                    lines.append(f"  {col}: {top}")
+
+        if bias_flags:
+            lines.append(
+                "\nData quality flags (heavily imputed — treat related correlations with caution):"
+            )
+            for flag in bias_flags:
+                lines.append(f"  - {flag}")
 
         return "\n".join(lines)
 
-    def run(self, cleaned_data, stats_summary: str | None = None, **kwargs):
+    def run(
+        self,
+        cleaned_data,
+        stats_summary: str | None = None,
+        bias_flags: list[str] | None = None,
+        **kwargs,
+    ):
         df = _as_frame(cleaned_data)
         schema_prompt = DataFrameSchema.to_prompt(DataFrameSchema.from_dataframe(df))
         # Reuse a caller-supplied summary when present (the /process and
-        # workflow paths build it once and share it with the Debate Manager).
+        # workflow paths build it once and share it with the Debate Manager);
+        # bias_flags only matters for the fallback build below, since a
+        # caller-supplied summary already has them baked in if it wants them.
         if stats_summary is None:
-            stats_summary = self._build_stats_summary(df)
+            stats_summary = self._build_stats_summary(df, bias_flags=bias_flags)
         fallback = self._generate_fallback_hypotheses(df)
 
         system_prompt = """You are a senior data scientist generating insights for a business audience.
@@ -621,6 +669,8 @@ class VizWhizAgent(Agent):
                     r = abs(df[[x, y]].corr().iloc[0, 1])
                     if r > 0.2:
                         # OLS trendline needs statsmodels; degrade gracefully if absent.
+                        # Large N overplots into a solid blob — lower opacity keeps
+                        # point density (and the trendline) legible.
                         plots.append(
                             {
                                 "type": "scatter",
@@ -630,6 +680,7 @@ class VizWhizAgent(Agent):
                                     x=x,
                                     y=y,
                                     trendline="ols" if _HAS_STATSMODELS else None,
+                                    opacity=0.3 if len(df) > 5000 else None,
                                     title=f"{x} vs {y}",
                                 ).to_json(),
                             }
@@ -820,9 +871,10 @@ class InsightOrchestraWorkflow:
     def run(self, data):
         cleaner_result = self.cleaner.run(data)
         df = cleaner_result["cleaned_df"]
+        bias_flags = cleaner_result["report"].get("bias_flags")
 
         # Build stats once — shared by Hypothesis Bot and Debate Manager
-        stats_summary = HypothesisBotAgent._build_stats_summary(df)
+        stats_summary = HypothesisBotAgent._build_stats_summary(df, bias_flags=bias_flags)
 
         hypothesis_result = self.hypothesis.run(df, stats_summary)
         hypotheses = hypothesis_result["hypotheses"]

@@ -153,6 +153,8 @@ Input DataFrame
     ↓
 Check duplicates → remove if found
     ↓
+Parse object columns that look like dates → real datetime64 dtype
+    ↓
 Identify missing values per column
     ↓
 Flag bias: columns with >30% missing values
@@ -166,10 +168,23 @@ Detect constant columns (single unique value)
 Output: {"cleaned_df": DataFrame, "report": {...}}
 ```
 
+Date parsing runs before imputation so a `date`-like column becomes a real
+`datetime64` dtype instead of being treated as categorical downstream — left
+as strings, hypothesis generation would otherwise group by individual date
+values (e.g. "'2025-09-20' leads 'date'..."), which is meaningless since a
+near-unique value can't meaningfully "lead" a group.
+
 #### 3.2 Hypothesis Bot Agent
 **File**: [`adk_agents.py`](backend/app/services/adk_agents.py) → `HypothesisBotAgent`
 
 **Purpose**: Generate 5–8 specific, directional, evidence-backed hypotheses using an LLM grounded in actual statistics (descriptive stats, correlations with |r| > 0.3, top category distributions) — not just column names. Falls back to a heuristic group-mean/correlation pass if the LLM is unavailable or fails.
+
+Receives `bias_flags` from Stage 1 (columns >30% imputed) and folds them into
+the stats prompt so the LLM is told which correlations may be artificially
+weakened by imputation. The stats summary also excludes near-unique
+categorical columns (>90% unique ratio, e.g. raw IDs) from its distribution
+section — these would otherwise waste the limited stats budget on
+uninformative singleton counts.
 
 #### 3.3 Debate Manager Agent
 **File**: [`adk_agents.py`](backend/app/services/adk_agents.py) → `DebateManagerAgent`
@@ -184,6 +199,8 @@ Output: {"cleaned_df": DataFrame, "report": {...}}
 **Purpose**: Auto-select visualization types and generate up to 6 Plotly charts, using LLM-based column selection grounded in the consensus hypothesis.
 
 **Logic**: Asks the LLM which 1–2 columns best illustrate the consensus insight, then picks a chart type by data type (numeric×numeric → scatter + trendline or density heatmap; categorical×numeric → bar + box plot; single numeric → histogram; single categorical → bar chart). Falls back through regex extraction from the hypothesis text, then the other hypotheses, then schema heuristics, then single-column histograms, if the primary path yields nothing.
+
+Scatter plots reduce marker opacity (to 0.3) above 5,000 rows so dense point clouds stay legible instead of overplotting into a solid blob.
 
 #### 3.5 NLQ Agent (Natural Language Query)
 **File**: [`nlq_agent.py`](backend/app/services/nlq_agent.py) → `NaturalLanguageQueryAgent`
@@ -249,9 +266,40 @@ get_cost_summary() → dict
 
 **Safety Mechanisms**:
 - **RestrictedPython**: Compiles code with restricted bytecode — removes dangerous builtins
-- **Safety check**: Pre-execution scan for blocked patterns (`import os`, `eval(`, `open(`, etc.)
-- **Timeout**: Configurable (default 30 s), enforced via a `ThreadPoolExecutor` (works from a worker thread, unlike `SIGALRM`)
+- **Safety check**: Pre-execution AST scan for blocked imports (`os`, `subprocess`, `socket`, ...), blocked builtins (`eval`, `exec`, `open`, ...), dangerous dunder attribute access (`__globals__`, `__subclasses__`, ...), and blocked pandas I/O/eval-alike methods regardless of receiver (`.eval()`, `.query()`, `pd.read_pickle()`, `.to_sql()`, `.to_csv()`, etc.) — generated code only ever needs to transform the pre-loaded `df`, so file/network I/O and a second `eval()` have no legitimate use case
+- **Timeout**: Configurable (default 30 s), enforced via `ThreadPoolExecutor.result(timeout=...)` — not `SIGALRM`, which only fires on the main thread and silently no-ops in a worker thread
 - **Output isolation**: stdout/stderr captured via `io.StringIO`
+
+**Allowed in sandbox**:
+```python
+# pandas, plotly.express, numpy pre-imported
+df.groupby(...).agg(...)
+pd.merge(...)
+df['col'].mean()
+px.scatter(df, x='a', y='b')
+```
+
+**Blocked**:
+```python
+os.remove('file.txt')         # File I/O
+requests.get('http://...')   # Network
+exec('malicious_code')       # Code injection
+__import__('subprocess')     # Dynamic imports
+pd.read_pickle('/etc/passwd') # Arbitrary file read + deserialization
+df.to_sql('x', engine)        # Arbitrary DB write
+df.eval('...')                # Secondary eval
+```
+
+**Known limitation**: this is a hand-maintained AST blocklist, not process-level
+isolation — code still runs `exec()`'d in the same OS process as the backend,
+via a worker thread. A blocklist can be exhaustive against `os`/`subprocess`
+but can never be provably exhaustive against a library as large as pandas;
+the method-name list above closes the specific escape vectors identified in
+review (deserialization via `read_pickle`, arbitrary file write via
+`to_csv`/`to_sql`/etc., secondary `eval`/`query`), but it is defense-in-depth,
+not a hard security boundary. For untrusted multi-tenant deployments, running
+the sandbox in a separate container or process (e.g. gVisor, `--network none`,
+read-only filesystem) is the stronger guarantee and is not yet implemented.
 
 **Note**: Memory limiting is declared (`SANDBOX_MEMORY_LIMIT`) but not actively enforced at runtime.
 
@@ -439,8 +487,8 @@ See [API Reference § Authentication](API_REFERENCE.md#authentication) for the f
 | Threat | Mitigation |
 |--------|-----------|
 | Malicious SQL injection | Blocked keywords (`DROP`, `DELETE`, `INSERT`, etc.) on query strings; read-only connectors |
-| Code execution exploits | RestrictedPython sandbox + pre-execution safety scans |
-| Data exfiltration via sandbox | Blocked network imports (`requests`, `urllib`, `socket`) |
+| Code execution exploits | RestrictedPython sandbox + pre-execution AST safety scans (see [3.9](#39-sandbox-executor)) — a blocklist, not process isolation; see that section's "Known limitation" |
+| Data exfiltration via sandbox | Blocked network imports (`requests`, `urllib`, `socket`) + blocked pandas I/O methods (`read_*`/`to_*`/`eval`/`query`) |
 | Resource exhaustion | Execution timeout (30 s default), rate limiting (`RATE_LIMIT_ENABLED`, per-route limits) |
 | Path traversal / arbitrary file read | Datasets, connections, sessions, and workspaces are all addressed by opaque server-minted ids — the client never supplies a filesystem path |
 | Credential exposure | Environment variables only; `.env` excluded from version control; DB connection strings live in Redis with a TTL, not on disk |

@@ -148,6 +148,7 @@ async def process_data(
         sampling = cleaned.sampling
         cleaner_result = {"cleaned_df": cleaned_df, "report": cleaned.report}
         r = cleaned.report
+        bias_flags = r.get("bias_flags")
         push_event(
             sid,
             agent_id="janitor",
@@ -162,7 +163,7 @@ async def process_data(
         # Build the stats summary once and hand it to the hypothesis agent
         # (and, below, the debate agent) instead of recomputing describe()/
         # corr() at each stage.
-        stats_summary = HypothesisBotAgent._build_stats_summary(cleaned_df)
+        stats_summary = HypothesisBotAgent._build_stats_summary(cleaned_df, bias_flags=bias_flags)
         hypothesis_result = await asyncio.to_thread(
             workflow.hypothesis.run, cleaned_df, stats_summary
         )
