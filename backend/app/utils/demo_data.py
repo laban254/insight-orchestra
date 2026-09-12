@@ -118,7 +118,7 @@ def get_movie_demo() -> pd.DataFrame:
 
 DEMO_DATASETS = {
     "sales": {
-        "name": "📊 Sales Analytics",
+        "name": "Sales Analytics",
         "description": "1000 rows of daily sales data with regions and products",
         "rows": 1000,
         "columns": 9,
@@ -126,7 +126,7 @@ DEMO_DATASETS = {
         "loader": get_sales_demo,
     },
     "employees": {
-        "name": "👥 Employee HR Data",
+        "name": "Employee HR Data",
         "description": "500 employees with departments, salaries, and performance",
         "rows": 500,
         "columns": 9,
@@ -134,7 +134,7 @@ DEMO_DATASETS = {
         "loader": get_employee_demo,
     },
     "customers": {
-        "name": "🛍️ Customer E-Commerce",
+        "name": "Customer E-Commerce",
         "description": "800 customers with purchase history and churn prediction",
         "rows": 800,
         "columns": 9,
@@ -142,7 +142,7 @@ DEMO_DATASETS = {
         "loader": get_customer_demo,
     },
     "weather": {
-        "name": "🌤️ Weather Time Series",
+        "name": "Weather Time Series",
         "description": "365 days of weather data across 4 cities",
         "rows": 365,
         "columns": 8,
@@ -150,7 +150,7 @@ DEMO_DATASETS = {
         "loader": get_weather_demo,
     },
     "movies": {
-        "name": "🎬 Movie Database",
+        "name": "Movie Database",
         "description": "600 movies with ratings, budgets, and box office",
         "rows": 600,
         "columns": 10,

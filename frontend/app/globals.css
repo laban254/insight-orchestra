@@ -155,6 +155,22 @@ html.theme-ready * {
   100% { transform: scale(1.9); opacity: 0; }
 }
 .animate-pulse-ring { animation: pulse-ring 1.8s ease-out infinite; }
+
+/* A single dash traveling along an SVG path (see components/ui/LoginArt.tsx)
+   — the offset is exactly one dash+gap cycle (8 + 40 = 48) so the loop has
+   no visible seam. */
+@keyframes login-flow {
+  to { stroke-dashoffset: -48; }
+}
+.animate-login-flow { animation: login-flow 3s linear infinite; }
+
+/* Slow ambient drift for the login page's background glows. */
+@keyframes drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50%      { transform: translate(22px, -16px) scale(1.08); }
+}
+.animate-drift { animation: drift 16s ease-in-out infinite; }
+
 .shimmer::after {
   content: "";
   position: absolute;
