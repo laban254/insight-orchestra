@@ -3,7 +3,7 @@
 <p align="center"><strong>Your data, analyzed by a team of AI agents.</strong></p>
 
 <p align="center">
-  Connect a CSV or database and watch specialized agents clean it, form hypotheses,<br/>
+  Connect a data file or a database and watch specialized agents clean it, form hypotheses,<br/>
   debate them, and visualize what matters — then ask follow-ups in plain English.
 </p>
 
@@ -48,7 +48,7 @@
 
 ## What is Insight Orchestra?
 
-Insight Orchestra is an **open-source AI data analyst you can self-host** — think Julius AI or ChatGPT's data analysis, but running on your own hardware, with your choice of LLM, where your data never leaves your machine. Upload a CSV or connect a database, and a 4-agent pipeline cleans the data, generates evidence-backed hypotheses, scores them in an LLM-refereed debate, and builds interactive Plotly charts. Then keep asking questions in plain English: an NLQ agent writes pandas code and executes it in a locked-down sandbox.
+Insight Orchestra is an **open-source AI data analyst you can self-host** — think Julius AI or ChatGPT's data analysis, but running on your own hardware, with your choice of LLM, where your data never leaves your machine. Upload a data file — CSV, TSV, Excel, JSON, or Parquet — or connect a PostgreSQL, MySQL, SQLite, or DuckDB database, and a 4-agent pipeline cleans the data, generates evidence-backed hypotheses, scores them in an LLM-refereed debate, and builds interactive Plotly charts. Then keep asking questions in plain English: an NLQ agent writes pandas code and executes it in a locked-down sandbox — or, for a connected database, writes and runs read-only SQL directly, joining across tables as needed.
 
 It works with **your choice of LLM** — OpenAI, Anthropic, or DeepSeek in the cloud, or fully local and private with Ollama.
 
@@ -102,7 +102,7 @@ Once `./setup.sh` finishes:
 | Backend API | http://localhost:8000 |
 | Swagger Docs | http://localhost:8000/docs |
 
-Pick one of the five bundled demo datasets (or upload your own CSV, TSV, Excel, JSON, or Parquet file) and the pipeline runs automatically.
+Pick one of the five bundled demo datasets, upload your own file (CSV, TSV, Excel, JSON, or Parquet), or connect a PostgreSQL/MySQL/SQLite/DuckDB database — the pipeline runs automatically either way.
 
 ## How It Works
 
@@ -122,7 +122,8 @@ Each stage streams real-time progress to the UI via SSE. See the [Agent Pipeline
 
 - **Natural Language Queries** — the NLQ agent generates pandas code, executes it in the RestrictedPython sandbox, and returns results + optional Plotly charts
 - **Four LLM Providers** — OpenAI, Anthropic, DeepSeek, or Ollama (any locally-hosted model); switch provider/model at runtime, no restart needed
-- **Multi-Database Support** — PostgreSQL, MySQL, SQLite, DuckDB, and CSV — all read-only, connected through the UI (BigQuery has an experimental endpoint; see the [API Reference](docs/API_REFERENCE.md)). Includes a JOIN-capable natural-language SQL agent that answers questions directly against a connected database, across every table in scope, without materializing a table first
+- **Multiple File Formats** — upload CSV, TSV, Excel (`.xlsx`), JSON, or Parquet; each is sniffed for encoding, delimiter, and date columns on the way in
+- **Multi-Database Support** — PostgreSQL, MySQL, SQLite, and DuckDB, all read-only, connected through the UI (BigQuery has an experimental endpoint; see the [API Reference](docs/API_REFERENCE.md)). Includes a JOIN-capable natural-language SQL agent that answers questions directly against a connected database, across every table in scope, without materializing a table first
 - **Sandboxed Code Execution** — no file I/O, no network access, no dangerous imports; configurable timeout
 - **Real-Time Agent Progress** — SSE streaming shows each agent's status, output, and duration
 - **Workspace, Share & Export** — pin and compare charts, workspace history saved server-side (reopen past runs from any browser), one-click read-only share links (72 h TTL), export as an interactive HTML report, PDF, Markdown summary, or Q&A CSV

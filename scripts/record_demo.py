@@ -215,19 +215,20 @@ def record(args) -> Path:
         page.goto(args.url, wait_until="networkidle", timeout=60_000)
         page.evaluate(CURSOR_SCRIPT)
 
-        picker = page.get_by_role("button", name="Select a demo dataset")
-        picker.wait_for(state="visible", timeout=30_000)
+        # The demo picker is one of three tabs (Upload CSV / Connect Database /
+        # Try a Demo) rather than a collapsed dropdown -- Upload CSV is the
+        # default, so the demo list only appears after switching tabs.
+        demo_tab = page.get_by_role("button", name="Try a Demo")
+        demo_tab.wait_for(state="visible", timeout=30_000)
         page.wait_for_timeout(1_200)  # let the opening frame breathe
 
-        log("opening the dataset picker")
-        click_with_cursor(page, picker)
+        log("opening the demo tab")
+        click_with_cursor(page, demo_tab)
 
-        options = page.locator("#demo-dataset-list [role='option']")
+        options = page.locator("#demo-dataset-list button")
         options.first.wait_for(state="visible", timeout=10_000)
 
-        target = page.locator(
-            f"#demo-dataset-list [role='option']:has-text('{args.dataset}')"
-        ).first
+        target = page.locator(f"#demo-dataset-list button:has-text('{args.dataset}')").first
         if target.count() == 0:
             log(f"no dataset matching {args.dataset!r}; using the first one")
             target = options.first
