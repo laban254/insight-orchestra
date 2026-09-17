@@ -87,7 +87,7 @@ jobs:
           DIGEST: ${{ steps.build.outputs.digest }}
 
       - name: Upload digest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: digests-${{ matrix.component }}-${{ env.PLATFORM_PAIR }}
           path: /tmp/digests/*
