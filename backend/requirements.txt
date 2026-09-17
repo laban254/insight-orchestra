@@ -6,7 +6,7 @@ python-multipart==0.0.32
 pydantic==2.13.5
 openai==2.44.0
 anthropic==0.116.0
-plotly==6.8.0
+plotly==7.0.0
 google-adk==2.8.0
 RestrictedPython==8.5
 duckdb==1.5.5
