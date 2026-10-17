@@ -82,6 +82,9 @@ ipython_config.py
 
 # pyenv
 .python-version
+# ...but the backend's is intentionally committed: CI, .devcontainer and the
+# Dockerfile pin Python 3.11 from backend/.python-version, so it must be tracked.
+!backend/.python-version
 
 # pipenv
 Pipfile.lock

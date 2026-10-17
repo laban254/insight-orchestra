@@ -57,7 +57,10 @@ apiClient.interceptors.response.use(
             typeof window !== 'undefined' &&
             !window.location.pathname.startsWith('/login')
         ) {
-            window.location.href = '/login';
+            // A full navigation, not a router push: this module isn't a
+            // component, so there's no router here. `replace` also avoids
+            // leaving the 401'd page in history behind the login screen.
+            window.location.replace('/login');
         }
         return Promise.reject(error);
     }

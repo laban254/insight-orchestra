@@ -3,23 +3,27 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { AlertCircle, Eye, EyeOff, KeyRound, Loader2, LogIn, ShieldCheck } from "lucide-react";
+import { AlertCircle, ArrowLeft, Eye, EyeOff, KeyRound, Loader2, LogIn } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { apiErrorMessage } from "@/lib/apiError";
-import { AuthBackdrop } from "@/components/ui/AuthBackdrop";
-import { AuthVisual } from "@/components/ui/AuthVisual";
-import { Logo } from "@/components/ui/Logo";
+import { AuthShowcase } from "@/components/ui/AuthShowcase";
+import { AuthBackground } from "@/components/ui/AuthBackground";
+import { LogoMark } from "@/components/ui/Logo";
+import { GithubMark } from "@/components/ui/GithubMark";
 
-/**
- * Sign-in page.
- *
- * Always dark, on the marketing brand system: a navy field lit by
- * cyan/violet/fuchsia glows, a glass card, the brand mark and heading, and the
- * signature gradient on the primary action. On desktop a second panel shows
- * the real five-agent pipeline over a screenshot of the product, so the front
- * door explains what the thing does. The form itself stays conventional —
- * persistent labels, show/hide, Caps Lock hint, autofill-friendly inputs.
- */
+// Dark filled field on the card; focus picks up the app's primary (`--accent`).
+// Placeholder-as-label — each input still carries an `aria-label`.
+const INPUT =
+    "w-full rounded-lg border border-[#2b374d] bg-[#1b2436] px-4 py-2.5 text-[15px] leading-6 text-white outline-none transition-colors placeholder:text-[#7b8798] focus:border-accent focus:ring-2 focus:ring-accent/25";
+
+const LINK =
+    "font-medium text-accent underline decoration-accent/40 underline-offset-4 transition-colors hover:decoration-accent";
+
+/** The marketing site — the app's public front door. */
+const WEBSITE_URL = "https://marketing-insight-orchestra.vercel.app";
+const GITHUB_URL = "https://github.com/laban254/insight-orchestra";
+
+/** Sign-in page — a dark card split into a product showcase and the form. */
 export default function LoginPage() {
     const { authEnabled, oidcConfigured, signupEnabled, user, loading, login, oidcLoginUrl } = useAuth();
     const router = useRouter();
@@ -31,6 +35,7 @@ export default function LoginPage() {
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
+        // Auth off, or already signed in — nothing to do here.
         if (!loading && (!authEnabled || user)) router.replace("/");
     }, [loading, authEnabled, user, router]);
 
@@ -50,109 +55,110 @@ export default function LoginPage() {
 
     if (loading || !authEnabled || user) {
         return (
-            <main className="dark auth-glass grid min-h-screen place-items-center bg-bg [color-scheme:dark]">
+            <main className="dark grid min-h-screen place-items-center bg-[#0b0a0e] [color-scheme:dark]">
                 <Loader2 className="animate-spin text-accent" size={28} aria-label="Loading" />
             </main>
         );
     }
 
     return (
-        <main className="dark auth-glass relative min-h-screen overflow-hidden bg-bg [color-scheme:dark]">
-            <AuthBackdrop />
+        <main className="dark relative flex min-h-screen flex-col items-center justify-center gap-6 px-4 py-10 [color-scheme:dark] sm:px-6">
+            <AuthBackground />
+            <div className="w-full max-w-[1120px] overflow-hidden rounded-[20px] border border-white/[0.08] bg-[#121a2b] shadow-[0_50px_140px_-50px_rgba(0,0,0,0.95)]">
+                <div className="grid lg:min-h-[680px] lg:grid-cols-[0.95fr_1.05fr]">
+                    <AuthShowcase />
 
-            <div className="relative z-10 grid min-h-screen lg:grid-cols-2">
-                {/* ── Form ─────────────────────────────────────────────── */}
-                <div className="flex items-center justify-center px-6 py-12 sm:px-10">
-                    <div className="w-full max-w-[400px]">
-                        <Logo size={12} />
+                    <div className="px-6 py-10 sm:px-10 lg:px-14 lg:py-14">
+                        <div className="mx-auto w-full max-w-[400px]">
+                            <div className="mb-8 flex items-center justify-center gap-2 lg:hidden">
+                                <LogoMark size={26} className="text-accent" />
+                                <span className="font-heading text-base font-semibold text-white">
+                                    Insight Orchestra
+                                </span>
+                            </div>
 
-                        <h1 className="mt-6 font-heading text-2xl font-semibold tracking-tight text-fg sm:text-3xl">
-                            Welcome back
-                        </h1>
-                        <p className="mt-2 text-sm text-muted">
-                            Sign in to your Insight Orchestra workspace.
-                        </p>
+                            <h1 className="font-heading text-[34px] font-semibold leading-tight tracking-tight text-white sm:text-[38px]">
+                                Sign in
+                            </h1>
+                            <p className="mt-3 text-[15px] text-[#9aa6be]">
+                                {signupEnabled ? (
+                                    <>
+                                        New to Insight Orchestra? <Link href="/signup" className={LINK}>Create an account</Link>
+                                    </>
+                                ) : (
+                                    "Sign in to your Insight Orchestra workspace."
+                                )}
+                            </p>
 
-                        <div className="mt-8 rounded-2xl border border-border bg-surface p-6 shadow-[var(--shadow)] backdrop-blur-2xl sm:p-7">
-                            <form onSubmit={handleSubmit} className="space-y-4">
+                            <form onSubmit={handleSubmit} className="mt-8 space-y-3">
                                 {error && (
                                     <div
                                         role="alert"
-                                        className="flex items-start gap-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2.5 text-sm text-danger"
+                                        className="flex items-start gap-2 rounded-lg border border-danger/30 bg-danger/10 px-3.5 py-3 text-sm text-danger"
                                     >
-                                        <AlertCircle size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
+                                        <AlertCircle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
                                         <span>{error}</span>
                                     </div>
                                 )}
 
-                                <div>
-                                    <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-fg">
-                                        Email
-                                    </label>
+                                <input
+                                    id="email"
+                                    name="email"
+                                    type="email"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    placeholder="Email"
+                                    aria-label="Email"
+                                    autoComplete="username"
+                                    required
+                                    autoFocus
+                                    aria-invalid={error ? true : undefined}
+                                    className={INPUT}
+                                />
+
+                                <div className="relative">
                                     <input
-                                        id="email"
-                                        name="email"
-                                        type="email"
-                                        value={email}
-                                        onChange={(e) => setEmail(e.target.value)}
-                                        placeholder="you@company.com"
-                                        autoComplete="username"
-                                        autoFocus
+                                        id="password"
+                                        name="password"
+                                        type={showPassword ? "text" : "password"}
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                        onKeyUp={(e) => setCapsLock(e.getModifierState("CapsLock"))}
+                                        onKeyDown={(e) => setCapsLock(e.getModifierState("CapsLock"))}
+                                        placeholder="Enter your password"
+                                        aria-label="Password"
+                                        autoComplete="current-password"
                                         required
                                         aria-invalid={error ? true : undefined}
-                                        className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2.5 text-sm text-fg outline-none transition-colors placeholder:text-faint focus:border-accent/60"
+                                        className={`${INPUT} pr-12`}
                                     />
-                                </div>
-
-                                <div>
-                                    <div className="mb-1.5 flex items-center justify-between gap-2">
-                                        <label htmlFor="password" className="text-sm font-medium text-fg">
-                                            Password
-                                        </label>
-                                        {capsLock && (
-                                            <span className="text-[11px] font-medium text-warning">Caps Lock is on</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword((v) => !v)}
+                                        aria-label={showPassword ? "Hide password" : "Show password"}
+                                        aria-pressed={showPassword}
+                                        className="absolute right-2 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-md text-[#7b8798] transition-colors hover:text-white"
+                                    >
+                                        {showPassword ? (
+                                            <EyeOff size={16} aria-hidden="true" />
+                                        ) : (
+                                            <Eye size={16} aria-hidden="true" />
                                         )}
-                                    </div>
-                                    <div className="relative">
-                                        <input
-                                            id="password"
-                                            name="password"
-                                            type={showPassword ? "text" : "password"}
-                                            value={password}
-                                            onChange={(e) => setPassword(e.target.value)}
-                                            onKeyUp={(e) => setCapsLock(e.getModifierState("CapsLock"))}
-                                            onKeyDown={(e) => setCapsLock(e.getModifierState("CapsLock"))}
-                                            placeholder="••••••••"
-                                            autoComplete="current-password"
-                                            required
-                                            aria-invalid={error ? true : undefined}
-                                            className="w-full rounded-lg border border-border bg-surface-2 py-2.5 pl-3 pr-11 text-sm text-fg outline-none transition-colors placeholder:text-faint focus:border-accent/60"
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowPassword((v) => !v)}
-                                            aria-label={showPassword ? "Hide password" : "Show password"}
-                                            aria-pressed={showPassword}
-                                            className="absolute right-1.5 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-md text-faint transition-colors hover:text-fg"
-                                        >
-                                            {showPassword ? (
-                                                <EyeOff size={15} aria-hidden="true" />
-                                            ) : (
-                                                <Eye size={15} aria-hidden="true" />
-                                            )}
-                                        </button>
-                                    </div>
+                                    </button>
                                 </div>
+                                {capsLock && (
+                                    <p className="text-[12px] font-medium text-warning">Caps Lock is on</p>
+                                )}
 
                                 <button
                                     type="submit"
                                     disabled={submitting}
-                                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-accent-fg transition-colors hover:opacity-90 disabled:opacity-60"
+                                    className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-[linear-gradient(90deg,#0e7490,#4f46e5)] text-[15px] font-semibold text-white shadow-[0_10px_30px_-10px_rgba(79,70,229,0.7)] transition-[filter] hover:brightness-110 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-accent/40 disabled:opacity-60"
                                 >
                                     {submitting ? (
-                                        <Loader2 size={15} className="animate-spin" aria-hidden="true" />
+                                        <Loader2 size={16} className="animate-spin" aria-hidden="true" />
                                     ) : (
-                                        <LogIn size={15} aria-hidden="true" />
+                                        <LogIn size={16} aria-hidden="true" />
                                     )}
                                     {submitting ? "Signing in…" : "Sign in"}
                                 </button>
@@ -160,48 +166,42 @@ export default function LoginPage() {
 
                             {oidcConfigured && (
                                 <>
-                                    <div className="my-5 flex items-center gap-3 text-xs text-faint">
-                                        <div className="h-px flex-1 bg-border" />
-                                        or
-                                        <div className="h-px flex-1 bg-border" />
+                                    <div className="my-6 flex items-center gap-3 text-xs text-[#7b8798]">
+                                        <span className="h-px flex-1 bg-[#2b374d]" />
+                                        Or sign in with
+                                        <span className="h-px flex-1 bg-[#2b374d]" />
                                     </div>
                                     <a
                                         href={oidcLoginUrl}
-                                        className="flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm font-medium text-fg transition-colors hover:bg-surface-2"
+                                        className="flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-[#2b374d] text-[15px] font-medium text-white transition-colors hover:border-accent/50 hover:bg-white/[0.04]"
                                     >
-                                        <KeyRound size={15} className="text-muted" aria-hidden="true" />
+                                        <KeyRound size={16} className="text-[#9aa6be]" aria-hidden="true" />
                                         Continue with SSO
                                     </a>
                                 </>
                             )}
-
-                            {signupEnabled && (
-                                <p className="mt-6 border-t border-border-soft pt-5 text-center text-sm text-muted">
-                                    Don&apos;t have an account?{" "}
-                                    <Link
-                                        href="/signup"
-                                        className="font-medium text-accent underline-offset-2 hover:underline"
-                                    >
-                                        Sign up
-                                    </Link>
-                                </p>
-                            )}
                         </div>
-
-                        <p className="mt-6 flex items-center gap-1.5 text-xs text-faint">
-                            <ShieldCheck size={13} className="shrink-0 text-brand-cyan" aria-hidden="true" />
-                            Self-hosted — your data never leaves your machine
-                        </p>
-                        {!signupEnabled && (
-                            <p className="mt-1.5 text-xs text-faint">
-                                Accounts are created by your administrator.
-                            </p>
-                        )}
                     </div>
                 </div>
+            </div>
 
-                {/* ── Proof panel ──────────────────────────────────────── */}
-                <AuthVisual />
+            <div className="flex items-center gap-6 text-sm text-[#9aa6be]">
+                <a
+                    href={WEBSITE_URL}
+                    className="inline-flex items-center gap-1.5 transition-colors hover:text-white"
+                >
+                    <ArrowLeft size={14} aria-hidden="true" />
+                    Back to website
+                </a>
+                <a
+                    href={GITHUB_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 transition-colors hover:text-white"
+                >
+                    <GithubMark size={16} />
+                    GitHub
+                </a>
             </div>
         </main>
     );

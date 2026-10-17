@@ -3,26 +3,41 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { AlertCircle, Eye, EyeOff, Loader2, ShieldCheck, UserPlus } from "lucide-react";
+import { AlertCircle, ArrowLeft, Eye, EyeOff, KeyRound, Loader2, UserPlus } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { apiErrorMessage } from "@/lib/apiError";
-import { AuthBackdrop } from "@/components/ui/AuthBackdrop";
-import { AuthVisual } from "@/components/ui/AuthVisual";
-import { Logo } from "@/components/ui/Logo";
+import { AuthShowcase } from "@/components/ui/AuthShowcase";
+import { AuthBackground } from "@/components/ui/AuthBackground";
+import { LogoMark } from "@/components/ui/Logo";
+import { GithubMark } from "@/components/ui/GithubMark";
+
+// Same field treatment as the sign-in page — see login/page.tsx.
+const INPUT =
+    "w-full rounded-lg border border-[#2b374d] bg-[#1b2436] px-4 py-2.5 text-[15px] leading-6 text-white outline-none transition-colors placeholder:text-[#7b8798] focus:border-accent focus:ring-2 focus:ring-accent/25";
+
+const LINK =
+    "font-medium text-accent underline decoration-accent/40 underline-offset-4 transition-colors hover:decoration-accent";
+
+/** The marketing site hosts the public terms; there's no in-app terms page. */
+const TERMS_URL = "https://marketing-insight-orchestra.vercel.app";
+const WEBSITE_URL = TERMS_URL;
+const GITHUB_URL = "https://github.com/laban254/insight-orchestra";
 
 /**
- * Sign-up page — the mirror of the sign-in screen, same brand surface.
- * Email + password only (OAuth comes later); new accounts are created as
- * `member` and signed in immediately. Shown only when the server reports
- * sign-up is enabled; otherwise the visitor is sent to /login.
+ * Sign-up page — the mirror of the sign-in screen. Email + password only (OAuth
+ * comes later); new accounts are created as `member` and signed in immediately.
+ * Shown only when the server reports sign-up is enabled; otherwise the visitor
+ * is sent to /login.
  */
 export default function SignupPage() {
-    const { authEnabled, signupEnabled, user, loading, register } = useAuth();
+    const { authEnabled, signupEnabled, oidcConfigured, user, loading, register, oidcLoginUrl } = useAuth();
     const router = useRouter();
-    const [name, setName] = useState("");
+    const [firstName, setFirstName] = useState("");
+    const [lastName, setLastName] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
+    const [agreed, setAgreed] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -39,7 +54,7 @@ export default function SignupPage() {
         setSubmitting(true);
         setError(null);
         try {
-            await register(name, email, password);
+            await register(`${firstName} ${lastName}`.trim(), email, password);
             router.replace("/");
         } catch (err) {
             setError(apiErrorMessage(err, "Could not create your account. Please try again."));
@@ -49,152 +64,190 @@ export default function SignupPage() {
 
     if (loading || !authEnabled || !signupEnabled || user) {
         return (
-            <main className="dark auth-glass grid min-h-screen place-items-center bg-bg [color-scheme:dark]">
+            <main className="dark grid min-h-screen place-items-center bg-[#0b0a0e] [color-scheme:dark]">
                 <Loader2 className="animate-spin text-accent" size={28} aria-label="Loading" />
             </main>
         );
     }
 
     return (
-        <main className="dark auth-glass relative min-h-screen overflow-hidden bg-bg [color-scheme:dark]">
-            <AuthBackdrop />
+        <main className="dark relative flex min-h-screen flex-col items-center justify-center gap-6 px-4 py-10 [color-scheme:dark] sm:px-6">
+            <AuthBackground />
+            <div className="w-full max-w-[1120px] overflow-hidden rounded-[20px] border border-white/[0.08] bg-[#121a2b] shadow-[0_50px_140px_-50px_rgba(0,0,0,0.95)]">
+                <div className="grid lg:min-h-[680px] lg:grid-cols-[0.95fr_1.05fr]">
+                    <AuthShowcase />
 
-            <div className="relative z-10 grid min-h-screen lg:grid-cols-2">
-                {/* ── Form ─────────────────────────────────────────────── */}
-                <div className="flex items-center justify-center px-6 py-12 sm:px-10">
-                    <div className="w-full max-w-[400px]">
-                        <Logo size={12} />
+                    <div className="px-6 py-10 sm:px-10 lg:px-14 lg:py-14">
+                        <div className="mx-auto w-full max-w-[400px]">
+                            <div className="mb-8 flex items-center justify-center gap-2 lg:hidden">
+                                <LogoMark size={26} className="text-accent" />
+                                <span className="font-heading text-base font-semibold text-white">
+                                    Insight Orchestra
+                                </span>
+                            </div>
 
-                        <h1 className="mt-6 font-heading text-2xl font-semibold tracking-tight text-fg sm:text-3xl">
-                            Create your account
-                        </h1>
-                        <p className="mt-2 text-sm text-muted">
-                            Start analysing your data in minutes.
-                        </p>
+                            <h1 className="font-heading text-[34px] font-semibold leading-tight tracking-tight text-white sm:text-[38px]">
+                                Create an account
+                            </h1>
+                            <p className="mt-3 text-[15px] text-[#9aa6be]">
+                                Already have an account? <Link href="/login" className={LINK}>Log in</Link>
+                            </p>
 
-                        <div className="mt-8 rounded-2xl border border-border bg-surface p-6 shadow-[var(--shadow)] backdrop-blur-2xl sm:p-7">
-                            <form onSubmit={handleSubmit} className="space-y-4">
+                            <form onSubmit={handleSubmit} className="mt-8 space-y-3">
                                 {error && (
                                     <div
                                         role="alert"
-                                        className="flex items-start gap-2 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2.5 text-sm text-danger"
+                                        className="flex items-start gap-2 rounded-lg border border-danger/30 bg-danger/10 px-3.5 py-3 text-sm text-danger"
                                     >
-                                        <AlertCircle size={15} className="mt-0.5 shrink-0" aria-hidden="true" />
+                                        <AlertCircle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
                                         <span>{error}</span>
                                     </div>
                                 )}
 
-                                <div>
-                                    <label htmlFor="name" className="mb-1.5 block text-sm font-medium text-fg">
-                                        Name
-                                    </label>
+                                <div className="grid grid-cols-2 gap-3">
                                     <input
-                                        id="name"
-                                        name="name"
+                                        id="firstName"
+                                        name="firstName"
                                         type="text"
-                                        value={name}
-                                        onChange={(e) => setName(e.target.value)}
-                                        placeholder="Ada Lovelace"
-                                        autoComplete="name"
-                                        autoFocus
+                                        value={firstName}
+                                        onChange={(e) => setFirstName(e.target.value)}
+                                        placeholder="First name"
+                                        aria-label="First name"
+                                        autoComplete="given-name"
                                         required
+                                        maxLength={100}
+                                        autoFocus
+                                        aria-invalid={error ? true : undefined}
+                                        className={INPUT}
+                                    />
+                                    <input
+                                        id="lastName"
+                                        name="lastName"
+                                        type="text"
+                                        value={lastName}
+                                        onChange={(e) => setLastName(e.target.value)}
+                                        placeholder="Last name"
+                                        aria-label="Last name"
+                                        autoComplete="family-name"
+                                        maxLength={100}
+                                        aria-invalid={error ? true : undefined}
+                                        className={INPUT}
+                                    />
+                                </div>
+
+                                <input
+                                    id="email"
+                                    name="email"
+                                    type="email"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    placeholder="Email"
+                                    aria-label="Email"
+                                    autoComplete="email"
+                                    required
+                                    aria-invalid={error ? true : undefined}
+                                    className={INPUT}
+                                />
+
+                                <div className="relative">
+                                    <input
+                                        id="password"
+                                        name="password"
+                                        type={showPassword ? "text" : "password"}
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                        placeholder="Enter your password"
+                                        aria-label="Password"
+                                        autoComplete="new-password"
+                                        required
+                                        minLength={8}
                                         maxLength={200}
                                         aria-invalid={error ? true : undefined}
-                                        className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2.5 text-sm text-fg outline-none transition-colors placeholder:text-faint focus:border-accent/60"
+                                        className={`${INPUT} pr-12`}
                                     />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword((v) => !v)}
+                                        aria-label={showPassword ? "Hide password" : "Show password"}
+                                        aria-pressed={showPassword}
+                                        className="absolute right-2 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-md text-[#7b8798] transition-colors hover:text-white"
+                                    >
+                                        {showPassword ? (
+                                            <EyeOff size={16} aria-hidden="true" />
+                                        ) : (
+                                            <Eye size={16} aria-hidden="true" />
+                                        )}
+                                    </button>
                                 </div>
 
-                                <div>
-                                    <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-fg">
-                                        Email
-                                    </label>
+                                <label className="flex items-center gap-2.5 pt-1 text-[13px] text-[#9aa6be]">
                                     <input
-                                        id="email"
-                                        name="email"
-                                        type="email"
-                                        value={email}
-                                        onChange={(e) => setEmail(e.target.value)}
-                                        placeholder="you@company.com"
-                                        autoComplete="email"
+                                        type="checkbox"
+                                        checked={agreed}
+                                        onChange={(e) => setAgreed(e.target.checked)}
                                         required
-                                        aria-invalid={error ? true : undefined}
-                                        className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2.5 text-sm text-fg outline-none transition-colors placeholder:text-faint focus:border-accent/60"
+                                        className="h-4 w-4 shrink-0 accent-[var(--accent)]"
                                     />
-                                </div>
-
-                                <div>
-                                    <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-fg">
-                                        Password
-                                    </label>
-                                    <div className="relative">
-                                        <input
-                                            id="password"
-                                            name="password"
-                                            type={showPassword ? "text" : "password"}
-                                            value={password}
-                                            onChange={(e) => setPassword(e.target.value)}
-                                            placeholder="At least 8 characters"
-                                            autoComplete="new-password"
-                                            required
-                                            minLength={8}
-                                            maxLength={200}
-                                            aria-invalid={error ? true : undefined}
-                                            aria-describedby="password-hint"
-                                            className="w-full rounded-lg border border-border bg-surface-2 py-2.5 pl-3 pr-11 text-sm text-fg outline-none transition-colors placeholder:text-faint focus:border-accent/60"
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowPassword((v) => !v)}
-                                            aria-label={showPassword ? "Hide password" : "Show password"}
-                                            aria-pressed={showPassword}
-                                            className="absolute right-1.5 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-md text-faint transition-colors hover:text-fg"
-                                        >
-                                            {showPassword ? (
-                                                <EyeOff size={15} aria-hidden="true" />
-                                            ) : (
-                                                <Eye size={15} aria-hidden="true" />
-                                            )}
-                                        </button>
-                                    </div>
-                                    <p id="password-hint" className="mt-1.5 text-[11px] text-faint">
-                                        Use at least 8 characters.
-                                    </p>
-                                </div>
+                                    <span>
+                                        I agree to the{" "}
+                                        <a href={TERMS_URL} className={LINK}>
+                                            Terms &amp; Conditions
+                                        </a>
+                                    </span>
+                                </label>
 
                                 <button
                                     type="submit"
-                                    disabled={submitting}
-                                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-accent-fg transition-colors hover:opacity-90 disabled:opacity-60"
+                                    disabled={submitting || !agreed}
+                                    className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-[linear-gradient(90deg,#0e7490,#4f46e5)] text-[15px] font-semibold text-white shadow-[0_10px_30px_-10px_rgba(79,70,229,0.7)] transition-[filter] hover:brightness-110 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-accent/40 disabled:opacity-60"
                                 >
                                     {submitting ? (
-                                        <Loader2 size={15} className="animate-spin" aria-hidden="true" />
+                                        <Loader2 size={16} className="animate-spin" aria-hidden="true" />
                                     ) : (
-                                        <UserPlus size={15} aria-hidden="true" />
+                                        <UserPlus size={16} aria-hidden="true" />
                                     )}
                                     {submitting ? "Creating account…" : "Create account"}
                                 </button>
                             </form>
 
-                            <p className="mt-6 border-t border-border-soft pt-5 text-center text-sm text-muted">
-                                Already have an account?{" "}
-                                <Link
-                                    href="/login"
-                                    className="font-medium text-accent underline-offset-2 hover:underline"
-                                >
-                                    Sign in
-                                </Link>
-                            </p>
+                            {oidcConfigured && (
+                                <>
+                                    <div className="my-6 flex items-center gap-3 text-xs text-[#7b8798]">
+                                        <span className="h-px flex-1 bg-[#2b374d]" />
+                                        Or register with
+                                        <span className="h-px flex-1 bg-[#2b374d]" />
+                                    </div>
+                                    <a
+                                        href={oidcLoginUrl}
+                                        className="flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-[#2b374d] text-[15px] font-medium text-white transition-colors hover:border-accent/50 hover:bg-white/[0.04]"
+                                    >
+                                        <KeyRound size={16} className="text-[#9aa6be]" aria-hidden="true" />
+                                        Continue with SSO
+                                    </a>
+                                </>
+                            )}
                         </div>
-
-                        <p className="mt-6 flex items-center gap-1.5 text-xs text-faint">
-                            <ShieldCheck size={13} className="shrink-0 text-brand-cyan" aria-hidden="true" />
-                            Self-hosted — your data never leaves your machine
-                        </p>
                     </div>
                 </div>
+            </div>
 
-                {/* ── Proof panel ──────────────────────────────────────── */}
-                <AuthVisual />
+            <div className="flex items-center gap-6 text-sm text-[#9aa6be]">
+                <a
+                    href={WEBSITE_URL}
+                    className="inline-flex items-center gap-1.5 transition-colors hover:text-white"
+                >
+                    <ArrowLeft size={14} aria-hidden="true" />
+                    Back to website
+                </a>
+                <a
+                    href={GITHUB_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 transition-colors hover:text-white"
+                >
+                    <GithubMark size={16} />
+                    GitHub
+                </a>
             </div>
         </main>
     );
