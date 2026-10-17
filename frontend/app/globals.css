@@ -121,6 +121,21 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* Brand typography: headings carry Space Grotesk app-wide (matches the auth
+   pages + marketing). Body stays Inter. */
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-heading);
+  letter-spacing: -0.015em;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--accent) 30%, transparent);
+  color: var(--fg);
+}
+
 /* Smooth color transitions when the theme flips */
 html.theme-ready,
 html.theme-ready * {
