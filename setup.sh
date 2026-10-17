@@ -111,7 +111,23 @@ check_docker() {
   fi
   ok "Docker Compose v2 is available (via '$COMPOSE')"
 
-  docker info >/dev/null 2>&1 || { fail "Docker daemon is not running — start Docker Desktop / dockerd"; return 1; }
+  # A running daemon is still unreachable to a user who isn't in the `docker`
+  # group: the socket is root:docker with mode 660, so `docker info` fails with
+  # "permission denied". That needs a different fix than a stopped daemon, so
+  # read stderr to tell the two apart instead of blaming the daemon.
+  local docker_err
+  if ! docker_err="$(docker info 2>&1 >/dev/null)"; then
+    if printf '%s' "$docker_err" | grep -qi 'permission denied'; then
+      fail "Docker is running, but this user can't access it (permission denied on the Docker socket)"
+      warn "Add yourself to the 'docker' group, then log out and back in:"
+      warn "    sudo usermod -aG docker $(id -un) && newgrp docker"
+      warn "Or re-run as root (containers will then create root-owned files here): sudo ./setup.sh"
+    else
+      fail "Docker daemon is not running — start Docker Desktop / dockerd"
+      [ -n "$docker_err" ] && warn "$docker_err"
+    fi
+    return 1
+  fi
   ok "Docker daemon is running"
 }
 

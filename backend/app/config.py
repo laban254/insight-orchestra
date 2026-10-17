@@ -10,8 +10,10 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    # LLM provider selection: "openai" | "anthropic" | "deepseek" | "ollama"
-    llm_provider: str = Field("openai", alias="LLM_PROVIDER")
+    # LLM provider selection: "openai" | "anthropic" | "deepseek" | "ollama".
+    # Defaults to ollama (local, no API key) to match the documented default and
+    # what ./setup.sh writes; the .env file overrides this in every real deploy.
+    llm_provider: str = Field("ollama", alias="LLM_PROVIDER")
 
     # OpenAI
     openai_api_key: str = Field("", alias="OPENAI_API_KEY")
@@ -28,7 +30,7 @@ class Settings(BaseSettings):
     deepseek_base_url: str = Field("https://api.deepseek.com", alias="DEEPSEEK_BASE_URL")
 
     # Ollama
-    ollama_model: str = Field("qwen2.5:0.5b", alias="OLLAMA_MODEL")
+    ollama_model: str = Field("qwen2.5:1.5b", alias="OLLAMA_MODEL")
     ollama_base_url: str = Field("http://ollama:11434", alias="OLLAMA_BASE_URL")
 
     # LLM call behaviour
