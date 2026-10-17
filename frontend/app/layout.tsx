@@ -33,8 +33,7 @@ const themeInit = `
 (function () {
   try {
     var stored = localStorage.getItem('io-theme');
-    var system = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-    var theme = stored || system;
+    var theme = stored || 'dark';
     if (theme === 'dark') document.documentElement.classList.add('dark');
     document.documentElement.style.colorScheme = theme;
   } catch (e) {}

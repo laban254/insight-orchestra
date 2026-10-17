@@ -330,19 +330,19 @@ export function CanvasPane({
                     <div className="animate-fade space-y-6">
                         {/* KPI row */}
                         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                            <Stat icon={Rows3} label="Rows" value={report.final_shape[0].toLocaleString()} tint="#22d3ee" />
-                            <Stat icon={Columns3} label="Columns" value={String(report.final_shape[1])} tint="#a78bfa" />
+                            <Stat icon={Rows3} label="Rows" value={report.final_shape[0].toLocaleString()} tint="#00dffd" />
+                            <Stat icon={Columns3} label="Columns" value={String(report.final_shape[1])} tint="#b085ff" />
                             <Stat
                                 icon={CopyMinus}
                                 label="Dupes removed"
                                 value={report.duplicates_removed ? report.duplicates_removed.toLocaleString() : "None"}
-                                tint="#fbbf24"
+                                tint="#f7be2b"
                             />
                             <Stat
                                 icon={Wand2}
                                 label="Missing fixed"
                                 value={report.total_missing ? report.total_missing.toLocaleString() : "None"}
-                                tint="#34d399"
+                                tint="#10d39a"
                             />
                         </div>
 
@@ -360,8 +360,8 @@ export function CanvasPane({
                                     <p className="mt-2 text-xs leading-relaxed text-muted">{consensus.statistical_argument}</p>
                                 )}
                                 <div className="mt-4 grid grid-cols-2 gap-4">
-                                    <Meter label="Confidence" value={consensus.confidence} color="#22d3ee" />
-                                    <Meter label="Business value" value={consensus.business_value} color="#e879f9" />
+                                    <Meter label="Confidence" value={consensus.confidence} color="#00dffd" />
+                                    <Meter label="Business value" value={consensus.business_value} color="#ff54f9" />
                                 </div>
                             </div>
                         )}
@@ -394,8 +394,8 @@ export function CanvasPane({
                                         <div key={i} className="rounded-xl border border-border bg-surface p-3.5">
                                             <p className="text-sm leading-relaxed text-muted">{h.hypothesis}</p>
                                             <div className="mt-3 grid grid-cols-2 gap-3">
-                                                <Meter label="Confidence" value={h.confidence} color="#a78bfa" />
-                                                <Meter label="Value" value={h.business_value} color="#34d399" />
+                                                <Meter label="Confidence" value={h.confidence} color="#b085ff" />
+                                                <Meter label="Value" value={h.business_value} color="#10d39a" />
                                             </div>
                                         </div>
                                     ))}

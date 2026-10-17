@@ -52,7 +52,7 @@ function buildReportHtml(
     // canvas, not styled by that CSS, so it needs the matching dark-on-light
     // palette here or it stays the light-on-dark color and goes nearly
     // invisible against the white print background.
-    const fontColor = autoprint ? "#0b1220" : "#e8eefc";
+    const fontColor = autoprint ? "#050b18" : "#edf2f8";
     const gridColor = autoprint ? "rgba(11,18,32,0.15)" : "rgba(232,238,252,0.08)";
 
     // Print/PDF mode waits on every chart's render promise before calling
@@ -67,7 +67,7 @@ function buildReportHtml(
                     paper_bgcolor: "transparent",
                     plot_bgcolor: "transparent",
                     font: { color: fontColor },
-                    colorway: ["#22d3ee", "#e879f9", "#a78bfa", "#34d399", "#fbbf24", "#fb7185"],
+                    colorway: ["#00dffd", "#ff54f9", "#b085ff", "#10d39a", "#f7be2b", "#f94144"],
                     xaxis: { ...(parsed.layout?.xaxis ?? {}), gridcolor: gridColor, tickfont: { color: fontColor }, titlefont: { color: fontColor } },
                     yaxis: { ...(parsed.layout?.yaxis ?? {}), gridcolor: gridColor, tickfont: { color: fontColor }, titlefont: { color: fontColor } },
                 };
@@ -92,30 +92,30 @@ function buildReportHtml(
 <style>
   :root{color-scheme:dark}
   *{box-sizing:border-box}
-  body{margin:0;background:#070b14;color:#e8eefc;font:14px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:40px}
+  body{margin:0;background:#020713;color:#edf2f8;font:14px/1.6 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:40px}
   .wrap{max-width:960px;margin:0 auto}
-  h1{font-size:24px;margin:0 0 4px} .sub{color:#9aa7c2;margin:0 0 28px;font-size:13px}
+  h1{font-size:24px;margin:0 0 4px} .sub{color:#98a6b8;margin:0 0 28px;font-size:13px}
   h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#5e6c89;margin:32px 0 12px}
-  .card{background:#0f1626;border:1px solid #25314c;border-radius:14px;padding:18px;margin-bottom:14px}
+  .card{background:#080f1c;border:1px solid #222e42;border-radius:14px;padding:18px;margin-bottom:14px}
   .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
   .kpi .v{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
-  .kpi .l{font-size:11px;color:#9aa7c2;text-transform:uppercase;letter-spacing:.05em}
-  .top{border-color:rgba(34,211,238,.3);background:rgba(34,211,238,.06)}
-  .warn{border-color:rgba(251,191,36,.4);background:rgba(251,191,36,.08);color:#fbbf24}
-  .top .tag{color:#22d3ee;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em}
-  .muted{color:#9aa7c2;font-size:13px}
+  .kpi .l{font-size:11px;color:#98a6b8;text-transform:uppercase;letter-spacing:.05em}
+  .top{border-color:rgba(0,223,253,.3);background:rgba(0,223,253,.06)}
+  .warn{border-color:rgba(247,190,43,.4);background:rgba(247,190,43,.08);color:#f7be2b}
+  .top .tag{color:#00dffd;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.08em}
+  .muted{color:#98a6b8;font-size:13px}
   .chart{width:100%;height:420px}
   @media(max-width:640px){.kpis{grid-template-columns:repeat(2,1fr)}}
   @media print {
     /* A dark theme wastes ink and most print/PDF pipelines render it
        inconsistently — force a light, paginated layout for print only. */
     :root{color-scheme:light}
-    body{background:#fff;color:#0b1220;padding:0}
-    .card{background:#fff;border:1px solid #d8dfea;break-inside:avoid;page-break-inside:avoid}
-    .top{background:#eefcff;border-color:#22d3ee}
-    .warn{background:#fffaeb;border-color:#f5c451;color:#92620a}
-    .muted{color:#5c6b85}
-    .sub,h2{color:#5c6b85}
+    body{background:#fff;color:#050b18;padding:0}
+    .card{background:#fff;border:1px solid #d4d8de;break-inside:avoid;page-break-inside:avoid}
+    .top{background:#eefcff;border-color:#00dffd}
+    .warn{background:#fffaeb;border-color:#f7be2b;color:#92620a}
+    .muted{color:#5f6d83}
+    .sub,h2{color:#5f6d83}
     h2{break-after:avoid;page-break-after:avoid}
     .chart{height:340px}
   }

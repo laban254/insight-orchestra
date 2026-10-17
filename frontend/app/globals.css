@@ -9,68 +9,68 @@
    ─────────────────────────────────────────────────────────────── */
 :root {
   /* Surfaces */
-  --bg:          #f5f7fb;
+  --bg:          #f6f9fc;
   --surface:     #ffffff;
-  --surface-2:   #eef1f7;
-  --surface-3:   #e4e9f2;
-  --border:      #d8dfea;
-  --border-soft: #e7ecf4;
+  --surface-2:   #f3f5f9;
+  --surface-3:   #e9edf3;
+  --border:      #d4d8de;
+  --border-soft: #e6e9ee;
 
   /* Text */
-  --fg:          #0b1220;
-  --muted:       #4a566b;
-  /* 4.5:1 on --bg (AA for body text) — the previous #8b97ac measured ~2.75:1. */
-  --faint:       #65728a;
+  --fg:          #050b18;
+  --muted:       #3d4958;
+  --faint:       #5d646f;
 
-  /* Brand / accents */
-  --accent:        #0891b2;  /* cyan-600 — primary, AA on white */
+  /* Brand / accents — hue-aligned to the marketing palette. */
+  --accent:        #008da4;  /* marketing cyan hue (oklch 210), darkened for AA on white */
   --accent-fg:     #ffffff;
-  --accent-soft:   #cffafe;
+  --accent-soft:   #d9f2f7;
   --accent-2:      #c026d3;  /* magenta — secondary highlight */
   --accent-2-soft: #fae8ff;
+  --violet:        #6d28d9;
 
   /* Semantic */
-  --success:  #059669;
-  --warning:  #d97706;
-  --danger:   #e11d48;
+  --success:  #0f9d74;
+  --warning:  #c07c0a;
+  --danger:   #d92d36;
   --info:     #2563eb;
 
   /* Effects */
   --ring:    color-mix(in oklab, var(--accent) 40%, transparent);
-  --shadow:  0 1px 2px rgb(11 18 32 / 0.06), 0 4px 16px rgb(11 18 32 / 0.05);
+  --shadow:  0 1px 2px rgb(5 11 24 / 0.06), 0 4px 16px rgb(5 11 24 / 0.05);
 
   /* Plotly chart colorway (consumed in ChartRenderer) */
-  --chart-grid: rgba(11, 18, 32, 0.08);
+  --chart-grid: rgba(5, 11, 24, 0.08);
 }
 
 .dark {
-  --bg:          #070b14;
-  --surface:     #0f1626;
-  --surface-2:   #161f33;
-  --surface-3:   #1d2840;
-  --border:      #25314c;
-  --border-soft: #1a2236;
+  --bg:          #020713;
+  --surface:     #080f1c;
+  --surface-2:   #0f1828;
+  --surface-3:   #172033;
+  --border:      #222e42;
+  --border-soft: #16202f;
 
-  --fg:          #e8eefc;
-  --muted:       #9aa7c2;
-  /* 5:1 on --bg (AA for body text) — the previous #5e6c89 measured ~3.7:1. */
-  --faint:       #748299;
+  --fg:          #edf2f8;
+  --muted:       #98a6b8;
+  --faint:       #647289;
 
-  --accent:        #22d3ee;  /* electric cyan */
-  --accent-fg:     #04141a;
-  --accent-soft:   #0e3a44;
-  --accent-2:      #e879f9;  /* neon magenta */
-  --accent-2-soft: #3a1145;
+  --accent:        #00dffd;  /* marketing electric cyan */
+  --accent-fg:     #030b1c;
+  --accent-soft:   #063039;
+  --accent-2:      #ff54f9;  /* marketing fuchsia */
+  --accent-2-soft: #3d143c;
+  --violet:        #b085ff;
 
-  --success:  #34d399;
-  --warning:  #fbbf24;
-  --danger:   #fb7185;
+  --success:  #10d39a;
+  --warning:  #f7be2b;
+  --danger:   #f94144;
   --info:     #60a5fa;
 
   --ring:    color-mix(in oklab, var(--accent) 55%, transparent);
-  --shadow:  0 1px 2px rgb(0 0 0 / 0.4), 0 8px 30px rgb(0 0 0 / 0.35);
+  --shadow:  0 1px 2px rgb(0 0 0 / 0.5), 0 8px 30px rgb(0 0 0 / 0.45);
 
-  --chart-grid: rgba(232, 238, 252, 0.08);
+  --chart-grid: rgba(237, 242, 248, 0.08);
 }
 
 /* Map tokens → Tailwind utilities (bg-surface, text-muted, border-border, …) */
@@ -91,6 +91,7 @@
   --color-accent-soft:   var(--accent-soft);
   --color-accent-2:      var(--accent-2);
   --color-accent-2-soft: var(--accent-2-soft);
+  --color-violet:        var(--violet);
 
   --color-success: var(--success);
   --color-warning: var(--warning);
@@ -102,9 +103,9 @@
   --font-heading: var(--font-space-grotesk), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 
   /* Brand accents ported from the marketing site's design system. */
-  --color-brand-cyan: #22d3ee;
-  --color-brand-violet: #a78bfa;
-  --color-brand-fuchsia: #e879f9;
+  --color-brand-cyan: #00dffd;
+  --color-brand-violet: #b085ff;
+  --color-brand-fuchsia: #ff54f9;
 }
 
 html,

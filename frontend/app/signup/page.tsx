@@ -13,7 +13,7 @@ import { GithubMark } from "@/components/ui/GithubMark";
 
 // Same field treatment as the sign-in page — see login/page.tsx.
 const INPUT =
-    "w-full rounded-lg border border-[#2b374d] bg-[#1b2436] px-4 py-2.5 text-[15px] leading-6 text-white outline-none transition-colors placeholder:text-[#7b8798] focus:border-accent focus:ring-2 focus:ring-accent/25";
+    "w-full rounded-lg border border-[#26324a] bg-[#121b29] px-4 py-2.5 text-[15px] leading-6 text-white outline-none transition-colors placeholder:text-[#7c8a9e] focus:border-accent focus:ring-2 focus:ring-accent/25";
 
 const LINK =
     "font-medium text-accent underline decoration-accent/40 underline-offset-4 transition-colors hover:decoration-accent";
@@ -64,7 +64,7 @@ export default function SignupPage() {
 
     if (loading || !authEnabled || !signupEnabled || user) {
         return (
-            <main className="dark grid min-h-screen place-items-center bg-[#0b0a0e] [color-scheme:dark]">
+            <main className="dark grid min-h-screen place-items-center bg-[#020713] [color-scheme:dark]">
                 <Loader2 className="animate-spin text-accent" size={28} aria-label="Loading" />
             </main>
         );
@@ -73,7 +73,7 @@ export default function SignupPage() {
     return (
         <main className="dark relative flex min-h-screen flex-col items-center justify-center gap-6 px-4 py-10 [color-scheme:dark] sm:px-6">
             <AuthBackground />
-            <div className="w-full max-w-[1120px] overflow-hidden rounded-[20px] border border-white/[0.08] bg-[#121a2b] shadow-[0_50px_140px_-50px_rgba(0,0,0,0.95)]">
+            <div className="w-full max-w-[1120px] overflow-hidden rounded-[20px] border border-white/[0.08] bg-[#101827] shadow-[0_50px_140px_-50px_rgba(0,0,0,0.95)]">
                 <div className="grid lg:min-h-[680px] lg:grid-cols-[0.95fr_1.05fr]">
                     <AuthShowcase />
 
@@ -89,7 +89,7 @@ export default function SignupPage() {
                             <h1 className="font-heading text-[34px] font-semibold leading-tight tracking-tight text-white sm:text-[38px]">
                                 Create an account
                             </h1>
-                            <p className="mt-3 text-[15px] text-[#9aa6be]">
+                            <p className="mt-3 text-[15px] text-[#98a6b8]">
                                 Already have an account? <Link href="/login" className={LINK}>Log in</Link>
                             </p>
 
@@ -170,7 +170,7 @@ export default function SignupPage() {
                                         onClick={() => setShowPassword((v) => !v)}
                                         aria-label={showPassword ? "Hide password" : "Show password"}
                                         aria-pressed={showPassword}
-                                        className="absolute right-2 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-md text-[#7b8798] transition-colors hover:text-white"
+                                        className="absolute right-2 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-md text-[#7c8a9e] transition-colors hover:text-white"
                                     >
                                         {showPassword ? (
                                             <EyeOff size={16} aria-hidden="true" />
@@ -180,7 +180,7 @@ export default function SignupPage() {
                                     </button>
                                 </div>
 
-                                <label className="flex items-center gap-2.5 pt-1 text-[13px] text-[#9aa6be]">
+                                <label className="flex items-center gap-2.5 pt-1 text-[13px] text-[#98a6b8]">
                                     <input
                                         type="checkbox"
                                         checked={agreed}
@@ -199,7 +199,7 @@ export default function SignupPage() {
                                 <button
                                     type="submit"
                                     disabled={submitting || !agreed}
-                                    className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-[linear-gradient(90deg,#0e7490,#4f46e5)] text-[15px] font-semibold text-white shadow-[0_10px_30px_-10px_rgba(79,70,229,0.7)] transition-[filter] hover:brightness-110 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-accent/40 disabled:opacity-60"
+                                    className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-[linear-gradient(90deg,#00dffd,#b085ff)] text-[15px] font-semibold text-white shadow-[0_10px_30px_-10px_rgba(176,133,255,0.7)] transition-[filter] hover:brightness-110 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-accent/40 disabled:opacity-60"
                                 >
                                     {submitting ? (
                                         <Loader2 size={16} className="animate-spin" aria-hidden="true" />
@@ -212,16 +212,16 @@ export default function SignupPage() {
 
                             {oidcConfigured && (
                                 <>
-                                    <div className="my-6 flex items-center gap-3 text-xs text-[#7b8798]">
-                                        <span className="h-px flex-1 bg-[#2b374d]" />
+                                    <div className="my-6 flex items-center gap-3 text-xs text-[#7c8a9e]">
+                                        <span className="h-px flex-1 bg-[#26324a]" />
                                         Or register with
-                                        <span className="h-px flex-1 bg-[#2b374d]" />
+                                        <span className="h-px flex-1 bg-[#26324a]" />
                                     </div>
                                     <a
                                         href={oidcLoginUrl}
-                                        className="flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-[#2b374d] text-[15px] font-medium text-white transition-colors hover:border-accent/50 hover:bg-white/[0.04]"
+                                        className="flex h-12 w-full items-center justify-center gap-2 rounded-lg border border-[#26324a] text-[15px] font-medium text-white transition-colors hover:border-accent/50 hover:bg-white/[0.04]"
                                     >
-                                        <KeyRound size={16} className="text-[#9aa6be]" aria-hidden="true" />
+                                        <KeyRound size={16} className="text-[#98a6b8]" aria-hidden="true" />
                                         Continue with SSO
                                     </a>
                                 </>
@@ -231,7 +231,7 @@ export default function SignupPage() {
                 </div>
             </div>
 
-            <div className="flex items-center gap-6 text-sm text-[#9aa6be]">
+            <div className="flex items-center gap-6 text-sm text-[#98a6b8]">
                 <a
                     href={WEBSITE_URL}
                     className="inline-flex items-center gap-1.5 transition-colors hover:text-white"

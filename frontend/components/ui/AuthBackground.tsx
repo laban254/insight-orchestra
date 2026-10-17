@@ -51,7 +51,7 @@ const GRAPH = buildGraph(34, 2026, 1440, 900);
  */
 export function AuthBackground() {
     return (
-        <div aria-hidden="true" className="pointer-events-none fixed inset-0 -z-10 overflow-hidden bg-[#070b14]">
+        <div aria-hidden="true" className="pointer-events-none fixed inset-0 -z-10 overflow-hidden bg-[#020713]">
             <svg
                 viewBox="0 0 1440 900"
                 preserveAspectRatio="xMidYMid slice"
@@ -59,17 +59,17 @@ export function AuthBackground() {
             >
                 <defs>
                     <linearGradient id="bg-edge" x1="0" y1="0" x2="1" y2="1">
-                        <stop offset="0%" stopColor="#22d3ee" />
+                        <stop offset="0%" stopColor="#00dffd" />
                         <stop offset="55%" stopColor="#7c5cff" />
-                        <stop offset="100%" stopColor="#e879f9" />
+                        <stop offset="100%" stopColor="#ff54f9" />
                     </linearGradient>
                     <linearGradient id="bg-area" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.3" />
-                        <stop offset="100%" stopColor="#22d3ee" stopOpacity="0" />
+                        <stop offset="0%" stopColor="#00dffd" stopOpacity="0.3" />
+                        <stop offset="100%" stopColor="#00dffd" stopOpacity="0" />
                     </linearGradient>
                     <radialGradient id="bg-glow" cx="50%" cy="34%" r="60%">
-                        <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.14" />
-                        <stop offset="100%" stopColor="#22d3ee" stopOpacity="0" />
+                        <stop offset="0%" stopColor="#00dffd" stopOpacity="0.14" />
+                        <stop offset="100%" stopColor="#00dffd" stopOpacity="0" />
                     </radialGradient>
                 </defs>
 
@@ -102,15 +102,15 @@ export function AuthBackground() {
                                 cx={p.x}
                                 cy={p.y}
                                 r="7"
-                                fill="#22d3ee"
+                                fill="#00dffd"
                                 fillOpacity="0.1"
                                 className="auth-node-pulse"
                                 style={{ animationDelay: `${(i % 5) * 0.6}s` }}
                             />
-                            <circle cx={p.x} cy={p.y} r="2.6" fill="#22d3ee" fillOpacity="0.8" />
+                            <circle cx={p.x} cy={p.y} r="2.6" fill="#00dffd" fillOpacity="0.8" />
                         </g>
                     ) : (
-                        <circle key={i} cx={p.x} cy={p.y} r="1.8" fill="#a78bfa" fillOpacity="0.65" />
+                        <circle key={i} cx={p.x} cy={p.y} r="1.8" fill="#b085ff" fillOpacity="0.65" />
                     )
                 )}
 
@@ -121,14 +121,14 @@ export function AuthBackground() {
                 <path
                     d="M0,780 C240,760 420,640 700,650 C980,660 1100,470 1440,400"
                     fill="none"
-                    stroke="#22d3ee"
+                    stroke="#00dffd"
                     strokeWidth="1.5"
                     strokeOpacity="0.5"
                 />
             </svg>
 
             {/* Dim the art and darken the edges so the card reads clearly. */}
-            <div className="absolute inset-0 bg-[#070b14]/30" />
+            <div className="absolute inset-0 bg-[#020713]/30" />
             <div
                 className="absolute inset-0"
                 style={{
