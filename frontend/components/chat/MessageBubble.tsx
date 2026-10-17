@@ -13,8 +13,14 @@ function useReveal(text: string, enabled: boolean) {
     const [n, setN] = useState(0);
     useEffect(() => {
         if (!enabled) return;
+        // Reduced motion: show the whole answer at once instead of typing it
+        // out — the animation is decorative, the text isn't. One setState call
+        // (guarded below) covers both branches so the rule sees a single site.
+        const reduce =
+            typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        setN(0);
+        setN(reduce ? text.length : 0);
+        if (reduce) return;
         const tokens = text.split(/(\s+)/);
         let i = 0;
         const id = setInterval(() => {

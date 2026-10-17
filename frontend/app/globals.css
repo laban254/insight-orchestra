@@ -184,3 +184,58 @@ html.theme-ready * {
   );
   animation: shimmer 1.6s infinite;
 }
+
+/* ───────────────────────────────────────────────────────────────
+   Accessibility
+   ─────────────────────────────────────────────────────────────── */
+
+/* The UI is styled almost entirely with :hover, so without this a keyboard
+   user gets no visible focus cue at all. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* Rounded controls look wrong with a square outline hugging the box. */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  border-radius: 0.5rem;
+}
+
+/* Text that's available to assistive tech but not painted on screen. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Respect the OS "reduce motion" setting: keep everything functional, drop
+   the decorative motion (drift, pulse-ring, shimmer, typing cursor, the
+   theme-flip transitions). Vestibular triggers are not worth the flourish. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .animate-rise,
+  .animate-fade,
+  .animate-pulse-ring,
+  .animate-drift,
+  .animate-login-flow,
+  .shimmer::after {
+    animation: none !important;
+  }
+}

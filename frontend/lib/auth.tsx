@@ -97,8 +97,37 @@ export function useAuth() {
     return ctx;
 }
 
+// Higher rank = more capability. `admin` is the superset role (the backend's
+// require_role treats it as satisfying every requirement), so a single
+// comparison covers "at least this role".
+const RANK: Record<Role, number> = { viewer: 0, member: 1, admin: 2 };
+
+/**
+ * The caller's effective role for gating UI. With auth off, everyone is
+ * effectively admin — the backend's auth dependencies are no-ops there, so the
+ * UI must not hide controls the server would happily accept.
+ */
+export function useRole(): Role {
+    const { authEnabled, user } = useAuth();
+    if (!authEnabled) return "admin";
+    return user?.role ?? "viewer";
+}
+
+/**
+ * Whether the caller may perform an action requiring at least `min`.
+ *
+ * Mirrors the backend's require_role() so the UI hides or disables what the
+ * server would 403, instead of letting someone submit a form that always
+ * fails. Returns false while signed out (nobody to evaluate).
+ */
+export function useCan(min: Role): boolean {
+    const { authEnabled, user } = useAuth();
+    if (!authEnabled) return true;
+    if (!user) return false;
+    return RANK[user.role] >= RANK[min];
+}
+
 /** True once we know it's safe to show admin-only controls (auth off, or on and admin). */
 export function useIsAdmin(): boolean {
-    const { authEnabled, user } = useAuth();
-    return !authEnabled || user?.role === "admin";
+    return useCan("admin");
 }

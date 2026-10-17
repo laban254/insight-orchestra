@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Send, Loader2, Sparkles } from "lucide-react";
+import { Send, Loader2, Sparkles, MessageSquare, BarChart3, Lock } from "lucide-react";
 import { api } from "@/lib/api";
 import { ProcessResponse } from "@/lib/types";
+import { useCan } from "@/lib/auth";
 import { AgentTimeline, Agent } from "@/components/agents/AgentTimeline";
 import { ANALYSIS_FLOW, NLQ_FLOW } from "@/lib/agents";
 import { MessageBubble, ChatMessage } from "@/components/chat/MessageBubble";
@@ -22,6 +23,8 @@ interface WorkspaceProps {
 export function Workspace({ workspaceId, datasetId, datasetName, restore, onPersist, onCost }: WorkspaceProps) {
     const sessionId = workspaceId;
     const reopened = !!restore?.analysisResult;
+    // Asking questions runs LLM code through /nlq, which requires `member`.
+    const canAsk = useCan("member");
 
     const [analysisLoading, setAnalysisLoading] = useState(!reopened);
     const [analysisResult, setAnalysisResult] = useState<ProcessResponse | null>(restore?.analysisResult ?? null);
@@ -40,6 +43,9 @@ export function Workspace({ workspaceId, datasetId, datasetName, restore, onPers
     const [canvasTab, setCanvasTab] = useState<"overview" | "results">(
         restore?.results.length ? "results" : "overview"
     );
+    // On phones the two panes can't sit side by side; a segmented control
+    // swaps between them instead of stacking two half-height columns.
+    const [pane, setPane] = useState<"chat" | "canvas">("chat");
 
     const persistRef = useRef(onPersist);
     persistRef.current = onPersist;
@@ -126,7 +132,15 @@ export function Workspace({ workspaceId, datasetId, datasetName, restore, onPers
         if (!contentEl) return;
         const observer = new ResizeObserver(() => {
             if (stickToBottomRef.current) {
-                scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+                // Honor reduced-motion: an auto scroll still follows the
+                // stream, it just doesn't animate the whole way down each tick.
+                const reduce =
+                    typeof window !== "undefined" &&
+                    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+                scrollRef.current?.scrollTo({
+                    top: scrollRef.current.scrollHeight,
+                    behavior: reduce ? "auto" : "smooth",
+                });
             }
         });
         observer.observe(contentEl);
@@ -201,6 +215,7 @@ export function Workspace({ workspaceId, datasetId, datasetName, restore, onPers
     const refineResult = useCallback(
         (r: QueryResult, instruction: string) => {
             setCanvasTab("results");
+            setPane("canvas");
             void submitQuery(`Based on the previous chart for "${r.question}", ${instruction}. Produce an updated chart.`);
         },
         [submitQuery]
@@ -209,9 +224,39 @@ export function Workspace({ workspaceId, datasetId, datasetName, restore, onPers
     const suggested = analysisResult?.suggested_questions ?? [];
 
     return (
-        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(380px,2fr)_minmax(0,3fr)]">
+        <div className="flex min-h-0 flex-1 flex-col">
+            {/* Mobile-only pane switcher — the two-column layout is desktop-only. */}
+            <div
+                role="group"
+                aria-label="Workspace view"
+                className="flex gap-1 border-b border-border bg-surface/60 px-3 py-2 lg:hidden"
+            >
+                <button
+                    aria-pressed={pane === "chat"}
+                    onClick={() => setPane("chat")}
+                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-medium transition-colors ${
+                        pane === "chat" ? "bg-surface-2 text-fg" : "text-muted"
+                    }`}
+                >
+                    <MessageSquare size={14} aria-hidden="true" /> Conversation
+                </button>
+                <button
+                    aria-pressed={pane === "canvas"}
+                    onClick={() => setPane("canvas")}
+                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-medium transition-colors ${
+                        pane === "canvas" ? "bg-surface-2 text-fg" : "text-muted"
+                    }`}
+                >
+                    <BarChart3 size={14} aria-hidden="true" /> Canvas
+                </button>
+            </div>
+
+            <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(380px,2fr)_minmax(0,3fr)]">
             {/* ── Conversation pane ─────────────────────────────────────── */}
-            <section className="flex min-h-0 flex-col border-border lg:border-r">
+            <section
+                aria-label="Conversation"
+                className={`${pane === "chat" ? "flex" : "hidden"} min-h-0 flex-col border-border lg:flex lg:border-r`}
+            >
                 <div className="flex items-center gap-2 border-b border-border px-5 py-3">
                     <Sparkles size={15} className="text-accent" />
                     <h2 className="text-sm font-semibold text-fg">Conversation</h2>
@@ -309,7 +354,10 @@ export function Workspace({ workspaceId, datasetId, datasetName, restore, onPers
                             <MessageBubble
                                 key={i}
                                 {...m}
-                                onViewChart={() => setCanvasTab("results")}
+                                onViewChart={() => {
+                                    setCanvasTab("results");
+                                    setPane("canvas");
+                                }}
                                 stream={i === messages.length - 1 && m.role === "assistant" && !isLoading}
                             />
                         ))}
@@ -331,6 +379,8 @@ export function Workspace({ workspaceId, datasetId, datasetName, restore, onPers
 
                 {/* Input */}
                 <div className="border-t border-border bg-surface/60 p-3">
+                    {canAsk ? (
+                        <>
                     {/* Quick follow-ups */}
                     {suggested.length > 0 && !analysisLoading && messages.length > 0 && (
                         <div className="mb-2 flex gap-2 overflow-x-auto pb-1">
@@ -363,6 +413,7 @@ export function Workspace({ workspaceId, datasetId, datasetName, restore, onPers
                                     void submitQuery(input);
                                 }
                             }}
+                            aria-label="Ask a question about your data"
                             placeholder={analysisLoading ? "Analyzing your data…" : "Ask a question about your data…"}
                             disabled={isLoading || analysisLoading}
                             rows={1}
@@ -371,19 +422,32 @@ export function Workspace({ workspaceId, datasetId, datasetName, restore, onPers
                         <button
                             type="submit"
                             disabled={!input.trim() || isLoading || analysisLoading}
+                            aria-label="Send question"
                             className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-accent text-accent-fg transition-opacity hover:opacity-90 disabled:opacity-40"
                         >
-                            {isLoading ? <Loader2 size={17} className="animate-spin" /> : <Send size={17} />}
+                            {isLoading ? (
+                                <Loader2 size={17} className="animate-spin" aria-hidden="true" />
+                            ) : (
+                                <Send size={17} aria-hidden="true" />
+                            )}
                         </button>
                     </form>
                     <p className="mt-2 text-center text-[11px] text-faint">
                         Insight Orchestra can make mistakes — review the generated code.
                     </p>
+                        </>
+                    ) : (
+                        <p className="flex items-center justify-center gap-2 py-2 text-center text-xs text-faint">
+                            <Lock size={12} aria-hidden="true" /> View-only access — asking questions needs the
+                            member role.
+                        </p>
+                    )}
                 </div>
             </section>
 
             {/* ── Canvas pane ───────────────────────────────────────────── */}
             <CanvasPane
+                className={pane === "canvas" ? "flex" : "hidden lg:flex"}
                 loading={analysisLoading}
                 loadingAgents={analysisAgents}
                 error={analysisError}
@@ -397,6 +461,7 @@ export function Workspace({ workspaceId, datasetId, datasetName, restore, onPers
                 activeTab={canvasTab}
                 onTab={setCanvasTab}
             />
+            </div>
         </div>
     );
 }

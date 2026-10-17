@@ -25,10 +25,12 @@ export function UserMenu() {
                 onClick={toggle}
                 className="flex items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 py-2 text-xs font-medium text-muted transition-colors hover:text-fg"
                 title={user.email}
+                aria-label={`Account menu for ${user.email}`}
+                aria-expanded={open}
             >
-                <User size={14} className="text-accent" />
+                <User size={14} className="text-accent" aria-hidden="true" />
                 <span className="hidden max-w-[8rem] truncate sm:inline">{user.name || user.email}</span>
-                <ChevronDown size={13} className={`transition-transform ${open ? "rotate-180" : ""}`} />
+                <ChevronDown size={13} className={`transition-transform ${open ? "rotate-180" : ""}`} aria-hidden="true" />
             </button>
 
             {open && (

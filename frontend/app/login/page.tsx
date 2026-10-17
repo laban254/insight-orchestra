@@ -143,6 +143,8 @@ export default function LoginPage() {
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
                                 placeholder="you@company.com"
+                                aria-label="Email"
+                                autoComplete="username"
                                 required
                                 autoFocus
                                 className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2.5 text-sm text-fg outline-none transition-colors placeholder:text-faint focus:border-accent/60"
@@ -152,10 +154,12 @@ export default function LoginPage() {
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                                 placeholder="Password"
+                                aria-label="Password"
+                                autoComplete="current-password"
                                 required
                                 className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2.5 text-sm text-fg outline-none transition-colors placeholder:text-faint focus:border-accent/60"
                             />
-                            {error && <p className="text-sm text-danger">{error}</p>}
+                            {error && <p role="alert" className="text-sm text-danger">{error}</p>}
                             <button
                                 type="submit"
                                 disabled={submitting}

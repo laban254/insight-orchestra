@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from "@/lib/auth";
 import { MenuProvider } from "@/lib/menus";
 import { ThemeProvider } from "@/lib/theme";
 import { ToastProvider } from "@/lib/toast";
+import { BackendStatusBanner } from "@/components/ui/BackendStatusBanner";
 
 // Public even when auth is on: a share link is meant to be opened by anyone
 // who has the (unguessable) token, account or not — matches the backend's
@@ -38,6 +39,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
                 <AuthProvider>
                     <MenuProvider>
                         <AuthGate>{children}</AuthGate>
+                        <BackendStatusBanner />
                     </MenuProvider>
                 </AuthProvider>
             </ToastProvider>
