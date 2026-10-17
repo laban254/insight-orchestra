@@ -222,8 +222,8 @@ select:focus-visible,
 }
 
 /* Respect the OS "reduce motion" setting: keep everything functional, drop
-   the decorative motion (pulse-ring, shimmer, typing cursor, theme-flip
-   transitions). Vestibular triggers are not worth the flourish. */
+   the decorative motion (drift, pulse-ring, shimmer, typing cursor, the
+   theme-flip transitions). Vestibular triggers are not worth the flourish. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
