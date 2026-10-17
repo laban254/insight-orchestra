@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { X, Plus, Trash2, Clock, Table2 } from "lucide-react";
 import type { WorkspaceMeta } from "@/lib/workspaces";
 import { useCloseMenus } from "@/lib/menus";
+import { useDialogA11y } from "@/lib/useDialogA11y";
 
 function timeAgo(ts: number): string {
     const s = Math.floor((Date.now() - ts) / 1000);
@@ -25,6 +26,7 @@ interface Props {
 
 export function HistoryDrawer({ open, onClose, workspaces, activeId, onOpen, onDelete, onNew }: Props) {
     const closeMenus = useCloseMenus();
+    const panelRef = useDialogA11y<HTMLElement>(open);
     useEffect(() => {
         if (open) closeMenus();
     }, [open, closeMenus]);
@@ -41,6 +43,7 @@ export function HistoryDrawer({ open, onClose, workspaces, activeId, onOpen, onD
         <>
             {/* Scrim */}
             <div
+                aria-hidden="true"
                 className={`fixed inset-0 z-40 bg-black/40 transition-opacity ${
                     open ? "opacity-100" : "pointer-events-none opacity-0"
                 }`}
@@ -49,7 +52,14 @@ export function HistoryDrawer({ open, onClose, workspaces, activeId, onOpen, onD
 
             {/* Panel */}
             <aside
-                className={`fixed left-0 top-0 z-50 flex h-full w-80 max-w-[85vw] flex-col border-r border-border bg-surface transition-transform duration-300 ${
+                ref={panelRef}
+                role="dialog"
+                aria-modal="true"
+                aria-label="Analysis history"
+                aria-hidden={!open}
+                inert={!open}
+                tabIndex={-1}
+                className={`fixed left-0 top-0 z-50 flex h-full w-80 max-w-[85vw] flex-col border-r border-border bg-surface outline-none transition-transform duration-300 ${
                     open ? "translate-x-0" : "-translate-x-full"
                 }`}
             >

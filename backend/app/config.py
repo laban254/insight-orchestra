@@ -105,6 +105,12 @@ class Settings(BaseSettings):
     admin_password: str = Field("", alias="ADMIN_PASSWORD")
     auth_session_ttl_seconds: int = Field(30 * 24 * 3600, alias="AUTH_SESSION_TTL_SECONDS")
 
+    # Self-serve sign-up (email + password). On by default once auth is enabled
+    # so a fresh deployment is usable without an admin provisioning every
+    # account; set ALLOW_SIGNUP=false to make it invite-only (admin-created).
+    # New accounts start as `member`. No effect while AUTH_ENABLED=false.
+    allow_signup: bool = Field(True, alias="ALLOW_SIGNUP")
+
     # SSO (OIDC). SAML is intentionally not supported yet — see PLAN.md.
     oidc_issuer: str = Field("", alias="OIDC_ISSUER")
     oidc_client_id: str = Field("", alias="OIDC_CLIENT_ID")

@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Database, FileUp, PanelLeft, Download, Plus, Clock, Moon, Command, Share2, Sparkles, ShieldCheck, Loader2 } from "lucide-react";
+import { Database, FileUp, PanelLeft, Download, Plus, Clock, Moon, Command, Share2, Sparkles, ShieldCheck, Loader2, RotateCcw, Lock } from "lucide-react";
 import { useTheme } from "@/lib/theme";
 import { useToast } from "@/lib/toast";
-import { useIsAdmin } from "@/lib/auth";
+import { useIsAdmin, useCan } from "@/lib/auth";
+import { useModifierKeyLabel } from "@/lib/platform";
 import { Logo } from "@/components/ui/Logo";
 import { UserMenu } from "@/components/ui/UserMenu";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
@@ -52,13 +53,20 @@ export default function Home() {
     // backend/app/api/connectors.py) — hide the tab rather than let a
     // member/viewer reach a form whose submit always 403s.
     const isAdmin = useIsAdmin();
+    // Uploading, loading a demo and asking questions all require `member` on
+    // the backend (see app/api/endpoints.py); a viewer gets a 403. Gate the
+    // entry surface on that instead of showing a form that always fails.
+    const canWrite = useCan("member");
+    const modKey = useModifierKeyLabel();
 
     const [datasetId, setDatasetId] = useState<string | null>(null);
     const [datasetInfo, setDatasetInfo] = useState<DatasetInfo | null>(null);
-    // "demo" leads: a first-time visitor rarely has a CSV or database ready,
-    // so the fastest path to seeing the product work is the default tab.
-    const [uploadMode, setUploadMode] = useState<"demo" | "file" | "db">("file");
+    // Demo leads: a first-time visitor rarely has a CSV or database ready, so
+    // the fastest path to seeing the product work is the default tab.
+    const [uploadMode, setUploadMode] = useState<"demo" | "file" | "db">("demo");
     const [availableDatasets, setAvailableDatasets] = useState<Record<string, DemoDataset> | null>(null);
+    const [datasetsError, setDatasetsError] = useState(false);
+    const [datasetsNonce, setDatasetsNonce] = useState(0);
 
     const [workspaceId, setWorkspaceId] = useState<string | null>(null);
     const [restore, setRestore] = useState<SavedState | null>(null);
@@ -71,10 +79,36 @@ export default function Home() {
     const createdAt = useRef<number>(Date.now());
 
     useEffect(() => {
-        api.listDemoDatasets()
-            .then((r) => setAvailableDatasets(r.datasets))
-            .catch((e) => console.error("Failed to load datasets:", e));
+        // Retry the demo list through the backend's cold start: uvicorn binds
+        // the port long before it can serve (pandas + statsmodels import takes
+        // ~60s on a first run), so the first load can fail for a while. Back
+        // off and keep trying rather than leaving the picker dead on a
+        // spinner. `datasetsNonce` lets the Retry button restart the loop.
+        let cancelled = false;
+        let attempt = 0;
+        let timer: ReturnType<typeof setTimeout>;
+        const run = async () => {
+            if (cancelled) return;
+            try {
+                const r = await api.listDemoDatasets();
+                if (cancelled) return;
+                setAvailableDatasets(r.datasets);
+                setDatasetsError(false);
+            } catch {
+                if (cancelled) return;
+                setDatasetsError(true);
+                attempt += 1;
+                if (attempt < 30) timer = setTimeout(run, Math.min(2000 * attempt, 10000));
+            }
+        };
+        void run();
+        return () => {
+            cancelled = true;
+            clearTimeout(timer);
+        };
+    }, [datasetsNonce]);
 
+    useEffect(() => {
         // Resume the last active workspace on load (e.g. after a refresh)
         // instead of always dropping back to the landing/connect screen.
         void listWorkspaces().then((list) => {
@@ -205,10 +239,32 @@ export default function Home() {
         setHistoryOpen(false);
     };
 
-    const handleDelete = (id: string) => {
+    const handleDelete = async (id: string) => {
+        // Grab the record first so Undo can restore it verbatim.
+        const record = await loadWorkspace(id);
         void removeWorkspace(id).then(() => listWorkspaces().then(setWorkspaces));
         if (id === workspaceId) handleNew();
         else if (id === getLastWorkspaceId()) clearLastWorkspaceId();
+
+        // Deleting a saved analysis used to be one-click and permanent. Give
+        // it back for a few seconds instead of demanding a confirm dialog on
+        // every delete.
+        if (record) {
+            toast(`Deleted "${record.datasetName}"`, "info", {
+                label: "Undo",
+                onClick: () => {
+                    void saveWorkspace(
+                        {
+                            id: record.id,
+                            datasetName: record.datasetName,
+                            datasetId: record.datasetId,
+                            createdAt: record.createdAt,
+                        },
+                        record.state
+                    ).then(() => listWorkspaces().then(setWorkspaces));
+                },
+            });
+        }
     };
 
     const handleExport = useCallback(() => {
@@ -290,8 +346,9 @@ export default function Home() {
                                 onClick={() => setHistoryOpen(true)}
                                 className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-border bg-surface text-muted transition-colors hover:text-fg"
                                 title="History"
+                                aria-label="Open analysis history"
                             >
-                                <PanelLeft size={16} />
+                                <PanelLeft size={16} aria-hidden="true" />
                             </button>
                             <Logo size={8} />
                             <h1 className="hidden text-[15px] font-semibold tracking-tight text-fg sm:block">Insight Orchestra</h1>
@@ -302,8 +359,9 @@ export default function Home() {
                                 onClick={() => setPaletteOpen(true)}
                                 className="hidden items-center gap-1.5 rounded-lg border border-border bg-surface px-2.5 py-2 text-xs text-faint transition-colors hover:text-fg lg:flex"
                                 title="Command palette"
+                                aria-label="Open command palette"
                             >
-                                <Command size={13} /> <kbd className="font-mono">⌘K</kbd>
+                                <Command size={13} aria-hidden="true" /> <kbd className="font-mono">{modKey}K</kbd>
                             </button>
                             <CostMeter tokens={cost.tokens} cost={cost.cost} />
                             {isAdmin && <ModelSwitcher />}
@@ -311,8 +369,9 @@ export default function Home() {
                                 onClick={handleShare}
                                 className="grid h-9 w-9 place-items-center rounded-lg border border-border bg-surface text-muted transition-colors hover:text-fg"
                                 title="Share a read-only link"
+                                aria-label="Create a read-only share link"
                             >
-                                <Share2 size={16} />
+                                <Share2 size={16} aria-hidden="true" />
                             </button>
                             <ExportMenu sessionId={workspaceId} onReport={handleExport} onPdf={handleExportPdf} />
                             <DatasetInfoPanel
@@ -344,7 +403,7 @@ export default function Home() {
                                 onClick={() => setHistoryOpen(true)}
                                 className="flex min-w-0 shrink items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-xs font-medium text-muted transition-colors hover:text-fg"
                             >
-                                <Clock size={14} className="shrink-0" /> <span className="min-w-0 truncate">History</span>
+                                <Clock size={14} className="shrink-0" aria-hidden="true" /> <span className="min-w-0 truncate">History</span>
                             </button>
                         )}
                         <ThemeToggle />
@@ -380,55 +439,107 @@ export default function Home() {
                             </div>
                         </div>
 
-                        <div className="rounded-2xl border border-border bg-surface shadow-[var(--shadow)]">
-                            <div className="flex overflow-hidden rounded-t-2xl border-b border-border">
-                                {(
-                                    [
-                                        { id: "file", label: "Upload CSV", shortLabel: "Upload", Icon: FileUp },
-                                        ...(isAdmin
-                                            ? [{ id: "db", label: "Connect Database", shortLabel: "Database", Icon: Database }]
-                                            : []),
-                                        { id: "demo", label: "Try a Demo", shortLabel: "Demo", Icon: Sparkles },
-                                    ] as { id: "demo" | "file" | "db"; label: string; shortLabel: string; Icon: typeof Sparkles }[]
-                                ).map(({ id, label, shortLabel, Icon }) => {
-                                    const active = uploadMode === id;
-                                    return (
-                                        <button
-                                            key={id}
-                                            onClick={() => setUploadMode(id)}
-                                            className={`flex flex-1 min-w-0 items-center justify-center gap-1.5 py-4 text-sm font-medium transition-colors ${
-                                                active
-                                                    ? "border-b-2 border-accent text-accent"
-                                                    : "border-b-2 border-transparent text-muted hover:text-fg"
-                                            }`}
-                                        >
-                                            <Icon size={16} className="shrink-0" />
-                                            <span className="hidden truncate sm:inline">{label}</span>
-                                            <span className="truncate sm:hidden">{shortLabel}</span>
-                                        </button>
-                                    );
-                                })}
-                            </div>
+                        {canWrite ? (
+                            <div className="rounded-2xl border border-border bg-surface shadow-[var(--shadow)]">
+                                <div className="flex overflow-hidden rounded-t-2xl border-b border-border">
+                                    {(
+                                        [
+                                            { id: "demo", label: "Try a Demo", shortLabel: "Demo", Icon: Sparkles },
+                                            { id: "file", label: "Upload CSV", shortLabel: "Upload", Icon: FileUp },
+                                            ...(isAdmin
+                                                ? [{ id: "db", label: "Connect Database", shortLabel: "Database", Icon: Database }]
+                                                : []),
+                                        ] as { id: "demo" | "file" | "db"; label: string; shortLabel: string; Icon: typeof Sparkles }[]
+                                    ).map(({ id, label, shortLabel, Icon }) => {
+                                        const active = uploadMode === id;
+                                        return (
+                                            <button
+                                                key={id}
+                                                onClick={() => setUploadMode(id)}
+                                                aria-pressed={active}
+                                                className={`flex flex-1 min-w-0 items-center justify-center gap-1.5 py-4 text-sm font-medium transition-colors ${
+                                                    active
+                                                        ? "border-b-2 border-accent text-accent"
+                                                        : "border-b-2 border-transparent text-muted hover:text-fg"
+                                                }`}
+                                            >
+                                                <Icon size={16} className="shrink-0" aria-hidden="true" />
+                                                <span className="hidden truncate sm:inline">{label}</span>
+                                                <span className="truncate sm:hidden">{shortLabel}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
 
-                            <div className="p-6 sm:p-8">
-                                {uploadMode === "demo" ? (
-                                    availableDatasets ? (
-                                        <DemoDatasetPicker onUploadSuccess={handleUploadSuccess} datasets={availableDatasets} />
-                                    ) : (
-                                        <div className="flex items-center justify-center gap-2 py-10 text-sm text-faint">
-                                            <Loader2 size={15} className="animate-spin" /> Loading demo datasets…
-                                        </div>
-                                    )
-                                ) : uploadMode === "file" ? (
-                                    <FileUpload onUploadSuccess={handleUploadSuccess} />
-                                ) : isAdmin ? (
-                                    <DatabaseConnect onDataReady={handleUploadSuccess} />
-                                ) : null}
+                                <div className="p-6 sm:p-8">
+                                    {uploadMode === "demo" ? (
+                                        availableDatasets ? (
+                                            <DemoDatasetPicker onUploadSuccess={handleUploadSuccess} datasets={availableDatasets} />
+                                        ) : datasetsError ? (
+                                            <div className="flex flex-col items-center gap-3 py-10 text-center">
+                                                <p className="text-sm text-muted">The backend isn’t answering yet.</p>
+                                                <button
+                                                    onClick={() => setDatasetsNonce((n) => n + 1)}
+                                                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-xs font-medium text-fg transition-colors hover:border-accent/50"
+                                                >
+                                                    <RotateCcw size={13} aria-hidden="true" /> Try again
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div
+                                                role="status"
+                                                className="flex items-center justify-center gap-2 py-10 text-sm text-faint"
+                                            >
+                                                <Loader2 size={15} className="animate-spin" aria-hidden="true" /> Loading demo datasets…
+                                            </div>
+                                        )
+                                    ) : uploadMode === "file" ? (
+                                        <FileUpload onUploadSuccess={handleUploadSuccess} />
+                                    ) : isAdmin ? (
+                                        <DatabaseConnect onDataReady={handleUploadSuccess} />
+                                    ) : null}
+                                </div>
                             </div>
-                        </div>
+                        ) : (
+                            <div className="rounded-2xl border border-border bg-surface p-8 text-center shadow-[var(--shadow)]">
+                                <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-surface-2 text-faint">
+                                    <Lock size={20} aria-hidden="true" />
+                                </div>
+                                <p className="text-sm font-medium text-fg">You have view-only access</p>
+                                <p className="mx-auto mt-1 max-w-xs text-xs leading-relaxed text-faint">
+                                    Uploading and asking questions needs the member role. You can still open
+                                    analyses from History, or ask an admin to upgrade your account.
+                                </p>
+                                {workspaces.length > 0 && (
+                                    <button
+                                        onClick={() => setHistoryOpen(true)}
+                                        className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-xs font-medium text-muted transition-colors hover:text-fg"
+                                    >
+                                        <Clock size={13} aria-hidden="true" /> Open history
+                                    </button>
+                                )}
+                            </div>
+                        )}
+
+                        {/* How it works — set expectations before the first click. */}
+                        <ol className="mt-6 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
+                            {[
+                                { n: 1, label: "Upload or pick a demo" },
+                                { n: 2, label: "Agents clean & analyse" },
+                                { n: 3, label: "Read ranked insights" },
+                                { n: 4, label: "Ask follow-ups" },
+                            ].map(({ n, label }) => (
+                                <li key={n} className="flex items-start gap-2">
+                                    <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-surface-2 text-[10px] font-semibold text-accent">
+                                        {n}
+                                    </span>
+                                    <span className="text-xs leading-snug text-faint">{label}</span>
+                                </li>
+                            ))}
+                        </ol>
                         {/* ⌘K needs a keyboard — pointless noise on a touch-only device. */}
                         <p className="mt-6 hidden text-center text-xs text-faint [@media(hover:hover)]:block">
-                            Press <kbd className="rounded border border-border px-1 font-mono">⌘K</kbd> anytime for the command palette
+                            Press <kbd className="rounded border border-border px-1 font-mono">{modKey}K</kbd> anytime for the command palette
                         </p>
                     </div>
                 </main>

@@ -51,6 +51,8 @@ export function ModelSwitcher() {
                 onClick={toggle}
                 className="flex items-center gap-2 rounded-lg border border-border bg-surface px-2.5 py-2 text-xs font-medium text-muted transition-colors hover:text-fg"
                 title="Switch model"
+                aria-label="Switch model provider"
+                aria-expanded={open}
             >
                 {busy ? <Loader2 size={14} className="animate-spin text-accent" /> : <Cpu size={14} className="text-accent" />}
                 <span className="hidden font-mono sm:inline">{config.model}</span>

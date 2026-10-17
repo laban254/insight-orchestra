@@ -48,9 +48,11 @@ export function DatasetInfoPanel({
                         onClick={toggle}
                         className="flex items-center gap-1 rounded-lg border border-border bg-surface px-2.5 py-2 text-xs font-medium text-muted transition-colors hover:text-fg"
                         title="Switch dataset"
+                        aria-label="Switch dataset"
+                        aria-expanded={showMenu}
                     >
                         Switch
-                        <ChevronDown size={13} className={`transition-transform ${showMenu ? "rotate-180" : ""}`} />
+                        <ChevronDown size={13} className={`transition-transform ${showMenu ? "rotate-180" : ""}`} aria-hidden="true" />
                     </button>
 
                     {showMenu && (
@@ -77,8 +79,9 @@ export function DatasetInfoPanel({
                 onClick={onReset}
                 className="grid h-9 w-9 place-items-center rounded-lg border border-border bg-surface text-muted transition-colors hover:border-danger/40 hover:text-danger"
                 title="Use a different dataset"
+                aria-label="Use a different dataset"
             >
-                <X size={15} />
+                <X size={15} aria-hidden="true" />
             </button>
         </div>
     );

@@ -46,9 +46,10 @@ export function ExportMenu({
             <button
                 onClick={toggle}
                 title="Export"
+                aria-label="Export report"
                 className="grid h-9 w-9 place-items-center rounded-lg border border-border bg-surface text-muted transition-colors hover:text-fg"
             >
-                <Download size={16} />
+                <Download size={16} aria-hidden="true" />
             </button>
             {open && (
                 <div className="absolute right-0 z-30 mt-1.5 w-60 overflow-hidden rounded-xl border border-border bg-surface shadow-[var(--shadow)]">

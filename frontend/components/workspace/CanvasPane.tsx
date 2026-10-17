@@ -30,6 +30,8 @@ interface CanvasPaneProps {
     onRefine: (r: QueryResult, instruction: string) => void;
     activeTab: "overview" | "results";
     onTab: (t: "overview" | "results") => void;
+    /** Extra classes merged onto the root — used by the mobile pane switcher. */
+    className?: string;
 }
 
 function ResultCard({
@@ -170,6 +172,7 @@ export function CanvasPane({
     onRefine,
     activeTab,
     onTab,
+    className,
 }: CanvasPaneProps) {
     const [draggedId, setDraggedId] = useState<number | null>(null);
     const [dragOverId, setDragOverId] = useState<number | null>(null);
@@ -196,6 +199,7 @@ export function CanvasPane({
         return (
             <button
                 onClick={() => onTab(id)}
+                aria-pressed={on}
                 className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
                     on ? "bg-surface-2 text-fg" : "text-muted hover:text-fg"
                 }`}
@@ -210,8 +214,8 @@ export function CanvasPane({
     };
 
     return (
-        <section className="flex min-h-0 flex-col bg-bg">
-            <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
+        <section aria-label="Analysis canvas" className={`flex min-h-0 flex-col bg-bg ${className ?? ""}`}>
+            <div className="flex items-center gap-2 border-b border-border px-4 py-2.5" role="group" aria-label="Canvas view">
                 {tabBtn("overview", "Overview", LayoutDashboard)}
                 {tabBtn("results", "Results", BarChart3, results.length)}
                 <span className="ml-auto truncate text-xs text-faint">{datasetName}</span>
