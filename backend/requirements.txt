@@ -15,7 +15,7 @@ python-dotenv==1.2.3
 psycopg2-binary==2.9.12
 pymysql==1.2.0
 jinja2==3.1.6
-numpy==2.5.3
+numpy==2.4.6  # 2.5.x requires Python >=3.12; this repo/Dockerfile target 3.11
 statsmodels==0.15.0
 redis==8.1.0
 pydantic-settings==2.15.0
