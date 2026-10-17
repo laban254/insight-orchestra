@@ -188,14 +188,54 @@ export default function LoginPage() {
                             )}
                         </div>
 
-                        <p className="mt-6 flex items-center gap-1.5 text-xs text-faint">
-                            <ShieldCheck size={13} className="shrink-0 text-brand-cyan" aria-hidden="true" />
-                            Self-hosted — your data never leaves your machine
-                        </p>
-                        {!signupEnabled && (
-                            <p className="mt-1.5 text-xs text-faint">
-                                Accounts are created by your administrator.
-                            </p>
+                    <div className="rounded-2xl border border-border bg-surface p-6 shadow-[var(--shadow)]">
+                        <form onSubmit={handleSubmit} className="space-y-3">
+                            <input
+                                type="email"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                placeholder="you@company.com"
+                                aria-label="Email"
+                                autoComplete="username"
+                                required
+                                autoFocus
+                                className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2.5 text-sm text-fg outline-none transition-colors placeholder:text-faint focus:border-accent/60"
+                            />
+                            <input
+                                type="password"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                placeholder="Password"
+                                aria-label="Password"
+                                autoComplete="current-password"
+                                required
+                                className="w-full rounded-lg border border-border bg-surface-2 px-3 py-2.5 text-sm text-fg outline-none transition-colors placeholder:text-faint focus:border-accent/60"
+                            />
+                            {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+                            <button
+                                type="submit"
+                                disabled={submitting}
+                                className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-accent-fg transition-opacity hover:opacity-90 disabled:opacity-60"
+                            >
+                                {submitting ? <Loader2 size={15} className="animate-spin" /> : <LogIn size={15} />}
+                                Sign in
+                            </button>
+                        </form>
+
+                        {oidcConfigured && (
+                            <>
+                                <div className="my-4 flex items-center gap-3 text-xs text-faint">
+                                    <div className="h-px flex-1 bg-border" />
+                                    or
+                                    <div className="h-px flex-1 bg-border" />
+                                </div>
+                                <a
+                                    href={oidcLoginUrl}
+                                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-surface-2 px-4 py-2.5 text-sm font-medium text-fg transition-colors hover:bg-surface-3"
+                                >
+                                    Continue with SSO
+                                </a>
+                            </>
                         )}
                     </div>
                 </div>
