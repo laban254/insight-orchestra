@@ -96,6 +96,46 @@ async def login(req: LoginRequest, request: Request, response: Response):
     return {"user": _public_user(user)}
 
 
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    name: str = Field(min_length=1, max_length=200)
+    password: str = Field(min_length=8, max_length=200)
+
+
+@router.post("/register")
+async def register(req: RegisterRequest, request: Request, response: Response):
+    """Self-serve account creation.
+
+    Only meaningful when auth is on (identity management has no purpose
+    otherwise) and ALLOW_SIGNUP is true. New accounts start as `member` — they
+    can run analyses but cannot administer the server; the very first account is
+    still the bootstrapped admin (see main._bootstrap_admin).
+    """
+    _require_auth_enabled()
+    if not settings.allow_signup:
+        raise HTTPException(status_code=403, detail="Sign-up is disabled on this server.")
+    try:
+        user = _users.create(
+            email=req.email,
+            name=req.name,
+            role=Role.MEMBER,
+            password_hash=hash_password(req.password),
+            auth_provider="local",
+        )
+    except EmailAlreadyRegisteredError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+
+    token = _sessions.create(user["id"])
+    _set_session_cookie(response, token)
+    _audit.record(
+        "signup",
+        actor_user_id=user["id"],
+        actor_email=user["email"],
+        ip_address=_client_ip(request),
+    )
+    return {"user": _public_user(user)}
+
+
 @router.post("/logout")
 async def logout(
     request: Request, response: Response, user: UserRecord | None = Depends(require_user)
@@ -120,6 +160,7 @@ async def me(user: UserRecord | None = Depends(get_current_user)):
     return {
         "auth_enabled": settings.auth_enabled,
         "oidc_configured": bool(settings.oidc_issuer and settings.oidc_client_id),
+        "signup_enabled": settings.auth_enabled and settings.allow_signup,
         "user": _public_user(user) if user is not None else None,
     }
 

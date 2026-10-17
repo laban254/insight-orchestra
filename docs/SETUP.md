@@ -263,6 +263,7 @@ for the full auth API and role model.
 |----------|---------|-------------|
 | `AUTH_ENABLED` | `false` | Turn on login + role-based access control. Everything below is a no-op while this is `false` |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | *(unset)* | Bootstrap the first account (role `admin`) on startup, if no users exist yet. Leave unset for an OIDC-only deployment — the first person to sign in via SSO becomes admin instead |
+| `ALLOW_SIGNUP` | `true` | Self-serve sign-up (email + password). New accounts start as `member`; set `false` to keep it invite-only (admin-created). No effect while `AUTH_ENABLED=false` |
 | `AUTH_SESSION_TTL_SECONDS` | `2592000` | How long a login session cookie stays valid (30 days) |
 | `OIDC_ISSUER` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` / `OIDC_REDIRECT_URI` | *(unset)* | SSO via OpenID Connect. All four are required together for `/auth/oidc/login` to work; SAML is not supported |
 | `API_KEY_TTL_SECONDS` | `0` | Expiry for self-service API keys created via `POST /auth/api-keys`. `0` = no expiry |
@@ -348,6 +349,24 @@ Insight Orchestra is designed as a **local-first, privacy-by-default** system:
 ## Troubleshooting
 
 Start with `./setup.sh doctor` — it checks Docker, ports, `backend/.env`, and whether the backend/Ollama model are actually up, which covers most of what's below.
+
+### "permission denied" reaching the Docker socket
+
+If `./setup.sh` says Docker isn't reachable but `sudo systemctl status docker` shows the daemon running, this is why: **the daemon is up, but your user can't talk to its socket.** `/var/run/docker.sock` is owned by `root:docker` with mode `660`, so only `root` and members of the `docker` group may connect.
+
+```bash
+sudo usermod -aG docker "$USER"
+newgrp docker          # applies the group to this shell only
+```
+
+Log out and back in (or reboot) so the membership applies to new sessions, then verify and re-run:
+
+```bash
+docker info >/dev/null && echo OK
+./setup.sh
+```
+
+Prefer not to join the `docker` group? Membership is effectively root-equivalent. You can instead run `sudo ./setup.sh`, but be aware the containers will then create root-owned files in the project directory.
 
 ### Port 8000 already in use
 

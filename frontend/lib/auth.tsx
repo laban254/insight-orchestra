@@ -22,9 +22,12 @@ interface AuthCtx {
     // must check it before treating `user` as meaningful.
     authEnabled: boolean;
     oidcConfigured: boolean;
+    /** Self-serve sign-up is allowed (auth on AND server ALLOW_SIGNUP=true). */
+    signupEnabled: boolean;
     user: AuthUser | null;
     loading: boolean;
     login: (email: string, password: string) => Promise<void>;
+    register: (name: string, email: string, password: string) => Promise<void>;
     logout: () => Promise<void>;
     oidcLoginUrl: string;
     refresh: () => Promise<void>;
@@ -40,6 +43,7 @@ const authClient = axios.create({ baseURL: API_V1_URL, withCredentials: true });
 export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [authEnabled, setAuthEnabled] = useState(false);
     const [oidcConfigured, setOidcConfigured] = useState(false);
+    const [signupEnabled, setSignupEnabled] = useState(false);
     const [user, setUser] = useState<AuthUser | null>(null);
     const [loading, setLoading] = useState(true);
 
@@ -48,11 +52,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const { data } = await authClient.get("/auth/me");
             setAuthEnabled(!!data.auth_enabled);
             setOidcConfigured(!!data.oidc_configured);
+            setSignupEnabled(!!data.signup_enabled);
             setUser(data.user ?? null);
         } catch {
             // An unreachable /auth/me shouldn't strand the app on a loading
             // screen — fail open to "no auth", same as an unconfigured server.
             setAuthEnabled(false);
+            setOidcConfigured(false);
+            setSignupEnabled(false);
             setUser(null);
         } finally {
             setLoading(false);
@@ -68,6 +75,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(data.user);
     }, []);
 
+    const register = useCallback(async (name: string, email: string, password: string) => {
+        const { data } = await authClient.post("/auth/register", { name, email, password });
+        setUser(data.user);
+    }, []);
+
     const logout = useCallback(async () => {
         await authClient.post("/auth/logout");
         setUser(null);
@@ -78,9 +90,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             value={{
                 authEnabled,
                 oidcConfigured,
+                signupEnabled,
                 user,
                 loading,
                 login,
+                register,
                 logout,
                 oidcLoginUrl: `${API_V1_URL}/auth/oidc/login`,
                 refresh,

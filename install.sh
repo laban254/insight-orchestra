@@ -33,6 +33,21 @@ if ! docker compose version >/dev/null 2>&1; then
   fi
 fi
 
+# The daemon socket is root:docker with mode 660, so a running daemon is still
+# unreachable to a user who isn't in the `docker` group — the common Linux case.
+# Catch that here, before cloning, so the fix is clear instead of surfacing as a
+# generic "daemon not running" from setup.sh afterwards.
+if ! docker_err="$(docker info 2>&1 >/dev/null)"; then
+  if printf '%s' "$docker_err" | grep -qi 'permission denied'; then
+    die "Docker is running, but this user can't access it (permission denied on the Docker socket).
+      Add yourself to the 'docker' group, then log out and back in:
+          sudo usermod -aG docker $(id -un) && newgrp docker
+      Or run the installer as root."
+  fi
+  die "Docker daemon is not running — start Docker Desktop / dockerd"
+fi
+ok "Docker daemon is reachable"
+
 if [ -d "$INSTALL_DIR" ]; then
   if [ -d "$INSTALL_DIR/.git" ] && git -C "$INSTALL_DIR" remote get-url origin 2>/dev/null | grep -q "laban254/insight-orchestra"; then
     ok "Found an existing clone at ./$INSTALL_DIR — reusing it (re-running setup.sh is safe)."

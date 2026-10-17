@@ -14,7 +14,7 @@ The frontend provides an interactive UI for:
 
 ## Tech Stack
 
-- Next.js 14 (App Router)
+- Next.js 16 (App Router)
 - React
 - Tailwind CSS
 - Plotly.js for visualizations

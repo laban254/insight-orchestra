@@ -10,8 +10,10 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    # LLM provider selection: "openai" | "anthropic" | "deepseek" | "ollama"
-    llm_provider: str = Field("openai", alias="LLM_PROVIDER")
+    # LLM provider selection: "openai" | "anthropic" | "deepseek" | "ollama".
+    # Defaults to ollama (local, no API key) to match the documented default and
+    # what ./setup.sh writes; the .env file overrides this in every real deploy.
+    llm_provider: str = Field("ollama", alias="LLM_PROVIDER")
 
     # OpenAI
     openai_api_key: str = Field("", alias="OPENAI_API_KEY")
@@ -28,7 +30,7 @@ class Settings(BaseSettings):
     deepseek_base_url: str = Field("https://api.deepseek.com", alias="DEEPSEEK_BASE_URL")
 
     # Ollama
-    ollama_model: str = Field("qwen2.5:0.5b", alias="OLLAMA_MODEL")
+    ollama_model: str = Field("qwen2.5:1.5b", alias="OLLAMA_MODEL")
     ollama_base_url: str = Field("http://ollama:11434", alias="OLLAMA_BASE_URL")
 
     # LLM call behaviour
@@ -104,6 +106,12 @@ class Settings(BaseSettings):
     admin_email: str = Field("", alias="ADMIN_EMAIL")
     admin_password: str = Field("", alias="ADMIN_PASSWORD")
     auth_session_ttl_seconds: int = Field(30 * 24 * 3600, alias="AUTH_SESSION_TTL_SECONDS")
+
+    # Self-serve sign-up (email + password). On by default once auth is enabled
+    # so a fresh deployment is usable without an admin provisioning every
+    # account; set ALLOW_SIGNUP=false to make it invite-only (admin-created).
+    # New accounts start as `member`. No effect while AUTH_ENABLED=false.
+    allow_signup: bool = Field(True, alias="ALLOW_SIGNUP")
 
     # SSO (OIDC). SAML is intentionally not supported yet — see PLAN.md.
     oidc_issuer: str = Field("", alias="OIDC_ISSUER")

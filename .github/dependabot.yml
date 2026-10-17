@@ -11,6 +11,13 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      # numpy 2.5+ requires Python >=3.12, but this project targets 3.11
+      # (backend/.python-version, backend/Dockerfile, CI). The 2.4.6 -> 2.5.3
+      # bump in #70 broke `docker build` and CI because the project is 3.11.
+      # Keep numpy on the 3.11-compatible line until Python is bumped.
+      - dependency-name: "numpy"
+        versions: [">=2.5.0"]
     labels:
       - dependencies
       - backend

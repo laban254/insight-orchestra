@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { Inter, JetBrains_Mono } from 'next/font/google'
+import { Inter, JetBrains_Mono, Space_Grotesk } from 'next/font/google'
 import './globals.css'
 import { Providers } from './providers'
 import { DEFAULT_API_BASE_URL } from '@/lib/runtimeEnv'
@@ -13,6 +13,14 @@ const inter = Inter({
 const jetbrains = JetBrains_Mono({
   subsets: ['latin'],
   variable: '--font-jetbrains',
+  display: 'swap',
+})
+
+// Brand heading face — matches the marketing site (Space Grotesk).
+const grotesk = Space_Grotesk({
+  subsets: ['latin'],
+  weight: ['500', '600', '700'],
+  variable: '--font-space-grotesk',
   display: 'swap',
 })
 
@@ -50,7 +58,7 @@ export default function RootLayout({
   const envInit = `window.__IO_ENV__=${JSON.stringify({ apiBaseUrl }).replace(/</g, '\\u003c')};`
 
   return (
-    <html lang="en" suppressHydrationWarning className={`${inter.variable} ${jetbrains.variable}`}>
+    <html lang="en" suppressHydrationWarning className={`${inter.variable} ${jetbrains.variable} ${grotesk.variable}`}>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
         {/* Must precede the app bundle so the value is present on first import. */}
