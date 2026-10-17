@@ -349,6 +349,24 @@ Insight Orchestra is designed as a **local-first, privacy-by-default** system:
 
 Start with `./setup.sh doctor` — it checks Docker, ports, `backend/.env`, and whether the backend/Ollama model are actually up, which covers most of what's below.
 
+### "permission denied" reaching the Docker socket
+
+If `./setup.sh` says Docker isn't reachable but `sudo systemctl status docker` shows the daemon running, this is why: **the daemon is up, but your user can't talk to its socket.** `/var/run/docker.sock` is owned by `root:docker` with mode `660`, so only `root` and members of the `docker` group may connect.
+
+```bash
+sudo usermod -aG docker "$USER"
+newgrp docker          # applies the group to this shell only
+```
+
+Log out and back in (or reboot) so the membership applies to new sessions, then verify and re-run:
+
+```bash
+docker info >/dev/null && echo OK
+./setup.sh
+```
+
+Prefer not to join the `docker` group? Membership is effectively root-equivalent. You can instead run `sudo ./setup.sh`, but be aware the containers will then create root-owned files in the project directory.
+
 ### Port 8000 already in use
 
 ```bash

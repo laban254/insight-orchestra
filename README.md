@@ -48,7 +48,7 @@
 
 ## What is Insight Orchestra?
 
-Insight Orchestra is an **open-source AI data analyst you can self-host** — think Julius AI or ChatGPT's data analysis, but running on your own hardware, with your choice of LLM, where your data never leaves your machine. Upload a data file — CSV, TSV, Excel, JSON, or Parquet — or connect a PostgreSQL, MySQL, SQLite, or DuckDB database, and a 4-agent pipeline cleans the data, generates evidence-backed hypotheses, scores them in an LLM-refereed debate, and builds interactive Plotly charts. Then keep asking questions in plain English: an NLQ agent writes pandas code and executes it in a locked-down sandbox — or, for a connected database, writes and runs read-only SQL directly, joining across tables as needed.
+Insight Orchestra is an **open-source AI data analyst you can self-host** — think Julius AI or ChatGPT's data analysis, but running on your own hardware, with your choice of LLM, where your data never leaves your machine. Upload a data file — CSV, TSV, Excel, JSON, or Parquet — or connect a PostgreSQL, MySQL, SQLite, or DuckDB database, and a multi-agent pipeline cleans the data, generates evidence-backed hypotheses, scores them in an LLM-refereed debate, and builds interactive Plotly charts. Then keep asking questions in plain English: an NLQ agent writes pandas code and executes it in a locked-down sandbox — or, for a connected database, writes and runs read-only SQL directly, joining across tables as needed.
 
 It works with **your choice of LLM** — OpenAI, Anthropic, or DeepSeek in the cloud, or fully local and private with Ollama.
 
