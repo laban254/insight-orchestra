@@ -153,7 +153,7 @@ export default function LoginPage() {
                                 <button
                                     type="submit"
                                     disabled={submitting}
-                                    className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-accent text-[15px] font-semibold text-accent-fg transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-accent/30 disabled:opacity-60"
+                                    className="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-[linear-gradient(90deg,#0e7490,#4f46e5)] text-[15px] font-semibold text-white shadow-[0_10px_30px_-10px_rgba(79,70,229,0.7)] transition-[filter] hover:brightness-110 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-accent/40 disabled:opacity-60"
                                 >
                                     {submitting ? (
                                         <Loader2 size={16} className="animate-spin" aria-hidden="true" />
