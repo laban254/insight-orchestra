@@ -8,6 +8,11 @@ on:
   schedule:
     - cron: "27 4 * * 1" # weekly, Monday 04:27 UTC
 
+# Supersede an in-flight run for the same ref rather than running both.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -26,6 +31,9 @@ jobs:
 
   bandit:
     name: Python security lint (bandit)
+    # Advisory (continue-on-error) and already covered by the weekly schedule.
+    # No gating value on a PR, so keep it off the PR path.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -41,6 +49,8 @@ jobs:
 
   pip-audit:
     name: Python dependency audit
+    # Advisory (continue-on-error); the weekly schedule already runs it.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -56,6 +66,8 @@ jobs:
 
   npm-audit:
     name: Frontend dependency audit
+    # Advisory (continue-on-error); the weekly schedule already runs it.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     defaults:
       run:
