@@ -73,40 +73,6 @@
   --chart-grid: rgba(232, 238, 252, 0.08);
 }
 
-/* Auth surfaces (sign-in / sign-up) render always-dark, on the marketing
-   brand system: a deep navy field lit by cyan/violet/fuchsia glows, with a
-   glass card. This scopes translucent tokens so the card belongs to the
-   background rather than reading as a solid app panel. */
-.auth-glass {
-  --bg:          #0a0f1e;
-  --surface:     rgb(15 21 38 / 0.55);
-  --surface-2:   rgb(255 255 255 / 0.06);
-  --surface-3:   rgb(255 255 255 / 0.12);
-  --border:      rgb(255 255 255 / 0.12);
-  --border-soft: rgb(255 255 255 / 0.08);
-  --fg:          #eef2ff;
-  --muted:       rgb(255 255 255 / 0.70);
-  --faint:       rgb(255 255 255 / 0.45);
-  --accent-soft: rgb(34 211 238 / 0.16);
-  --shadow:      0 24px 80px -24px rgb(0 0 0 / 0.7);
-}
-
-/* Brand background — restrained: one soft cyan glow at the top and a whisper
-   of violet, over the navy field. Clean, not a light show. */
-.bg-auth-glow {
-  background-image:
-    radial-gradient(ellipse 72% 55% at 50% -8%, rgb(34 211 238 / 0.14), transparent 62%),
-    radial-gradient(ellipse 60% 50% at 92% 16%, rgb(167 139 250 / 0.07), transparent 62%);
-}
-
-/* A single agent node "breathing" while the pipeline runs (see AuthVisual).
-   Starts and ends fully lit so `prefers-reduced-motion` (which collapses the
-   animation) leaves the nodes at rest, not dimmed. */
-@keyframes agent-light {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0.35; }
-}
-
 /* Map tokens → Tailwind utilities (bg-surface, text-muted, border-border, …) */
 @theme inline {
   --color-bg:          var(--bg);
