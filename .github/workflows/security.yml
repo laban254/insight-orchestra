@@ -31,7 +31,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version-file: 'backend/.python-version'
       - name: Run bandit
         # Non-blocking: surfaces security findings without failing the build.
         continue-on-error: true
@@ -46,7 +46,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
+          python-version-file: 'backend/.python-version'
       - name: Run pip-audit
         # Non-blocking for now: report vulnerabilities without failing the build.
         continue-on-error: true
