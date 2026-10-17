@@ -64,11 +64,11 @@ export function AuthBackground() {
                         <stop offset="100%" stopColor="#e879f9" />
                     </linearGradient>
                     <linearGradient id="bg-area" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.22" />
+                        <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.3" />
                         <stop offset="100%" stopColor="#22d3ee" stopOpacity="0" />
                     </linearGradient>
                     <radialGradient id="bg-glow" cx="50%" cy="34%" r="60%">
-                        <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.1" />
+                        <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.14" />
                         <stop offset="100%" stopColor="#22d3ee" stopOpacity="0" />
                     </radialGradient>
                 </defs>
@@ -84,7 +84,7 @@ export function AuthBackground() {
                     ))}
                 </g>
 
-                <g stroke="url(#bg-edge)" strokeWidth="1" strokeOpacity="0.22">
+                <g stroke="url(#bg-edge)" strokeWidth="1" strokeOpacity="0.3">
                     {GRAPH.edges.map(([a, b], i) => (
                         <line
                             key={i}
@@ -110,7 +110,7 @@ export function AuthBackground() {
                             <circle cx={p.x} cy={p.y} r="2.6" fill="#22d3ee" fillOpacity="0.8" />
                         </g>
                     ) : (
-                        <circle key={i} cx={p.x} cy={p.y} r="1.6" fill="#a78bfa" fillOpacity="0.5" />
+                        <circle key={i} cx={p.x} cy={p.y} r="1.8" fill="#a78bfa" fillOpacity="0.65" />
                     )
                 )}
 
@@ -123,17 +123,17 @@ export function AuthBackground() {
                     fill="none"
                     stroke="#22d3ee"
                     strokeWidth="1.5"
-                    strokeOpacity="0.35"
+                    strokeOpacity="0.5"
                 />
             </svg>
 
             {/* Dim the art and darken the edges so the card reads clearly. */}
-            <div className="absolute inset-0 bg-[#070b14]/55" />
+            <div className="absolute inset-0 bg-[#070b14]/30" />
             <div
                 className="absolute inset-0"
                 style={{
                     background:
-                        "radial-gradient(ellipse 82% 72% at 50% 42%, transparent 28%, rgba(7,11,20,0.88) 100%)",
+                        "radial-gradient(ellipse 82% 72% at 50% 42%, transparent 28%, rgba(7,11,20,0.72) 100%)",
                 }}
             />
         </div>

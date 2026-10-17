@@ -10,7 +10,7 @@ import { LogoMark } from "@/components/ui/Logo";
  */
 export function AuthShowcase() {
     return (
-        <div className="relative hidden flex-col justify-between overflow-hidden border-r border-white/[0.06] bg-[#0d1626] p-8 lg:flex xl:p-10">
+        <div className="relative hidden flex-col justify-between overflow-hidden border-r border-white/[0.06] bg-[#0f1726] p-8 lg:flex xl:p-10">
             <div
                 aria-hidden="true"
                 className="pointer-events-none absolute -top-24 left-1/2 h-56 w-[130%] -translate-x-1/2 rounded-full bg-accent/10 blur-3xl"
@@ -56,7 +56,7 @@ export function AuthShowcase() {
                                     <span className="block text-[13px] font-medium text-white">
                                         {meta.name}
                                     </span>
-                                    <span className="block text-[11px] leading-snug text-[#8b96ac]">
+                                    <span className="block text-[11px] leading-snug text-[#8b97ad]">
                                         {meta.description}
                                     </span>
                                 </span>
@@ -66,7 +66,7 @@ export function AuthShowcase() {
                 </ul>
             </div>
 
-            <p className="relative flex items-center gap-1.5 text-xs text-[#7c879c]">
+            <p className="relative flex items-center gap-1.5 text-xs text-[#7c8aa3]">
                 <ShieldCheck size={13} className="shrink-0 text-accent" aria-hidden="true" />
                 Self-hosted — your data never leaves your machine
             </p>
