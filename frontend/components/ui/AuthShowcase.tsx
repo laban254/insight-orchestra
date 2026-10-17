@@ -6,7 +6,7 @@ const WEBSITE_URL = "https://marketing-insight-orchestra.vercel.app";
 
 /**
  * The left-hand panel on the auth screens (desktop only): a full-bleed product
- * screenshot under a dark violet wash, carrying the brand mark, a link back to
+ * screenshot under a dark brand wash, carrying the brand mark, a link back to
  * the website, and the one-line pitch over carousel dots. Decorative, so it's
  * hidden below `lg` and from assistive tech (the form panel carries the same
  * brand mark on small screens).
@@ -21,10 +21,15 @@ export function AuthShowcase() {
                 aria-hidden="true"
                 className="absolute inset-0 h-full w-full object-cover"
             />
-            <div aria-hidden="true" className="absolute inset-0 bg-[#432a8f]/45 mix-blend-multiply" />
+            <div aria-hidden="true" className="absolute inset-0 bg-[#07131f]/70" />
             <div
                 aria-hidden="true"
-                className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-black/25"
+                className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/45 to-transparent"
+            />
+            {/* A whisper of the brand accent so the panel belongs to the app. */}
+            <div
+                aria-hidden="true"
+                className="absolute -top-24 left-1/2 h-64 w-[130%] -translate-x-1/2 rounded-full bg-[var(--accent)]/15 blur-3xl"
             />
 
             <div className="relative flex h-full flex-col justify-between p-8 xl:p-10">
