@@ -1,6 +1,7 @@
-// The mark: a ring with one node breaking away — agents orbiting a shared
-// finding. Bold enough to still read at favicon scale; see app/icon.svg
-// and app/favicon.ico, which render the same shape standalone.
+// The mark: an "IO" monogram — a bar ("I") beside a ring ("O") for Insight
+// Orchestra. Geometric (no font), so it stays crisp at favicon size. See
+// app/icon.svg, app/apple-icon.png and app/favicon.ico, which render the same
+// shape standalone.
 export function LogoMark({ size = 24, className }: { size?: number; className?: string }) {
     return (
         <svg
@@ -11,8 +12,8 @@ export function LogoMark({ size = 24, className }: { size?: number; className?: 
             className={className}
             aria-hidden
         >
-            <circle cx="12" cy="12" r="6.3" stroke="currentColor" strokeWidth="1.8" />
-            <circle cx="15.6" cy="6.85" r="2.6" fill="currentColor" />
+            <rect x="2.9" y="4.5" width="3.2" height="15" rx="1.6" fill="currentColor" />
+            <circle cx="14.3" cy="12" r="5.2" stroke="currentColor" strokeWidth="3.2" />
         </svg>
     );
 }
@@ -20,10 +21,15 @@ export function LogoMark({ size = 24, className }: { size?: number; className?: 
 export function Logo({ size = 8 }: { size?: number }) {
     return (
         <div
-            className="grid place-items-center rounded-xl bg-accent text-accent-fg"
-            style={{ width: `${size * 4}px`, height: `${size * 4}px` }}
+            className="grid place-items-center rounded-xl"
+            style={{
+                width: `${size * 4}px`,
+                height: `${size * 4}px`,
+                background: "linear-gradient(135deg,#00dffd,#b085ff 55%,#ff54f9)",
+                boxShadow: "0 0 30px -12px rgb(0 223 253 / 0.7)",
+            }}
         >
-            <LogoMark size={size * 2.2} />
+            <LogoMark size={size * 2.2} className="text-[#030b1c]" />
         </div>
     );
 }

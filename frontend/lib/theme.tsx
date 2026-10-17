@@ -23,26 +23,16 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const [theme, setThemeState] = useState<Theme>("dark");
 
     useEffect(() => {
-        const stored = (localStorage.getItem("io-theme") as Theme | null) ?? null;
-        const system = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-        const initial = stored ?? system;
+        // Dark-first: the app's canonical look matches the auth + marketing
+        // surfaces. Light is still available via the toggle, but dark is the
+        // default whenever the user hasn't chosen one.
+        const stored = localStorage.getItem("io-theme") as Theme | null;
+        const initial = stored ?? "dark";
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setThemeState(initial);
         apply(initial);
         // Enable color transitions only after first paint to avoid a flash.
         requestAnimationFrame(() => document.documentElement.classList.add("theme-ready"));
-
-        // Follow system changes only when the user hasn't pinned a choice.
-        const mq = window.matchMedia("(prefers-color-scheme: dark)");
-        const onChange = (e: MediaQueryListEvent) => {
-            if (!localStorage.getItem("io-theme")) {
-                const next = e.matches ? "dark" : "light";
-                setThemeState(next);
-                apply(next);
-            }
-        };
-        mq.addEventListener("change", onChange);
-        return () => mq.removeEventListener("change", onChange);
     }, []);
 
     const setTheme = useCallback((t: Theme) => {

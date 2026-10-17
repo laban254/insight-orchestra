@@ -69,9 +69,9 @@ function tokenize(src: string): Tok[] {
 }
 
 const TONE: Record<string, string> = {
-    comment: "#6b7a99",
-    string: "#7ee7c7",
-    number: "#f0b866",
+    comment: "#6b7a8f",
+    string: "#10d39a",
+    number: "#f7be2b",
     keyword: "#c792ea",
     builtin: "#82aaff",
 };
@@ -97,22 +97,22 @@ export function CodeBlock({ code }: CodeBlockProps) {
     };
 
     return (
-        <div className="w-full overflow-hidden rounded-xl border border-[#25314c] bg-[#0d1424]">
-            <div className="flex items-center justify-between border-b border-[#1c2740] px-3.5 py-2">
+        <div className="w-full overflow-hidden rounded-xl border border-[#222e42] bg-[#0d1424]">
+            <div className="flex items-center justify-between border-b border-[#182134] px-3.5 py-2">
                 <div className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-[#f0b866]" />
-                    <span className="font-mono text-[11px] tracking-wide text-[#6b7a99]">Python · generated</span>
+                    <span className="h-2 w-2 rounded-full bg-[#f7be2b]" />
+                    <span className="font-mono text-[11px] tracking-wide text-[#6b7a8f]">Python · generated</span>
                 </div>
                 <button
                     onClick={handleCopy}
-                    className="flex items-center gap-1 text-[11px] text-[#6b7a99] transition-colors hover:text-[#c7d2e8]"
+                    className="flex items-center gap-1 text-[11px] text-[#6b7a8f] transition-colors hover:text-[#c9d3e3]"
                 >
-                    {copied ? <Check size={12} className="text-[#7ee7c7]" /> : <Copy size={12} />}
+                    {copied ? <Check size={12} className="text-[#10d39a]" /> : <Copy size={12} />}
                     {copied ? "Copied" : "Copy"}
                 </button>
             </div>
 
-            <pre className="overflow-x-auto px-4 py-3 font-mono text-[12.5px] leading-relaxed text-[#c7d2e8]">
+            <pre className="overflow-x-auto px-4 py-3 font-mono text-[12.5px] leading-relaxed text-[#c9d3e3]">
                 <code>
                     {toks.map((tk, n) =>
                         tk.c ? (
@@ -129,7 +129,7 @@ export function CodeBlock({ code }: CodeBlockProps) {
             {isLong && (
                 <button
                     onClick={() => setExpanded((v) => !v)}
-                    className="flex w-full items-center justify-center gap-1 border-t border-[#1c2740] py-1.5 text-[11px] text-[#6b7a99] transition-colors hover:bg-[#111a2e] hover:text-[#c7d2e8]"
+                    className="flex w-full items-center justify-center gap-1 border-t border-[#182134] py-1.5 text-[11px] text-[#6b7a8f] transition-colors hover:bg-[#111a2e] hover:text-[#c9d3e3]"
                 >
                     {expanded ? (
                         <>

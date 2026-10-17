@@ -29,7 +29,7 @@ export function AuthShowcase() {
                     <br />
                     One answer.
                 </h2>
-                <p className="mt-3 text-[13px] leading-relaxed text-[#9aa6be]">
+                <p className="mt-3 text-[13px] leading-relaxed text-[#98a6b8]">
                     Upload a dataset and a team of agents cleans it, forms hypotheses,
                     debates them, and charts what matters — then ask anything in plain
                     English.

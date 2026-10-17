@@ -14,7 +14,7 @@ const Plot = dynamic(() => import("react-plotly.js"), {
     ),
 });
 
-const COLORWAY = ["#22d3ee", "#e879f9", "#a78bfa", "#34d399", "#fbbf24", "#fb7185", "#60a5fa", "#f97316"];
+const COLORWAY = ["#00dffd", "#ff54f9", "#b085ff", "#10d39a", "#f7be2b", "#f94144", "#60a5fa", "#f97316"];
 
 interface ChartRendererProps {
     plotJsonStr: string;
@@ -96,7 +96,7 @@ export function ChartRenderer({ plotJsonStr, height = 360 }: ChartRendererProps)
     }
     if (!Array.isArray(parsed.data) || parsed.data.length === 0) return null;
 
-    const fg = isDark ? "#9aa7c2" : "#4a566b";
+    const fg = isDark ? "#98a6b8" : "#3d4958";
     const grid = isDark ? "rgba(232,238,252,0.08)" : "rgba(11,18,32,0.08)";
     const axis = isDark ? "rgba(232,238,252,0.15)" : "rgba(11,18,32,0.15)";
 
@@ -118,9 +118,9 @@ export function ChartRenderer({ plotJsonStr, height = 360 }: ChartRendererProps)
         yaxis: { gridcolor: grid, linecolor: axis, zerolinecolor: axis, ...(parsed.layout?.yaxis ?? {}), ...forceZero },
         legend: { font: { color: fg }, ...(parsed.layout?.legend ?? {}) },
         hoverlabel: {
-            bgcolor: isDark ? "#161f33" : "#ffffff",
-            bordercolor: isDark ? "#25314c" : "#d8dfea",
-            font: { color: isDark ? "#e8eefc" : "#0b1220" },
+            bgcolor: isDark ? "#0f1828" : "#ffffff",
+            bordercolor: isDark ? "#222e42" : "#d4d8de",
+            font: { color: isDark ? "#edf2f8" : "#050b18" },
         },
     };
 

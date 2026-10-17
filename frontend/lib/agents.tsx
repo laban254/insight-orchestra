@@ -23,35 +23,35 @@ export const AGENT_META: Record<string, AgentMeta> = {
         name: "Data Janitor",
         description: "Cleans duplicates and imputes missing values",
         Icon: Sparkles,
-        color: "#22d3ee", // cyan
+        color: "#00dffd", // cyan
     },
     hypothesis: {
         id: "hypothesis",
         name: "Hypothesis Bot",
         description: "Generates testable hypotheses from your data",
         Icon: FlaskConical,
-        color: "#a78bfa", // violet
+        color: "#b085ff", // violet
     },
     debate: {
         id: "debate",
         name: "Debate Manager",
         description: "Scores hypotheses by confidence & business value",
         Icon: Scale,
-        color: "#fbbf24", // amber
+        color: "#f7be2b", // amber
     },
     viz: {
         id: "viz",
         name: "Viz Whiz",
         description: "Auto-generates interactive charts",
         Icon: BarChart3,
-        color: "#34d399", // emerald
+        color: "#10d39a", // emerald
     },
     nlq: {
         id: "nlq",
         name: "Query Agent",
         description: "Writes and runs analysis code for your question",
         Icon: Bot,
-        color: "#e879f9", // magenta
+        color: "#ff54f9", // magenta
     },
     narrator: {
         id: "narrator",
