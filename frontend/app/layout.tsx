@@ -19,7 +19,6 @@ const jetbrains = JetBrains_Mono({
 // Brand heading face — matches the marketing site (Space Grotesk).
 const grotesk = Space_Grotesk({
   subsets: ['latin'],
-  weight: ['500', '600', '700'],
   variable: '--font-space-grotesk',
   display: 'swap',
 })
