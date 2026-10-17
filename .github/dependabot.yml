@@ -5,7 +5,7 @@ updates:
     directory: "/backend"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5   # was 10 — each open PR fans out to 3 workflows
     groups:
       python-minor-patch:
         update-types:
@@ -27,7 +27,7 @@ updates:
     directory: "/frontend"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5   # was 10 — each open PR fans out to 3 workflows
     groups:
       npm-minor-patch:
         update-types:
@@ -42,7 +42,7 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3   # was 5
     groups:
       actions:
         update-types:
