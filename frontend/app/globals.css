@@ -162,6 +162,18 @@ html.theme-ready * {
 }
 .animate-pulse-ring { animation: pulse-ring 1.8s ease-out infinite; }
 
+/* The agent nodes in the auth panel's generated artwork "breathe" gently.
+   transform-box lets the transform pivot on each circle's own centre. */
+.auth-node-pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: auth-node-pulse 4s ease-in-out infinite;
+}
+@keyframes auth-node-pulse {
+  0%, 100% { opacity: 0.25; transform: scale(1); }
+  50%      { opacity: 0.7;  transform: scale(1.7); }
+}
+
 .shimmer::after {
   content: "";
   position: absolute;
@@ -224,6 +236,7 @@ select:focus-visible,
   .animate-rise,
   .animate-fade,
   .animate-pulse-ring,
+  .auth-node-pulse,
   .shimmer::after {
     animation: none !important;
   }

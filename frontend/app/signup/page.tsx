@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { AlertCircle, Eye, EyeOff, KeyRound, Loader2, UserPlus } from "lucide-react";
+import { AlertCircle, ArrowLeft, Eye, EyeOff, KeyRound, Loader2, UserPlus } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { apiErrorMessage } from "@/lib/apiError";
 import { AuthShowcase } from "@/components/ui/AuthShowcase";
@@ -18,6 +18,7 @@ const LINK =
 
 /** The marketing site hosts the public terms; there's no in-app terms page. */
 const TERMS_URL = "https://marketing-insight-orchestra.vercel.app";
+const WEBSITE_URL = TERMS_URL;
 
 /**
  * Sign-up page — the mirror of the sign-in screen. Email + password only (OAuth
@@ -67,9 +68,9 @@ export default function SignupPage() {
     }
 
     return (
-        <main className="dark grid min-h-screen place-items-center bg-[#0b0a0e] px-4 py-10 [color-scheme:dark] sm:px-6">
-            <div className="w-full max-w-[1000px] overflow-hidden rounded-[20px] border border-white/[0.08] bg-[#16151c] shadow-[0_50px_140px_-50px_rgba(0,0,0,0.95)]">
-                <div className="grid lg:min-h-[620px] lg:grid-cols-[0.92fr_1.08fr]">
+        <main className="dark flex min-h-screen flex-col items-center justify-center gap-6 bg-[#0b0a0e] px-4 py-10 [color-scheme:dark] sm:px-6">
+            <div className="w-full max-w-[1120px] overflow-hidden rounded-[20px] border border-white/[0.08] bg-[#16151c] shadow-[0_50px_140px_-50px_rgba(0,0,0,0.95)]">
+                <div className="grid lg:min-h-[680px] lg:grid-cols-[0.95fr_1.05fr]">
                     <AuthShowcase />
 
                     <div className="px-6 py-10 sm:px-10 lg:px-14 lg:py-14">
@@ -225,6 +226,14 @@ export default function SignupPage() {
                     </div>
                 </div>
             </div>
+
+            <a
+                href={WEBSITE_URL}
+                className="inline-flex items-center gap-1.5 text-sm text-[#9a96a6] transition-colors hover:text-white"
+            >
+                <ArrowLeft size={14} aria-hidden="true" />
+                Back to website
+            </a>
         </main>
     );
 }
