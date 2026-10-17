@@ -1,10 +1,24 @@
+<p align="center">
+  <img src="docs/assets/logo.png" width="88" height="88" alt="Insight Orchestra">
+</p>
+
 <h1 align="center">Insight Orchestra</h1>
 
 <p align="center"><strong>Your data, analyzed by a team of AI agents.</strong></p>
 
 <p align="center">
-  Connect a data file or a database and watch specialized agents clean it, form hypotheses,<br/>
-  debate them, and visualize what matters — then ask follow-ups in plain English.
+  A self-hosted AI data analyst. Point it at a file or a database and a pipeline of specialist
+  agents cleans the data, forms evidence-backed hypotheses, debates them, and charts what matters
+  — then answers your follow-ups in plain English.<br/>
+  <strong>Your data never leaves your machine.</strong>
+</p>
+
+<p align="center">
+  <img alt="Self-hosted" src="https://img.shields.io/badge/self--hosted-100%25-00dffd?style=flat-square&labelColor=020713">
+  <img alt="Agents" src="https://img.shields.io/badge/agents-5-b085ff?style=flat-square&labelColor=020713">
+  <img alt="Data sources" src="https://img.shields.io/badge/data%20sources-9-ff54f9?style=flat-square&labelColor=020713">
+  <img alt="LLM providers" src="https://img.shields.io/badge/LLM%20providers-4-10d39a?style=flat-square&labelColor=020713">
+  <img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-98a6b8?style=flat-square&labelColor=020713">
 </p>
 
 <p align="center">
@@ -17,7 +31,6 @@
   <a href="https://github.com/laban254/insight-orchestra/actions/workflows/ci.yml"><img src="https://github.com/laban254/insight-orchestra/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/laban254/insight-orchestra/actions/workflows/codeql.yml"><img src="https://github.com/laban254/insight-orchestra/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
   <a href="https://github.com/laban254/insight-orchestra/releases"><img src="https://img.shields.io/github/v/release/laban254/insight-orchestra?include_prereleases" alt="Latest release"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/laban254/insight-orchestra" alt="License"></a>
   <a href="https://github.com/laban254/insight-orchestra/stargazers"><img src="https://img.shields.io/github/stars/laban254/insight-orchestra?style=social" alt="Stars"></a>
   <a href="https://codespaces.new/laban254/insight-orchestra"><img src="https://github.com/codespaces/badge.svg" alt="Open in GitHub Codespaces"></a>
 </p>
@@ -39,7 +52,7 @@
 -->
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://github.com/laban254/insight-orchestra/releases/download/media-assets/demo-dark.gif">
-  <img alt="Insight Orchestra — four agents cleaning, hypothesising, debating and visualising a dataset" src="https://github.com/laban254/insight-orchestra/releases/download/media-assets/demo.gif">
+  <img alt="Insight Orchestra — a team of AI agents cleaning, hypothesising, debating and visualising a dataset" src="https://github.com/laban254/insight-orchestra/releases/download/media-assets/demo.gif">
 </picture>
 
 <p align="center"><em>A real run on the bundled Sales dataset — unedited.</em></p>
@@ -136,7 +149,7 @@ Each stage streams real-time progress to the UI via SSE. See the [Agent Pipeline
 |----------|---------|
 | [Setup Guide](docs/SETUP.md) | Docker and local development setup, troubleshooting |
 | [Architecture](docs/ARCHITECTURE.md) | System design, component breakdown, data flow |
-| [Agent Pipeline](docs/AGENTS.md) | Deep dive into all 4 agents + NLQ agent |
+| [Agent Pipeline](docs/AGENTS.md) | Deep dive into all five agents + the NLQ agent |
 | [API Reference](docs/API_REFERENCE.md) | All REST endpoints with request/response examples |
 
 ## Roadmap

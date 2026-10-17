@@ -78,6 +78,10 @@ def main() -> None:
         p = os.path.join(args.out, "favicon.ico")
         render(64).save(p, sizes=[(16, 16), (32, 32), (48, 48)])
         print("wrote", p, f"({os.path.getsize(p)} bytes)")
+    if "logo" in want:
+        p = os.path.join(args.out, "logo.png")
+        render(256).save(p)
+        print("wrote", p, f"({os.path.getsize(p)} bytes)")
 
 
 if __name__ == "__main__":
