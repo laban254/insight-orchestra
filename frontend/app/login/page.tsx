@@ -7,6 +7,7 @@ import { AlertCircle, ArrowLeft, Eye, EyeOff, KeyRound, Loader2, LogIn } from "l
 import { useAuth } from "@/lib/auth";
 import { apiErrorMessage } from "@/lib/apiError";
 import { AuthShowcase } from "@/components/ui/AuthShowcase";
+import { AuthBackground } from "@/components/ui/AuthBackground";
 import { LogoMark } from "@/components/ui/Logo";
 
 // Dark filled field on the card; focus picks up the app's primary (`--accent`).
@@ -59,7 +60,8 @@ export default function LoginPage() {
     }
 
     return (
-        <main className="dark flex min-h-screen flex-col items-center justify-center gap-6 bg-[#0b0a0e] px-4 py-10 [color-scheme:dark] sm:px-6">
+        <main className="dark relative flex min-h-screen flex-col items-center justify-center gap-6 px-4 py-10 [color-scheme:dark] sm:px-6">
+            <AuthBackground />
             <div className="w-full max-w-[1120px] overflow-hidden rounded-[20px] border border-white/[0.08] bg-[#16151c] shadow-[0_50px_140px_-50px_rgba(0,0,0,0.95)]">
                 <div className="grid lg:min-h-[680px] lg:grid-cols-[0.95fr_1.05fr]">
                     <AuthShowcase />
