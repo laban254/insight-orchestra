@@ -9,6 +9,7 @@ import { apiErrorMessage } from "@/lib/apiError";
 import { AuthShowcase } from "@/components/ui/AuthShowcase";
 import { AuthBackground } from "@/components/ui/AuthBackground";
 import { LogoMark } from "@/components/ui/Logo";
+import { GithubMark } from "@/components/ui/GithubMark";
 
 // Dark filled field on the card; focus picks up the app's primary (`--accent`).
 // Placeholder-as-label — each input still carries an `aria-label`.
@@ -20,6 +21,7 @@ const LINK =
 
 /** The marketing site — the app's public front door. */
 const WEBSITE_URL = "https://marketing-insight-orchestra.vercel.app";
+const GITHUB_URL = "https://github.com/laban254/insight-orchestra";
 
 /** Sign-in page — a dark card split into a product showcase and the form. */
 export default function LoginPage() {
@@ -183,13 +185,24 @@ export default function LoginPage() {
                 </div>
             </div>
 
-            <a
-                href={WEBSITE_URL}
-                className="inline-flex items-center gap-1.5 text-sm text-[#9aa6be] transition-colors hover:text-white"
-            >
-                <ArrowLeft size={14} aria-hidden="true" />
-                Back to website
-            </a>
+            <div className="flex items-center gap-6 text-sm text-[#9aa6be]">
+                <a
+                    href={WEBSITE_URL}
+                    className="inline-flex items-center gap-1.5 transition-colors hover:text-white"
+                >
+                    <ArrowLeft size={14} aria-hidden="true" />
+                    Back to website
+                </a>
+                <a
+                    href={GITHUB_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 transition-colors hover:text-white"
+                >
+                    <GithubMark size={16} />
+                    GitHub
+                </a>
+            </div>
         </main>
     );
 }

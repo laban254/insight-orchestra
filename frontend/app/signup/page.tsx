@@ -9,6 +9,7 @@ import { apiErrorMessage } from "@/lib/apiError";
 import { AuthShowcase } from "@/components/ui/AuthShowcase";
 import { AuthBackground } from "@/components/ui/AuthBackground";
 import { LogoMark } from "@/components/ui/Logo";
+import { GithubMark } from "@/components/ui/GithubMark";
 
 // Same field treatment as the sign-in page — see login/page.tsx.
 const INPUT =
@@ -20,6 +21,7 @@ const LINK =
 /** The marketing site hosts the public terms; there's no in-app terms page. */
 const TERMS_URL = "https://marketing-insight-orchestra.vercel.app";
 const WEBSITE_URL = TERMS_URL;
+const GITHUB_URL = "https://github.com/laban254/insight-orchestra";
 
 /**
  * Sign-up page — the mirror of the sign-in screen. Email + password only (OAuth
@@ -229,13 +231,24 @@ export default function SignupPage() {
                 </div>
             </div>
 
-            <a
-                href={WEBSITE_URL}
-                className="inline-flex items-center gap-1.5 text-sm text-[#9aa6be] transition-colors hover:text-white"
-            >
-                <ArrowLeft size={14} aria-hidden="true" />
-                Back to website
-            </a>
+            <div className="flex items-center gap-6 text-sm text-[#9aa6be]">
+                <a
+                    href={WEBSITE_URL}
+                    className="inline-flex items-center gap-1.5 transition-colors hover:text-white"
+                >
+                    <ArrowLeft size={14} aria-hidden="true" />
+                    Back to website
+                </a>
+                <a
+                    href={GITHUB_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 transition-colors hover:text-white"
+                >
+                    <GithubMark size={16} />
+                    GitHub
+                </a>
+            </div>
         </main>
     );
 }
