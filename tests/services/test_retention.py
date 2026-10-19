@@ -44,7 +44,10 @@ class TestExpiredReap:
         registry._write(record)
 
         counts = retention.sweep_once()
-        assert counts["expired"] == 1
+        # The registry is a process-wide singleton, so in a full-suite run other
+        # tests' datasets can expire in this same pass. What matters is that
+        # *this* idle dataset was reaped, not the exact total.
+        assert counts["expired"] >= 1
         assert registry.get(dataset_id) is None
 
     def test_sweep_leaves_active_datasets_alone(self, registry, tmp_path, monkeypatch):
