@@ -148,7 +148,12 @@ class TestAuthGatingIntegration:
         resp = client.get("/api/v1/auth/me")
         assert resp.status_code == 200
         body = resp.json()
-        assert body == {"auth_enabled": True, "oidc_configured": False, "user": None}
+        assert body == {
+            "auth_enabled": True,
+            "oidc_configured": False,
+            "signup_enabled": True,
+            "user": None,
+        }
 
     def test_auth_me_reports_the_signed_in_user(self, auth_on):
         token = auth_on(Role.ADMIN)
