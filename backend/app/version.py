@@ -25,9 +25,11 @@ def _from_pyproject() -> str | None:
         if candidate.is_file():
             try:
                 with candidate.open("rb") as fh:
-                    return tomllib.load(fh).get("project", {}).get("version")
+                    data = tomllib.load(fh)
             except (OSError, ValueError):
                 return None
+            value = data.get("project", {}).get("version")
+            return value if isinstance(value, str) else None
     return None
 
 

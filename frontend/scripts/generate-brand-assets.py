@@ -44,7 +44,9 @@ def render(size: int) -> Image.Image:
 
     # Rounded-square mask.
     mask = Image.new("L", (size, size), 0)
-    ImageDraw.Draw(mask).rounded_rectangle([0, 0, size - 1, size - 1], radius=round(size * 0.22), fill=255)
+    ImageDraw.Draw(mask).rounded_rectangle(
+        [0, 0, size - 1, size - 1], radius=round(size * 0.22), fill=255
+    )
     img.putalpha(mask)
 
     # Glyph, scaled from the 24-unit grid used in Logo.tsx / icon.svg.
