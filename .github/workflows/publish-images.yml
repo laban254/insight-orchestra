@@ -16,7 +16,18 @@ name: publish-images
 on:
   push:
     tags: ['v*']
+  # Nightly `edge` image from the tip of main, so testers can track unreleased
+  # work without waiting for a release. Tag-triggered and dispatched runs
+  # publish the real semver tags instead (see the merge job's tag derivation).
+  schedule:
+    - cron: "17 2 * * *"
   workflow_dispatch:
+
+# One publish at a time; never cancel an in-flight build (a cancelled run would
+# leave partial digests with no manifest).
+concurrency:
+  group: publish-images-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   REGISTRY: ghcr.io
@@ -73,6 +84,12 @@ jobs:
           context: ./${{ matrix.component }}
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
+          # The backend reads this in /health; for the frontend it's a no-op.
+          build-args: |
+            VERSION=${{ github.ref_type == 'tag' && github.ref_name || 'edge' }}
+          # Signed provenance + SBOM attestations, pushed alongside the image.
+          provenance: true
+          sbom: true
           # Must stay on one line — buildx parses this as CSV and folded YAML
           # would inject spaces into the values.
           outputs: type=image,name=${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.component }},push-by-digest=true,name-canonical=true,push=true

@@ -1,0 +1,30 @@
+name: cleanup-images
+
+# GHCR keeps every pushed image version forever, so storage creeps up release
+# over release. This trims each component's package down to a recent window.
+on:
+  schedule:
+    - cron: "27 3 1 * *" # monthly, 1st at 03:27 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package:
+          - insight-orchestra-backend
+          - insight-orchestra-frontend
+    steps:
+      # Keeps the newest N versions (whatever their tags) and deletes the rest.
+      # N is generous — the goal is to stop unbounded growth, not to be clever
+      # about which releases to keep; the moving tags are always recent.
+      - uses: actions/delete-package-versions@v5
+        with:
+          package-name: ${{ matrix.package }}
+          package-type: container
+          min-versions-to-keep: 20
