@@ -13,6 +13,7 @@ from app.logging_config import RequestIDMiddleware, configure_logging
 from app.rate_limit import RateLimitMiddleware
 from app.services.retention import run_periodic_sweep
 from app.services.user_store import Role, get_user_store
+from app.version import version as app_version
 
 configure_logging(settings.log_level)
 
@@ -138,4 +139,6 @@ app.include_router(audit_router, prefix=API_PREFIX)
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok"}
+    # Kept cheap for the Docker healthcheck; the version lets a self-hoster (and
+    # support) confirm exactly which build is running.
+    return {"status": "ok", "version": app_version()}

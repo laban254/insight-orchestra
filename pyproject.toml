@@ -14,7 +14,7 @@ authors = [
 ]
 keywords = ["data-analysis", "ai", "llm", "pandas", "plotly"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
@@ -67,14 +67,6 @@ dev = [
     "ruff>=0.2.0",
     "mypy>=1.8.0",
 ]
-
-[project.scripts]
-insight-orchestra = "insight_orchestra.cli:main"
-
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["insight_orchestra*", "backend*", "frontend*"]
-exclude = ["*tests*", "*.pyc", "__pycache__"]
 
 [tool.ruff]
 target-version = "py311"

@@ -159,6 +159,23 @@ jobs:
           cache-from: type=gha,scope=ci-backend
           cache-to: type=gha,mode=max,scope=ci-backend
 
+      # A backend that builds but won't boot must never reach a release, so
+      # prove the image actually serves /health before we ship it.
+      - if: github.event_name == 'push'
+        name: Smoke-test the backend image
+        run: |
+          docker run -d --name io-smoke -p 8000:8000 \
+            -e USE_REDIS=false -e AUTH_ENABLED=false \
+            insight-orchestra:backend
+          ok=0
+          for _ in $(seq 1 45); do
+            if curl -fsS http://localhost:8000/health; then ok=1; break; fi
+            sleep 2
+          done
+          docker logs io-smoke 2>&1 | tail -20 || true
+          docker rm -f io-smoke >/dev/null 2>&1 || true
+          if [ "$ok" != 1 ]; then echo "::error::backend image did not become healthy"; exit 1; fi
+
       - if: github.event_name == 'push'
         name: Build Frontend
         uses: docker/build-push-action@v7

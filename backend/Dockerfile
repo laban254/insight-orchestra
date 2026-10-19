@@ -8,6 +8,11 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
+# The release version, injected at build time by publish-images.yml (the build
+# arg is the git tag) and surfaced by /health. "dev" for local builds.
+ARG VERSION=dev
+ENV IO_VERSION=${VERSION}
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \

@@ -17,7 +17,11 @@ class TestRouteVersioning:
     def test_health_is_unversioned(self):
         resp = client.get("/health")
         assert resp.status_code == 200
-        assert resp.json() == {"status": "ok"}
+        body = resp.json()
+        assert body["status"] == "ok"
+        # The build's version rides along so a self-hoster can confirm exactly
+        # what's running; "dev" outside a released/packaged build.
+        assert body.get("version")
 
     def test_versioned_route_is_reachable(self):
         resp = client.get("/api/v1/demo/list")
